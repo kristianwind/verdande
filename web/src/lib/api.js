@@ -1,0 +1,157 @@
+/**
+ * The one place the app talks to the server.
+ *
+ * Every call goes through `request`, so authentication failures, error shapes and
+ * the CSRF header are handled once rather than at each of forty call sites.
+ */
+
+/** Thrown for any non-2xx response. Carries the server's stable `code` so callers
+ *  can branch on the reason without matching on prose. */
+export class ApiError extends Error {
+	constructor(status, code, message, fields) {
+		super(message);
+		this.name = 'ApiError';
+		this.status = status;
+		this.code = code;
+		this.fields = fields ?? {};
+	}
+
+	/** True when the session has gone — the app should show the sign-in screen. */
+	get isAuthError() {
+		return this.status === 401;
+	}
+}
+
+/** Danish messages for the codes the API can return. The server sends English
+ *  prose for logs; what a person reads is decided here, where the locale is known. */
+const MESSAGES = {
+	unauthorized: 'Forkert e-mail eller adgangskode.',
+	totp_required: 'Indtast koden fra din authenticator.',
+	forbidden: 'Det har du ikke adgang til.',
+	not_found: 'Findes ikke.',
+	conflict: 'Det er der allerede.',
+	rate_limited: 'For mange forsøg. Vent et øjeblik.',
+	validation_failed: 'Tjek felterne herunder.',
+	payload_too_large: 'Det er for stort.',
+	internal_error: 'Noget gik galt. Prøv igen.',
+	offline: 'Ingen forbindelse til serveren.'
+};
+
+export function humanMessage(err) {
+	if (!(err instanceof ApiError)) return MESSAGES.offline;
+	return MESSAGES[err.code] ?? err.message ?? MESSAGES.internal_error;
+}
+
+async function request(method, path, body, options = {}) {
+	const init = {
+		method,
+		headers: {},
+		// The session cookie is httpOnly and same-origin; nothing here handles a token.
+		credentials: 'same-origin',
+		signal: options.signal
+	};
+	if (body !== undefined) {
+		init.headers['Content-Type'] = 'application/json';
+		init.body = JSON.stringify(body);
+	}
+
+	let res;
+	try {
+		res = await fetch(`/api/v1${path}`, init);
+	} catch (e) {
+		// A network failure is not an HTTP status; give it one the app can handle
+		// the same way as everything else.
+		throw new ApiError(0, 'offline', 'ingen forbindelse');
+	}
+
+	if (res.status === 204) return null;
+
+	let payload = null;
+	const text = await res.text();
+	if (text) {
+		try {
+			payload = JSON.parse(text);
+		} catch {
+			payload = null;
+		}
+	}
+
+	if (!res.ok) {
+		throw new ApiError(
+			res.status,
+			payload?.code ?? 'internal_error',
+			payload?.error ?? res.statusText,
+			payload?.fields
+		);
+	}
+	return payload;
+}
+
+const get = (path, options) => request('GET', path, undefined, options);
+const post = (path, body, options) => request('POST', path, body ?? {}, options);
+const patch = (path, body) => request('PATCH', path, body);
+const del = (path) => request('DELETE', path);
+
+export const api = {
+	// --- auth
+	setupState: () => get('/auth/setup'),
+	setup: (data) => post('/auth/setup', data),
+	login: (email, password) => post('/auth/login', { email, password }),
+	loginTOTP: (code) => post('/auth/login/totp', { code }),
+	logout: () => post('/auth/logout'),
+	me: () => get('/auth/me'),
+	signup: (data) => post('/auth/signup', data),
+	forgotPassword: (email) => post('/auth/password/forgot', { email }),
+	resetPassword: (token, password) => post('/auth/password/reset', { token, password }),
+	changePassword: (current_password, new_password) =>
+		post('/auth/password/change', { current_password, new_password }),
+
+	totpSetup: () => post('/auth/totp/setup'),
+	totpConfirm: (code) => post('/auth/totp/confirm', { code }),
+	totpDisable: (password) => post('/auth/totp/disable', { password }),
+	recoveryCodes: () => get('/auth/recovery-codes'),
+	regenerateRecoveryCodes: (password) => post('/auth/recovery-codes', { password }),
+
+	// --- projects
+	listProjects: (archived = false) => get(`/projects${archived ? '?archived=true' : ''}`),
+	getProject: (id) => get(`/projects/${id}`),
+	createProject: (data) => post('/projects', data),
+	updateProject: (id, data) => patch(`/projects/${id}`, data),
+	deleteProject: (id) => del(`/projects/${id}`),
+	restoreProject: (id) => post(`/trash/projects/${id}/restore`),
+
+	listSections: (projectId) => get(`/projects/${projectId}/sections`),
+	createSection: (projectId, name) => post(`/projects/${projectId}/sections`, { name }),
+	updateSection: (id, data) => patch(`/sections/${id}`, data),
+	deleteSection: (id) => del(`/sections/${id}`),
+
+	listMembers: (projectId) => get(`/projects/${projectId}/members`),
+	invite: (projectId, email, role) => post(`/projects/${projectId}/invites`, { email, role }),
+	removeMember: (projectId, userId) => del(`/projects/${projectId}/members/${userId}`),
+	activity: (projectId) => get(`/projects/${projectId}/activity`),
+
+	// --- tasks
+	listTasks: (params = {}) => {
+		const query = new URLSearchParams(
+			Object.entries(params).filter(([, v]) => v !== undefined && v !== '')
+		);
+		const suffix = query.toString();
+		return get(`/tasks${suffix ? `?${suffix}` : ''}`);
+	},
+	getTask: (id) => get(`/tasks/${id}`),
+	createTask: (data) => post('/tasks', data),
+	updateTask: (id, data) => patch(`/tasks/${id}`, data),
+	deleteTask: (id) => del(`/tasks/${id}`),
+	completeTask: (id) => post(`/tasks/${id}/complete`),
+	reopenTask: (id) => post(`/tasks/${id}/reopen`),
+	moveTask: (id, data) => post(`/tasks/${id}/move`, data),
+
+	quickAdd: (text, projectId) => post('/tasks/quick-add', { text, project_id: projectId }),
+	quickAddPreview: (text, signal) =>
+		get(`/tasks/quick-add/preview?text=${encodeURIComponent(text)}`, { signal }),
+
+	// --- views
+	today: () => get('/today'),
+	upcoming: (days) => get(`/upcoming${days ? `?days=${days}` : ''}`),
+	search: (q) => get(`/search?q=${encodeURIComponent(q)}`)
+};

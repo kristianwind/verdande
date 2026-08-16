@@ -1,0 +1,239 @@
+<script>
+	/**
+	 * One task.
+	 *
+	 * The checkbox is the component's whole reason for existing, so it gets the
+	 * care: a ring that fills, a checkmark that draws itself, and then the row
+	 * fading out. The animation runs to completion locally *before* the row is
+	 * removed from the list, because a row that vanishes the instant it is clicked
+	 * feels like a mis-click rather than an accomplishment.
+	 */
+	import { app } from '$lib/stores.svelte.js';
+
+	let { task, onedit } = $props();
+
+	let leaving = $state(false);
+
+	const PRIORITY_LABEL = { 1: 'Prioritet 1', 2: 'Prioritet 2', 3: 'Prioritet 3', 4: 'Ingen prioritet' };
+
+	async function toggle() {
+		if (task.completed) {
+			app.reopen(task.id);
+			return;
+		}
+		leaving = true;
+		// Matches the fade below. The store's own update is optimistic, so the
+		// only thing being waited on here is the animation.
+		setTimeout(() => app.complete(task.id), 320);
+	}
+
+	function dueLabel(date) {
+		if (!date) return null;
+		const today = new Date();
+		const due = new Date(date + 'T00:00:00');
+		const days = Math.round((due - new Date(today.toDateString())) / 86400000);
+
+		if (days === 0) return { text: 'I dag', tone: 'today' };
+		if (days === 1) return { text: 'I morgen', tone: 'soon' };
+		if (days === -1) return { text: 'I går', tone: 'overdue' };
+		if (days < 0) return { text: `${Math.abs(days)} dage forsinket`, tone: 'overdue' };
+		if (days < 7)
+			return {
+				text: due.toLocaleDateString('da-DK', { weekday: 'long' }),
+				tone: 'soon'
+			};
+		return {
+			text: due.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' }),
+			tone: 'later'
+		};
+	}
+
+	let due = $derived(dueLabel(task.due_date));
+	let time = $derived(
+		task.due_datetime
+			? new Date(task.due_datetime).toLocaleTimeString('da-DK', {
+					hour: '2-digit',
+					minute: '2-digit'
+				})
+			: null
+	);
+</script>
+
+<div class="row" class:leaving class:completed={task.completed} data-priority={task.priority}>
+	<button
+		class="check"
+		class:checked={task.completed || leaving}
+		onclick={toggle}
+		aria-label={task.completed ? 'Genåbn opgave' : 'Markér som færdig'}
+		title={PRIORITY_LABEL[task.priority]}
+	>
+		<svg viewBox="0 0 24 24" aria-hidden="true">
+			<path class="tick" d="M6 12.5l4 4 8-8.5" />
+		</svg>
+	</button>
+
+	<button class="body" onclick={() => onedit?.(task)}>
+		<span class="content">{task.content}</span>
+
+		{#if task.description}
+			<span class="description">{task.description}</span>
+		{/if}
+
+		{#if due || task.labels?.length}
+			<span class="meta">
+				{#if due}
+					<span class="due" data-tone={due.tone}>
+						{due.text}{#if time}&nbsp;{time}{/if}
+					</span>
+				{/if}
+				{#each task.labels ?? [] as label}
+					<span class="label">{label}</span>
+				{/each}
+			</span>
+		{/if}
+	</button>
+</div>
+
+<style>
+	.row {
+		display: flex;
+		gap: var(--s3);
+		align-items: flex-start;
+		padding: var(--s3) var(--s2);
+		border-bottom: 1px solid var(--line);
+		transition:
+			opacity var(--medium) var(--ease),
+			transform var(--medium) var(--ease);
+	}
+
+	.row:hover {
+		background: var(--surface);
+	}
+
+	/* The exit: a short lift and fade, so completing something reads as the task
+	   leaving rather than as the list glitching. */
+	.row.leaving {
+		opacity: 0;
+		transform: translateX(6px);
+	}
+
+	.row.completed .content {
+		color: var(--ink-faint);
+		text-decoration: line-through;
+		text-decoration-color: var(--ink-faint);
+	}
+
+	.check {
+		flex: none;
+		width: 20px;
+		height: 20px;
+		margin-top: 2px;
+		border: 1.5px solid var(--line-strong);
+		border-radius: var(--radius-full);
+		display: grid;
+		place-items: center;
+		transition:
+			border-color var(--fast) var(--ease),
+			background var(--fast) var(--ease),
+			transform var(--fast) var(--ease);
+	}
+
+	/* Priority is carried by the checkbox ring rather than by a separate badge:
+	   it is the thing your eye is already going to, and one signal beats two. */
+	.row[data-priority='1'] .check {
+		border-color: var(--p1);
+		background: color-mix(in srgb, var(--p1) 12%, transparent);
+	}
+	.row[data-priority='2'] .check {
+		border-color: var(--p2);
+		background: color-mix(in srgb, var(--p2) 12%, transparent);
+	}
+	.row[data-priority='3'] .check {
+		border-color: var(--p3);
+		background: color-mix(in srgb, var(--p3) 12%, transparent);
+	}
+
+	.check:hover {
+		border-color: var(--accent);
+		transform: scale(1.08);
+	}
+
+	.check.checked {
+		background: var(--accent);
+		border-color: var(--accent);
+	}
+
+	.check svg {
+		width: 14px;
+		height: 14px;
+		fill: none;
+		stroke: var(--accent-ink);
+		stroke-width: 2.5;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	/* The checkmark draws itself rather than appearing. 18 is a little over the
+	   path length, which keeps it fully hidden before the animation starts. */
+	.tick {
+		stroke-dasharray: 18;
+		stroke-dashoffset: 18;
+		transition: stroke-dashoffset var(--medium) var(--ease-out);
+	}
+
+	.check.checked .tick {
+		stroke-dashoffset: 0;
+	}
+
+	.body {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		text-align: left;
+		min-width: 0;
+	}
+
+	.content {
+		color: var(--ink);
+		line-height: 1.45;
+		overflow-wrap: anywhere;
+	}
+
+	.description {
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--s2);
+		align-items: center;
+		margin-top: var(--s1);
+		font-size: var(--text-xs);
+	}
+
+	.due[data-tone='overdue'] {
+		color: var(--p1);
+	}
+	.due[data-tone='today'] {
+		color: var(--accent);
+	}
+	.due[data-tone='soon'],
+	.due[data-tone='later'] {
+		color: var(--ink-muted);
+	}
+
+	.label {
+		color: var(--ink-muted);
+		background: var(--surface-raised);
+		border: 1px solid var(--line);
+		padding: 1px var(--s2);
+		border-radius: var(--radius-full);
+	}
+</style>

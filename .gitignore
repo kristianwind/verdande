@@ -26,3 +26,7 @@ node_modules/
 
 # Copied in by the Docker build; never committed.
 /cmd/verdande/webbuild/
+
+# Frontend build output and dependencies
+/web/build/
+/web/.svelte-kit/

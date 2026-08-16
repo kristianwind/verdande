@@ -1,0 +1,234 @@
+/*
+ * verdande — design tokens.
+ *
+ * Nordic minimalism: a near-neutral ground, generous space, and one accent that
+ * does all the signalling. The greys are not pure grey — they carry a trace of
+ * green, which is what stops a dark interface from reading as cold blue-black and
+ * is most of the difference between "calm" and "unfinished".
+ *
+ * Everything is a token. A component that reaches for a raw hex is a component
+ * that will be wrong in one of the two themes.
+ */
+
+:root {
+	/* Neutrals, dark theme. Named by role, not by lightness, so the light theme
+	   below can invert the scale without every name becoming a lie. */
+	--ground: #111312;
+	--surface: #171a19;
+	--surface-raised: #1d211f;
+	--surface-sunken: #0d0f0e;
+	--line: #262b29;
+	--line-strong: #343a37;
+
+	--ink: #e8ebe9;
+	--ink-muted: #9aa39e;
+	--ink-faint: #6b736f;
+
+	/* Nordlys-grøn. One accent, used for the checkmark, focus rings, and the
+	   single primary action on a screen — and for nothing else, which is what
+	   keeps it meaning "this one". */
+	--accent: #5fbf8f;
+	--accent-hover: #6fcf9f;
+	--accent-sunken: #1c3329;
+	--accent-ink: #0d1411;
+
+	/* Priorities. Red is reserved for P1, so it never appears decoratively — if
+	   something is red on this screen, it is urgent. */
+	--p1: #cf6b6b;
+	--p2: #d69f5c;
+	--p3: #6b9ecf;
+	--p4: var(--ink-faint);
+
+	--danger: #cf6b6b;
+	--danger-sunken: #33201f;
+
+	/* Type. System stack: it renders instantly, matches the platform, and has
+	   proper Danish glyphs on every device — a webfont would cost a round trip
+	   and a flash of unstyled text on the one screen people open fifty times a day. */
+	--font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
+	--font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+	--text-xs: 0.75rem;
+	--text-sm: 0.8125rem;
+	--text-base: 0.9375rem;
+	--text-lg: 1.0625rem;
+	--text-xl: 1.375rem;
+	--text-2xl: 1.75rem;
+
+	/* Spacing on a 4px grid. */
+	--s1: 0.25rem;
+	--s2: 0.5rem;
+	--s3: 0.75rem;
+	--s4: 1rem;
+	--s5: 1.5rem;
+	--s6: 2rem;
+	--s7: 3rem;
+	--s8: 4rem;
+
+	--radius-sm: 4px;
+	--radius: 8px;
+	--radius-lg: 12px;
+	--radius-full: 999px;
+
+	/* Shadows are nearly absent by design. A flat surface separated by a hairline
+	   reads as calmer than the same surface floating on a drop shadow. */
+	--shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+	--shadow-lg: 0 8px 32px rgb(0 0 0 / 0.35);
+
+	/* Motion. Fast enough to feel instant, slow enough to be seen. The
+	   complete-animation is the one place a longer curve earns its keep. */
+	--ease: cubic-bezier(0.2, 0, 0.2, 1);
+	--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+	--fast: 120ms;
+	--medium: 200ms;
+	--slow: 400ms;
+
+	--sidebar-width: 268px;
+	--content-max: 720px;
+}
+
+:root[data-theme='light'] {
+	--ground: #faf9f7;
+	--surface: #ffffff;
+	--surface-raised: #ffffff;
+	--surface-sunken: #f2f1ee;
+	--line: #e5e3de;
+	--line-strong: #d3d0c9;
+
+	--ink: #1c201e;
+	--ink-muted: #5f6763;
+	--ink-faint: #8b918d;
+
+	--accent: #2f8f63;
+	--accent-hover: #277a54;
+	--accent-sunken: #e2f0e9;
+	--accent-ink: #ffffff;
+
+	--p1: #c04a4a;
+	--p2: #b57a2b;
+	--p3: #3d7ab5;
+	--p4: var(--ink-faint);
+
+	--danger: #c04a4a;
+	--danger-sunken: #f7e6e5;
+
+	--shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+	--shadow-lg: 0 8px 32px rgb(0 0 0 / 0.12);
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	height: 100%;
+}
+
+body {
+	background: var(--ground);
+	color: var(--ink);
+	font-family: var(--font);
+	font-size: var(--text-base);
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+	/* The app owns its own scrolling regions; the document itself never scrolls,
+	   which is what stops iOS rubber-banding the whole interface. */
+	overflow: hidden;
+	overscroll-behavior: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+	margin: 0;
+	font-weight: 560;
+	letter-spacing: -0.015em;
+	line-height: 1.25;
+}
+
+button,
+input,
+textarea,
+select {
+	font: inherit;
+	color: inherit;
+}
+
+button {
+	cursor: pointer;
+	background: none;
+	border: none;
+	padding: 0;
+}
+
+/* One focus treatment everywhere, and only for keyboard users: a focus ring that
+   also appears on mouse clicks is noise that people learn to ignore. */
+:focus {
+	outline: none;
+}
+
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+
+::selection {
+	background: var(--accent-sunken);
+	color: var(--ink);
+}
+
+/* Scrollbars, made quiet. The default on Windows is a wide grey slab that
+   dominates a minimal layout. */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--line-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+	background: var(--line-strong);
+	border-radius: var(--radius-full);
+	border: 3px solid transparent;
+	background-clip: content-box;
+}
+
+*::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+/* Somebody who has asked for less motion gets none of it. The complete-animation
+   is satisfying; it is not worth making a person nauseous. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
+
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}

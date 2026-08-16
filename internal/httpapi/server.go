@@ -36,6 +36,9 @@ type Server struct {
 	loginLimiter *limiter
 	resetLimiter *limiter
 
+	// Computed once from the built index.html; see csp.go.
+	csp string
+
 	router chi.Router
 }
 
@@ -50,6 +53,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 		loginLimiter: newLimiter(10, 15*time.Minute),
 		resetLimiter: newLimiter(5, time.Hour),
 	}
+	s.csp = contentSecurityPolicy(scriptHashes(web))
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -57,7 +61,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	r.Use(requestLogger(log))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
-	r.Use(securityHeaders)
+	r.Use(s.securityHeaders)
 
 	// Unauthenticated, and deliberately outside /api/v1: the Rune healthcheck and
 	// Docker both need this to answer before anyone has logged in.
@@ -256,25 +260,14 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, name, info.ModTime(), seeker)
 }
 
-// securityHeaders sets the headers that are the same on every response. The CSP is
-// strict because verdande serves only its own assets: there is no CDN to allow, and
-// nothing in the app loads a script from anywhere else.
-func securityHeaders(next http.Handler) http.Handler {
+// securityHeaders sets the headers that are the same on every response.
+func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "same-origin")
-		h.Set("Content-Security-Policy", strings.Join([]string{
-			"default-src 'self'",
-			"img-src 'self' data: blob:",
-			"style-src 'self' 'unsafe-inline'",
-			"script-src 'self'",
-			"connect-src 'self'",
-			"frame-ancestors 'none'",
-			"base-uri 'none'",
-			"form-action 'self'",
-		}, "; "))
+		h.Set("Content-Security-Policy", s.csp)
 		next.ServeHTTP(w, r)
 	})
 }
