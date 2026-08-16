@@ -1,0 +1,25 @@
+# Build output
+/verdande
+/dist/
+*.exe
+
+# The data volume: database, uploaded files, backups. Never in git.
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Frontend
+node_modules/
+/web/.svelte-kit/
+/web/build/
+
+# Local environment
+.env
+.env.local
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
