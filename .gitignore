@@ -23,3 +23,6 @@ node_modules/
 *.swp
 .idea/
 .vscode/
+
+# Copied in by the Docker build; never committed.
+/cmd/verdande/webbuild/

@@ -77,7 +77,7 @@ func TestMalformedHashNeverVerifies(t *testing.T) {
 		"$argon2id$v=19$m=0,t=0,p=0$c2FsdHNhbHRzYWx0$aGFzaA",     // zero parameters
 		"$argon2id$v=19$m=19456,t=2,p=1$!!!not-base64!!!$aGFzaA",
 		"$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$", // empty digest
-		good[:len(good)-1],                                 // digest truncated by one character
+		good[:len(good)-1], // digest truncated by one character
 		good[:len(good)-8],
 	}
 	for _, h := range broken {

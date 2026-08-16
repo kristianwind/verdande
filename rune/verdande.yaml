@@ -1,0 +1,124 @@
+gameskill:
+  id: verdande
+  name: "verdande"
+  category: "Apps"
+  description: >
+    Self-hosted tasks and projects, shared with other people. Natural-language
+    quick add in Danish and English, sub-tasks, labels, saved filters, board and
+    calendar views, recurring tasks, reminders, comments and attachments. One
+    binary with SQLite inside it — no database to set up. Set BASE_URL to the
+    address you reach it on, point the SMTP settings at your mail server for
+    invites and reminders, then start it and open the URL to create the first
+    admin account.
+  author: "kristianwind"
+  version: 1
+  icon: "app"
+
+  # The image is distroless — no shell — so keep_entrypoint runs the binary the
+  # image already declares as its ENTRYPOINT, and startup.exec passes it argv
+  # directly rather than through /bin/sh, which does not exist in there.
+  docker:
+    image: "ghcr.io/kristianwind/verdande:latest"
+    data_path: /data
+    keep_entrypoint: true
+
+  variables:
+    # verdande cannot work out its own public address: the host port is not chosen
+    # until the server is created. {{PUBLIC_URL}} is what the panel knows and this
+    # is what invite links, password resets and ICS feeds are built from — get it
+    # wrong and the links in your email point somewhere that does not answer.
+    - key: VERDANDE_BASE_URL
+      name: "Public address (used in invite and reset links)"
+      type: string
+      default: "{{PUBLIC_URL}}"
+      required: true
+
+    - key: VERDANDE_SMTP_HOST
+      name: "SMTP host (blank = show invite links in the app instead of mailing them)"
+      type: string
+      default: ""
+    - key: VERDANDE_SMTP_PORT
+      name: "SMTP port"
+      type: int
+      default: 587
+      min: 1
+      max: 65535
+    - key: VERDANDE_SMTP_USER
+      name: "SMTP username"
+      type: string
+      default: ""
+    - key: VERDANDE_SMTP_PASS
+      name: "SMTP password"
+      type: string
+      default: ""
+      secret: true
+    - key: VERDANDE_SMTP_FROM
+      name: "Sender address"
+      type: string
+      default: ""
+      pattern: '^$|^[^@\s]+@[^@\s]+\.[^@\s]+$'
+      hint: "must be an email address like verdande@example.dk, or blank to leave it unset"
+    - key: VERDANDE_SMTP_STARTTLS
+      name: "Use STARTTLS (turn off only for port 465, which is TLS from the start)"
+      type: bool
+      default: true
+
+    - key: VERDANDE_SESSION_TTL
+      name: "How long a login lasts (Go duration, e.g. 720h for 30 days)"
+      type: string
+      default: "720h"
+      pattern: '^[0-9]+(ns|us|ms|s|m|h)$'
+      hint: "must be a duration like 720h, 30m or 45s"
+
+  install:
+    # The image has no shell, so the install step borrows one. It only has to make
+    # the directory layout exist; verdande creates and migrates its own database on
+    # first start.
+    image: "busybox:latest"
+    script: |
+      set -eu
+      mkdir -p /data/files /data/backups
+      echo "verdande data directory ready at /data"
+
+  startup:
+    # No command: with keep_entrypoint the image's own ENTRYPOINT (/verdande) runs,
+    # and everything is configured through the environment above.
+    done_regex: '"msg":"listening"'
+
+  ports:
+    - { name: web, default: 8080, protocol: tcp }
+
+  # Everything worth keeping is under /data. The -wal and -shm files are included
+  # deliberately: a WAL-mode SQLite database copied without them can be missing the
+  # most recent writes.
+  backup:
+    include: ["."]
+
+  # The container logs JSON — VERDANDE_DEV is off in production — so these patterns
+  # match the JSON form, not the human-readable one seen when developing locally.
+  watchers:
+    - name: "Database errors"
+      pattern: 'database is locked|disk I/O error|database disk image is malformed'
+      threshold: 1
+      window_secs: 300
+      action: kvasir
+    - name: "Failed logins"
+      pattern: '"path":"/api/v1/auth/login".*"status":401'
+      threshold: 10
+      window_secs: 300
+      action: notify
+    - name: "Server errors"
+      pattern: '"status":5[0-9][0-9]'
+      threshold: 5
+      window_secs: 300
+      action: kvasir
+
+  events:
+    # Capture group 1 is the client address, which the panel rolls up per source —
+    # so a brute-force run shows up as one row per address per hour.
+    - key: login_failed
+      label: "Failed login"
+      match: '"path":"/api/v1/auth/login".*"status":401.*"remote":"([^"]+)"'
+    - key: http_5xx
+      label: "HTTP 5xx"
+      match: '"status":5[0-9][0-9].*"remote":"([^"]+)"'
