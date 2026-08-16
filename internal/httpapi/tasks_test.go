@@ -8,6 +8,22 @@ import (
 	"github.com/kristianwind/verdande/internal/store"
 )
 
+// userDate is a calendar day relative to today **in the test user's timezone**,
+// which is what the API resolves dates in.
+//
+// Not the process's local date. CI runs in UTC, and for a Copenhagen user the two
+// disagree for two hours out of every twenty-four — so a test written against
+// time.Now() locally passes all day and fails on a late-evening push, which is the
+// worst kind of flake to chase.
+func userDate(t *testing.T, offsetDays int) string {
+	t.Helper()
+	loc, err := time.LoadLocation("Europe/Copenhagen")
+	if err != nil {
+		t.Fatalf("load timezone: %v", err)
+	}
+	return time.Now().In(loc).AddDate(0, 0, offsetDays).Format("2006-01-02")
+}
+
 // newUser creates an account directly in the store and returns a client signed in
 // as them. Going through the invite flow for every fixture would test the invite
 // flow over and over rather than the thing each test is about.
@@ -85,7 +101,7 @@ func TestQuickAddParsesAndFiles(t *testing.T) {
 	if body["project_id"] != project["id"] {
 		t.Errorf("task did not land in #Firma: %v", body["project_id"])
 	}
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	tomorrow := userDate(t, 1)
 	if body["due_date"] != tomorrow {
 		t.Errorf("due_date = %v, want %s", body["due_date"], tomorrow)
 	}
@@ -216,9 +232,9 @@ func TestTodayAndUpcoming(t *testing.T) {
 	ts := newTestServer(t)
 	ts.bootstrap(t)
 
-	today := time.Now().Format("2006-01-02")
-	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-	inThreeDays := time.Now().AddDate(0, 0, 3).Format("2006-01-02")
+	today := userDate(t, 0)
+	yesterday := userDate(t, -1)
+	inThreeDays := userDate(t, 3)
 
 	for _, tc := range []struct{ content, due string }{
 		{"forfaldt i går", yesterday},
