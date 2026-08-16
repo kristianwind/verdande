@@ -17,14 +17,23 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/kristianwind/verdande/internal/config"
+	"github.com/kristianwind/verdande/internal/mail"
 	"github.com/kristianwind/verdande/internal/store"
 )
 
 type Server struct {
-	cfg    *config.Config
-	db     *store.DB
-	log    *slog.Logger
-	web    fs.FS
+	cfg  *config.Config
+	db   *store.DB
+	log  *slog.Logger
+	web  fs.FS
+	mail *mail.Sender
+
+	// Password guessing is the attack this application is actually exposed to, so
+	// the endpoints that check a secret are limited separately and more tightly
+	// than the rest of the API.
+	loginLimiter *limiter
+	resetLimiter *limiter
+
 	router chi.Router
 }
 
@@ -32,7 +41,12 @@ type Server struct {
 // at build time; a nil value serves an explanatory placeholder instead so that a
 // backend-only build still runs and reports its health.
 func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server {
-	s := &Server{cfg: cfg, db: db, log: log, web: web}
+	s := &Server{
+		cfg: cfg, db: db, log: log, web: web,
+		mail:         mail.New(cfg.SMTP, cfg.BaseURL, log),
+		loginLimiter: newLimiter(10, 15*time.Minute),
+		resetLimiter: newLimiter(5, time.Hour),
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -47,8 +61,45 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	r.Get("/healthz", s.handleHealth)
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(s.requireCSRF)
+
 		r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		})
+
+		// Reachable without being signed in — these are how you become signed in.
+		r.Route("/auth", func(r chi.Router) {
+			r.Get("/setup", s.handleSetupState)
+			r.Method(http.MethodPost, "/setup",
+				s.rateLimit(s.loginLimiter, http.HandlerFunc(s.handleBootstrap)))
+			r.Method(http.MethodPost, "/login",
+				s.rateLimit(s.loginLimiter, http.HandlerFunc(s.handleLogin)))
+			r.Method(http.MethodPost, "/signup",
+				s.rateLimit(s.loginLimiter, http.HandlerFunc(s.handleSignup)))
+			r.Method(http.MethodPost, "/password/forgot",
+				s.rateLimit(s.resetLimiter, http.HandlerFunc(s.handleForgotPassword)))
+			r.Method(http.MethodPost, "/password/reset",
+				s.rateLimit(s.resetLimiter, http.HandlerFunc(s.handleResetPassword)))
+
+			// The second step of a login: a session that has passed the password
+			// but not yet the code, and can reach nothing else.
+			r.Group(func(r chi.Router) {
+				r.Use(s.requirePendingSession)
+				r.Method(http.MethodPost, "/login/totp",
+					s.rateLimit(s.loginLimiter, http.HandlerFunc(s.handleLoginTOTP)))
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireAuth)
+				r.Get("/me", s.handleMe)
+				r.Post("/logout", s.handleLogout)
+				r.Post("/password/change", s.handleChangePassword)
+				r.Post("/totp/setup", s.handleTOTPSetup)
+				r.Post("/totp/confirm", s.handleTOTPConfirm)
+				r.Post("/totp/disable", s.handleTOTPDisable)
+				r.Get("/recovery-codes", s.handleRecoveryCodesCount)
+				r.Post("/recovery-codes", s.handleRecoveryCodesRegenerate)
+			})
 		})
 	})
 

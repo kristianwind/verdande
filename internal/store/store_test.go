@@ -50,21 +50,28 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first open: %v", err)
 	}
+	var first int
+	if err := db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&first); err != nil {
+		t.Fatalf("count migrations: %v", err)
+	}
 	db.Close()
+	if first == 0 {
+		t.Fatal("no migrations were applied")
+	}
 
-	// Re-opening must not try to re-run 0001 and fail on "table already exists".
+	// Re-opening must not re-run anything and fail on "table already exists".
 	db2, err := Open(path)
 	if err != nil {
 		t.Fatalf("second open: %v", err)
 	}
 	defer db2.Close()
 
-	var n int
-	if err := db2.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil {
+	var second int
+	if err := db2.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&second); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if n != 1 {
-		t.Errorf("schema_migrations has %d rows, want 1", n)
+	if second != first {
+		t.Errorf("re-opening applied %d further migrations", second-first)
 	}
 }
 
