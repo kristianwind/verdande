@@ -1,0 +1,568 @@
+package httpapi
+
+import (
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/kristianwind/verdande/internal/quickadd"
+	"github.com/kristianwind/verdande/internal/store"
+)
+
+type taskJSON struct {
+	ID          string   `json:"id"`
+	ProjectID   string   `json:"project_id"`
+	SectionID   string   `json:"section_id,omitempty"`
+	ParentID    string   `json:"parent_id,omitempty"`
+	Content     string   `json:"content"`
+	Description string   `json:"description,omitempty"`
+	Priority    int      `json:"priority"`
+	DueDate     string   `json:"due_date,omitempty"`
+	DueDatetime string   `json:"due_datetime,omitempty"`
+	DurationMin *int     `json:"duration_min,omitempty"`
+	Recurrence  string   `json:"recurrence_rule,omitempty"`
+	AssigneeID  string   `json:"assignee_id,omitempty"`
+	Labels      []string `json:"labels"`
+	Completed   bool     `json:"completed"`
+	CompletedAt string   `json:"completed_at,omitempty"`
+	CreatedBy   string   `json:"created_by"`
+	SortOrder   float64  `json:"sort_order"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
+}
+
+func toTaskJSON(t store.Task) taskJSON {
+	j := taskJSON{
+		ID: t.ID, ProjectID: t.ProjectID, SectionID: t.SectionID, ParentID: t.ParentID,
+		Content: t.Content, Description: t.Description, Priority: t.Priority,
+		DueDate: t.DueDate, DurationMin: t.DurationMin, Recurrence: t.RecurrenceRule,
+		AssigneeID: t.AssigneeID, Completed: t.Completed(), CreatedBy: t.CreatedBy,
+		SortOrder: t.SortOrder,
+		CreatedAt: t.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: t.UpdatedAt.Format(time.RFC3339),
+		// Never nil: a client iterating labels should not have to null-check first.
+		Labels: t.Labels,
+	}
+	if j.Labels == nil {
+		j.Labels = []string{}
+	}
+	if t.DueDatetime != nil {
+		j.DueDatetime = t.DueDatetime.Format(time.RFC3339)
+	}
+	if t.CompletedAt != nil {
+		j.CompletedAt = t.CompletedAt.Format(time.RFC3339)
+	}
+	return j
+}
+
+func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+	q := r.URL.Query()
+
+	f := store.TaskFilter{
+		SectionID:        q.Get("section_id"),
+		ParentID:         q.Get("parent_id"),
+		Search:           q.Get("q"),
+		IncludeCompleted: q.Get("completed") == "include",
+		CompletedOnly:    q.Get("completed") == "only",
+		TopLevelOnly:     q.Get("top_level") == "true",
+		NoDate:           q.Get("no_date") == "true",
+		DueBefore:        q.Get("due_before"),
+		DueFrom:          q.Get("due_from"),
+		LabelID:          q.Get("label_id"),
+		Limit:            parseLimit(q.Get("limit"), 200, 500),
+	}
+	if v := q.Get("project_id"); v != "" {
+		f.ProjectIDs = []string{v}
+	}
+	if v := q.Get("assignee_id"); v != "" {
+		// "me" saves the client having to know its own id to ask the question it
+		// actually has, which is "what is on my plate".
+		if v == "me" {
+			v = user.ID
+		}
+		f.AssigneeID = v
+	}
+	if v := q.Get("priority"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p >= 1 && p <= 4 {
+			f.Priority = p
+		}
+	}
+
+	tasks, err := s.db.ListTasks(r.Context(), user.ID, f)
+	if err != nil {
+		s.internal(w, "list tasks", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tasks": toTaskList(tasks)})
+}
+
+func toTaskList(tasks []store.Task) []taskJSON {
+	out := make([]taskJSON, 0, len(tasks))
+	for _, t := range tasks {
+		out = append(out, toTaskJSON(t))
+	}
+	return out
+}
+
+func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {
+	t, err := s.db.GetTask(r.Context(), chi.URLParam(r, "taskID"), userFrom(r.Context()).ID)
+	if err != nil {
+		s.storeError(w, "get task", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toTaskJSON(*t))
+}
+
+type taskRequest struct {
+	ProjectID   *string  `json:"project_id"`
+	SectionID   *string  `json:"section_id"`
+	ParentID    *string  `json:"parent_id"`
+	Content     *string  `json:"content"`
+	Description *string  `json:"description"`
+	Priority    *int     `json:"priority"`
+	DueDate     *string  `json:"due_date"`
+	DueTime     *string  `json:"due_time"`
+	DurationMin *int     `json:"duration_min"`
+	Recurrence  *string  `json:"recurrence_rule"`
+	AssigneeID  *string  `json:"assignee_id"`
+	Labels      []string `json:"labels"`
+	SortOrder   *float64 `json:"sort_order"`
+}
+
+func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
+	var req taskRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	user := userFrom(r.Context())
+
+	content := ""
+	if req.Content != nil {
+		content = strings.TrimSpace(*req.Content)
+	}
+	if fields := validateTaskContent(content, req.Priority); len(fields) > 0 {
+		writeFieldErrors(w, fields)
+		return
+	}
+
+	projectID := ""
+	if req.ProjectID != nil {
+		projectID = *req.ProjectID
+	}
+	// No project means the Inbox — which is the whole point of having one.
+	if projectID == "" {
+		var err error
+		if projectID, err = s.db.InboxID(r.Context(), user.ID); err != nil {
+			s.internal(w, "inbox", err)
+			return
+		}
+	}
+	if _, err := store.RequireProjectRole(r.Context(), s.db, projectID, user.ID, store.RoleEditor); err != nil {
+		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+		return
+	}
+
+	t := &store.Task{
+		ProjectID: projectID, Content: content, CreatedBy: user.ID, Priority: 4,
+	}
+	if req.SectionID != nil {
+		t.SectionID = *req.SectionID
+	}
+	if req.ParentID != nil {
+		t.ParentID = *req.ParentID
+	}
+	if req.Description != nil {
+		t.Description = *req.Description
+	}
+	if req.Priority != nil {
+		t.Priority = *req.Priority
+	}
+	if req.AssigneeID != nil {
+		t.AssigneeID = *req.AssigneeID
+	}
+	if req.Recurrence != nil {
+		t.RecurrenceRule = *req.Recurrence
+	}
+	if req.DurationMin != nil {
+		t.DurationMin = req.DurationMin
+	}
+	if req.SortOrder != nil {
+		t.SortOrder = *req.SortOrder
+	}
+	if req.DueDate != nil {
+		due, when, err := resolveDue(*req.DueDate, valueOr(req.DueTime, ""), user.Timezone)
+		if err != nil {
+			writeFieldErrors(w, map[string]string{"due_date": err.Error()})
+			return
+		}
+		t.DueDate, t.DueDatetime, t.DueTimezone = due, when, user.Timezone
+	}
+
+	// A sub-task must live in the same project as its parent, or the two would
+	// disagree about who can see it.
+	if t.ParentID != "" {
+		parent, err := s.db.GetTask(r.Context(), t.ParentID, user.ID)
+		if err != nil {
+			writeFieldErrors(w, map[string]string{"parent_id": "not found"})
+			return
+		}
+		t.ProjectID = parent.ProjectID
+	}
+
+	if err := s.db.CreateTask(r.Context(), t, req.Labels); err != nil {
+		s.internal(w, "create task", err)
+		return
+	}
+	// The store wrote the labels; the struct it was handed does not know that, and
+	// the response has to describe the task that now exists.
+	t.Labels = req.Labels
+	s.activity(r, t.ProjectID, t.ID, "task.created", map[string]any{"content": t.Content})
+	s.publish(t.ProjectID, "task.created", toTaskJSON(*t))
+	writeJSON(w, http.StatusCreated, toTaskJSON(*t))
+}
+
+func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
+	var req taskRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	taskID := chi.URLParam(r, "taskID")
+	user := userFrom(r.Context())
+
+	role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
+	if err != nil || !role.CanEdit() {
+		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+		return
+	}
+
+	u := store.TaskUpdate{
+		Description: req.Description, Priority: req.Priority,
+		SectionID: req.SectionID, ParentID: req.ParentID,
+		AssigneeID: req.AssigneeID, RecurrenceRule: req.Recurrence,
+		DurationMin: req.DurationMin, SortOrder: req.SortOrder,
+	}
+	if req.Content != nil {
+		content := strings.TrimSpace(*req.Content)
+		if fields := validateTaskContent(content, req.Priority); len(fields) > 0 {
+			writeFieldErrors(w, fields)
+			return
+		}
+		u.Content = &content
+	}
+	if req.Priority != nil && (*req.Priority < 1 || *req.Priority > 4) {
+		writeFieldErrors(w, map[string]string{"priority": "must be 1, 2, 3 or 4"})
+		return
+	}
+	// Sending due_date at all means the due date is being set — including to
+	// nothing, which is how a date is cleared.
+	if req.DueDate != nil {
+		u.SetDue = true
+		if *req.DueDate != "" {
+			due, when, err := resolveDue(*req.DueDate, valueOr(req.DueTime, ""), user.Timezone)
+			if err != nil {
+				writeFieldErrors(w, map[string]string{"due_date": err.Error()})
+				return
+			}
+			u.DueDate, u.DueDatetime, u.DueTimezone = due, when, user.Timezone
+		}
+	}
+	if req.Labels != nil {
+		u.SetLabels = true
+		u.Labels = req.Labels
+	}
+
+	if err := s.db.UpdateTask(r.Context(), taskID, user.ID, u); err != nil {
+		s.storeError(w, "update task", err)
+		return
+	}
+
+	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
+	if err != nil {
+		s.storeError(w, "get task", err)
+		return
+	}
+	s.activity(r, t.ProjectID, t.ID, "task.updated", nil)
+	s.publish(t.ProjectID, "task.updated", toTaskJSON(*t))
+	writeJSON(w, http.StatusOK, toTaskJSON(*t))
+}
+
+func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskID")
+	user := userFrom(r.Context())
+
+	role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
+	if err != nil || !role.CanEdit() {
+		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+		return
+	}
+	if err := s.db.CompleteTask(r.Context(), taskID, user.ID); err != nil {
+		s.storeError(w, "complete task", err)
+		return
+	}
+
+	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
+	if err != nil {
+		s.storeError(w, "get task", err)
+		return
+	}
+	s.activity(r, t.ProjectID, t.ID, "task.completed", map[string]any{"content": t.Content})
+	s.publish(t.ProjectID, "task.completed", toTaskJSON(*t))
+	writeJSON(w, http.StatusOK, toTaskJSON(*t))
+}
+
+func (s *Server) handleReopenTask(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskID")
+	user := userFrom(r.Context())
+
+	role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
+	if err != nil || !role.CanEdit() {
+		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+		return
+	}
+	if err := s.db.ReopenTask(r.Context(), taskID); err != nil {
+		s.storeError(w, "reopen task", err)
+		return
+	}
+
+	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
+	if err != nil {
+		s.storeError(w, "get task", err)
+		return
+	}
+	s.activity(r, t.ProjectID, t.ID, "task.reopened", nil)
+	s.publish(t.ProjectID, "task.reopened", toTaskJSON(*t))
+	writeJSON(w, http.StatusOK, toTaskJSON(*t))
+}
+
+func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskID")
+	user := userFrom(r.Context())
+
+	role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
+	if err != nil || !role.CanEdit() {
+		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+		return
+	}
+	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
+	if err != nil {
+		s.storeError(w, "get task", err)
+		return
+	}
+	if err := s.db.DeleteTask(r.Context(), taskID); err != nil {
+		s.storeError(w, "delete task", err)
+		return
+	}
+	s.activity(r, t.ProjectID, "", "task.deleted", map[string]any{"content": t.Content})
+	s.publish(t.ProjectID, "task.deleted", map[string]string{"id": taskID})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type moveRequest struct {
+	ProjectID string `json:"project_id"`
+	SectionID string `json:"section_id"`
+	AfterID   string `json:"after_id"`
+	BeforeID  string `json:"before_id"`
+}
+
+// handleMoveTask is the drag-and-drop endpoint: the client says which two tasks the
+// dropped one now sits between, and the server works out a position. Sending
+// neighbours rather than an index means two people reordering at once cannot
+// produce an off-by-one against a list that changed underneath them.
+func (s *Server) handleMoveTask(w http.ResponseWriter, r *http.Request) {
+	var req moveRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	taskID := chi.URLParam(r, "taskID")
+	user := userFrom(r.Context())
+
+	current, err := s.db.GetTask(r.Context(), taskID, user.ID)
+	if err != nil {
+		s.storeError(w, "get task", err)
+		return
+	}
+	role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
+	if err != nil || !role.CanEdit() {
+		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+		return
+	}
+
+	projectID := req.ProjectID
+	if projectID == "" {
+		projectID = current.ProjectID
+	}
+	// Moving into another project needs permission on the destination too.
+	if projectID != current.ProjectID {
+		if _, err := store.RequireProjectRole(r.Context(), s.db, projectID, user.ID, store.RoleEditor); err != nil {
+			writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+			return
+		}
+	}
+
+	if _, err := s.db.MoveTask(r.Context(), taskID, projectID, req.SectionID, req.AfterID, req.BeforeID); err != nil {
+		s.storeError(w, "move task", err)
+		return
+	}
+	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
+	if err != nil {
+		s.storeError(w, "get task", err)
+		return
+	}
+	s.publish(t.ProjectID, "task.moved", toTaskJSON(*t))
+	writeJSON(w, http.StatusOK, toTaskJSON(*t))
+}
+
+// --- quick add ------------------------------------------------------------------
+
+type quickAddRequest struct {
+	Text string `json:"text"`
+	// ProjectID is the view the user was looking at. A "#project" in the text
+	// wins over it: what somebody typed beats where they happened to be standing.
+	ProjectID string `json:"project_id,omitempty"`
+}
+
+func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
+	var req quickAddRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	user := userFrom(r.Context())
+
+	loc := userLocation(user.Timezone)
+	parsed := quickadd.Parse(req.Text, time.Now().In(loc), user.Locale)
+	if strings.TrimSpace(parsed.Content) == "" {
+		writeFieldErrors(w, map[string]string{"text": "there is no task in that"})
+		return
+	}
+
+	projectID := req.ProjectID
+	if parsed.Project != "" {
+		// An unknown "#name" is not an error: the task still gets created, in the
+		// Inbox, rather than a thought being thrown away over a typo.
+		if id, err := s.db.ProjectByName(r.Context(), user.ID, parsed.Project); err == nil {
+			projectID = id
+		}
+	}
+	if projectID == "" {
+		var err error
+		if projectID, err = s.db.InboxID(r.Context(), user.ID); err != nil {
+			s.internal(w, "inbox", err)
+			return
+		}
+	}
+	if _, err := store.RequireProjectRole(r.Context(), s.db, projectID, user.ID, store.RoleEditor); err != nil {
+		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+		return
+	}
+
+	t := &store.Task{
+		ProjectID: projectID, Content: parsed.Content, Priority: parsed.Priority,
+		CreatedBy: user.ID, DueDate: parsed.DueDate,
+	}
+	if parsed.DueDate != "" {
+		_, when, err := resolveDue(parsed.DueDate, parsed.DueTime, user.Timezone)
+		if err == nil {
+			t.DueDatetime, t.DueTimezone = when, user.Timezone
+		}
+	}
+
+	if err := s.db.CreateTask(r.Context(), t, parsed.Labels); err != nil {
+		s.internal(w, "create task", err)
+		return
+	}
+	t.Labels = parsed.Labels
+	s.activity(r, t.ProjectID, t.ID, "task.created", map[string]any{"content": t.Content})
+	s.publish(t.ProjectID, "task.created", toTaskJSON(*t))
+	writeJSON(w, http.StatusCreated, toTaskJSON(*t))
+}
+
+// handleQuickAddPreview parses without saving, so the input box can highlight what
+// it understood while the user is still typing.
+func (s *Server) handleQuickAddPreview(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+	text := r.URL.Query().Get("text")
+
+	loc := userLocation(user.Timezone)
+	writeJSON(w, http.StatusOK, quickadd.Parse(text, time.Now().In(loc), user.Locale))
+}
+
+// --- helpers --------------------------------------------------------------------
+
+func validateTaskContent(content string, priority *int) map[string]string {
+	fields := map[string]string{}
+	switch {
+	case content == "":
+		fields["content"] = "required"
+	case len([]rune(content)) > 2000:
+		fields["content"] = "must be 2000 characters or fewer"
+	}
+	if priority != nil && (*priority < 1 || *priority > 4) {
+		fields["priority"] = "must be 1, 2, 3 or 4"
+	}
+	return fields
+}
+
+// resolveDue turns a date and optional time into the pair stored on a task: the
+// calendar day as written, and — only when a clock time was given — the exact
+// moment, resolved in the user's own timezone.
+func resolveDue(date, clock, timezone string) (string, *time.Time, error) {
+	day, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return "", nil, errInvalidDate
+	}
+	if clock == "" {
+		return day.Format("2006-01-02"), nil, nil
+	}
+
+	hm, err := time.Parse("15:04", clock)
+	if err != nil {
+		return "", nil, errInvalidDate
+	}
+	loc := userLocation(timezone)
+	moment := time.Date(day.Year(), day.Month(), day.Day(), hm.Hour(), hm.Minute(), 0, 0, loc).UTC()
+	return day.Format("2006-01-02"), &moment, nil
+}
+
+type dateError struct{}
+
+func (dateError) Error() string { return "must be a date like 2026-03-15" }
+
+var errInvalidDate = dateError{}
+
+// userLocation falls back to UTC rather than failing: a bad timezone in a profile
+// must not stop somebody creating a task.
+func userLocation(name string) *time.Location {
+	if name == "" {
+		return time.UTC
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}
+
+func valueOr(p *string, def string) string {
+	if p == nil {
+		return def
+	}
+	return *p
+}
+
+func parseLimit(raw string, def, max int) int {
+	if raw == "" {
+		return def
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return def
+	}
+	if n > max {
+		return max
+	}
+	return n
+}

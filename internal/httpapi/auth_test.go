@@ -15,6 +15,7 @@ import (
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 
+	"github.com/kristianwind/verdande/internal/auth"
 	"github.com/kristianwind/verdande/internal/config"
 	"github.com/kristianwind/verdande/internal/store"
 )
@@ -653,4 +654,24 @@ func codeFor(t *testing.T, secret string) string {
 		t.Fatalf("generate code: %v", err)
 	}
 	return code
+}
+
+// newJarClient gives a test its own cookie jar, which is what makes two clients
+// against one server two different browsers rather than the same session twice.
+func newJarClient(t *testing.T) *http.Client {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &http.Client{Jar: jar, Timeout: 10 * time.Second}
+}
+
+func mustHash(t *testing.T, password string) string {
+	t.Helper()
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	return hash
 }

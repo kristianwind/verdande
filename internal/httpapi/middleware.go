@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/kristianwind/verdande/internal/auth"
 	"github.com/kristianwind/verdande/internal/store"
 )
@@ -205,4 +207,30 @@ func (s *Server) isOwnOrigin(origin string) bool {
 	}
 	// A local dev frontend on another port talks to the API directly.
 	return s.cfg.Dev && strings.HasPrefix(origin, "http://localhost:")
+}
+
+// requireProject checks the caller's standing in the {projectID} of the route
+// before any handler under it runs.
+//
+// Doing this as middleware rather than as a first line in each handler is what
+// makes it hard to forget: a new endpoint added under the route is guarded by
+// virtue of where it sits, not by the author remembering to add a check.
+func (s *Server) requireProject(min store.Role) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			projectID := chi.URLParam(r, "projectID")
+			user := userFrom(r.Context())
+			if user == nil || projectID == "" {
+				writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+				return
+			}
+			if _, err := store.RequireProjectRole(r.Context(), s.db, projectID, user.ID, min); err != nil {
+				// 404 rather than 403: a 403 confirms the project exists, which
+				// is what somebody trying ids is hoping to learn.
+				writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

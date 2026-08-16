@@ -18,6 +18,7 @@ import (
 
 	"github.com/kristianwind/verdande/internal/config"
 	"github.com/kristianwind/verdande/internal/mail"
+	"github.com/kristianwind/verdande/internal/realtime"
 	"github.com/kristianwind/verdande/internal/store"
 )
 
@@ -27,6 +28,7 @@ type Server struct {
 	log  *slog.Logger
 	web  fs.FS
 	mail *mail.Sender
+	hub  *realtime.Hub
 
 	// Password guessing is the attack this application is actually exposed to, so
 	// the endpoints that check a secret are limited separately and more tightly
@@ -44,6 +46,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	s := &Server{
 		cfg: cfg, db: db, log: log, web: web,
 		mail:         mail.New(cfg.SMTP, cfg.BaseURL, log),
+		hub:          realtime.NewHub(log),
 		loginLimiter: newLimiter(10, 15*time.Minute),
 		resetLimiter: newLimiter(5, time.Hour),
 	}
@@ -99,6 +102,72 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Post("/totp/disable", s.handleTOTPDisable)
 				r.Get("/recovery-codes", s.handleRecoveryCodesCount)
 				r.Post("/recovery-codes", s.handleRecoveryCodesRegenerate)
+			})
+		})
+
+		// Everything past this point needs a complete login.
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireAuth)
+
+			r.Get("/ws", s.handleWebSocket)
+
+			r.Get("/today", s.handleToday)
+			r.Get("/upcoming", s.handleUpcoming)
+			r.Get("/search", s.handleSearch)
+
+			r.Route("/projects", func(r chi.Router) {
+				r.Get("/", s.handleListProjects)
+				r.Post("/", s.handleCreateProject)
+
+				r.Route("/{projectID}", func(r chi.Router) {
+					// Read access is the floor for the whole subtree; the writes
+					// below tighten it to editor or owner individually.
+					r.Use(s.requireProject(store.RoleViewer))
+
+					r.Get("/", s.handleGetProject)
+					r.Get("/sections", s.handleListSections)
+					r.Get("/members", s.handleListMembers)
+					r.Get("/activity", s.handleActivity)
+
+					r.Group(func(r chi.Router) {
+						r.Use(s.requireProject(store.RoleEditor))
+						r.Post("/sections", s.handleCreateSection)
+					})
+
+					r.Group(func(r chi.Router) {
+						r.Use(s.requireProject(store.RoleOwner))
+						r.Patch("/", s.handleUpdateProject)
+						r.Delete("/", s.handleDeleteProject)
+						r.Post("/invites", s.handleInvite)
+						r.Delete("/members/{userID}", s.handleRemoveMember)
+					})
+				})
+			})
+
+			// Restoring is outside the block above: a trashed project is invisible
+			// to the permission check by design, so the handler resolves ownership
+			// itself.
+			r.Post("/trash/projects/{projectID}/restore", s.handleRestoreProject)
+
+			r.Route("/sections/{sectionID}", func(r chi.Router) {
+				r.Patch("/", s.handleUpdateSection)
+				r.Delete("/", s.handleDeleteSection)
+			})
+
+			r.Route("/tasks", func(r chi.Router) {
+				r.Get("/", s.handleListTasks)
+				r.Post("/", s.handleCreateTask)
+				r.Post("/quick-add", s.handleQuickAdd)
+				r.Get("/quick-add/preview", s.handleQuickAddPreview)
+
+				r.Route("/{taskID}", func(r chi.Router) {
+					r.Get("/", s.handleGetTask)
+					r.Patch("/", s.handleUpdateTask)
+					r.Delete("/", s.handleDeleteTask)
+					r.Post("/complete", s.handleCompleteTask)
+					r.Post("/reopen", s.handleReopenTask)
+					r.Post("/move", s.handleMoveTask)
+				})
 			})
 		})
 	})

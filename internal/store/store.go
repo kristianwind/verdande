@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite" // pure-Go driver: no cgo, so the binary stays static
 )
@@ -46,11 +48,19 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	// One writer. SQLite serialises writes anyway, and letting the pool open several
-	// write connections only converts that into SQLITE_BUSY churn. Reads still run
-	// concurrently against the WAL through this same pool.
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
+	// SQLite serialises writes whatever the pool does, so this is sized for readers.
+	// In WAL mode they run concurrently with a write in flight, and busy_timeout
+	// absorbs the contention between writers.
+	//
+	// Not 1. A single connection makes the pool a lock, and any code that runs a
+	// query while an earlier *sql.Rows is still open then waits forever for a
+	// connection it is itself holding — a deadlock rather than a slow query, and
+	// one that only appears once a list has rows in it. The store closes its result
+	// sets before querying again, and this leaves room for the mistake to be slow
+	// instead of fatal if it is ever made again.
+	sqlDB.SetMaxOpenConns(max(4, runtime.NumCPU()))
+	sqlDB.SetMaxIdleConns(4)
+	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	if err := sqlDB.PingContext(context.Background()); err != nil {
 		sqlDB.Close()
