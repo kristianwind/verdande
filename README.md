@@ -40,17 +40,27 @@ mail-to-task address, and an MCP endpoint so Claude can work your task list dire
 
 ## What works today
 
+**Phase 1 is complete and phase 2 is most of the way there.** You can install it,
+create an account, add tasks by typing a sentence, share a project and watch
+somebody else's changes appear live.
+
 | Area | State |
 |---|---|
 | SQLite schema, migrations, WAL | Done, tested |
 | Full-text search, Danish-aware | Done, tested |
 | Quick-add parser (Danish + English) | Done, tested |
-| Argon2id passwords, tokens, TOTP, recovery codes | Done, tested |
+| Argon2id passwords, sessions, TOTP, recovery codes | Done, tested |
 | Project roles and permission checks | Done, tested |
-| HTTP server, health check, static hosting | Done |
-| REST API under `/api/v1` | Next |
-| Web interface | Next |
-| Sharing, realtime, import/export, integrations | Planned — see the roadmap |
+| REST API: projects, sections, tasks, sub-tasks, ordering | Done, tested |
+| Today, Upcoming, search, activity log | Done, tested |
+| Sharing: invites, roles, members | Done, tested |
+| Live sync over WebSocket | Done |
+| Web interface: sign-in, views, quick add, ⌘K, shortcuts | Done |
+| Recurring tasks, reminders, saved filters, board/calendar | Planned — phase 3 |
+| Import/export, CalDAV, mail-to-task, Gmail, MCP, AI | Planned — phases 4–5 |
+
+Not yet built: comments and attachments, drag-and-drop in the interface (the API
+supports it), Web Push, and everything from phase 3 onwards.
 
 Search finds `grøn` when you type `gron`, because Unicode does not consider `ø` an
 accented `o` and a Danish-first app that cannot do this is broken for its own users.
@@ -151,6 +161,24 @@ is part of it.
 go test ./...          # everything
 go test -race ./...    # what CI runs
 gofmt -l .             # must print nothing
+```
+
+Working on the interface means two processes: the API on 8080, and Vite on 5173
+proxying `/api` to it, so the session cookie stays first-party exactly as it is in
+production.
+
+```bash
+VERDANDE_DATA_DIR=./data VERDANDE_DEV=true go run ./cmd/verdande
+```
+
+```bash
+cd web && npm install && npm run dev
+```
+
+To run the whole thing as one binary the way it ships:
+
+```bash
+cd web && npm run build && cd .. && cp -r web/build cmd/verdande/webbuild && go build -tags embedweb -o verdande ./cmd/verdande
 ```
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/);
