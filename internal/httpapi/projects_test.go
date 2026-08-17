@@ -194,3 +194,92 @@ func TestListMembersWorksForTheInbox(t *testing.T) {
 		t.Fatalf("status %d, body %v", resp.StatusCode, body)
 	}
 }
+
+// A role sent by mistake used to be uncorrectable: the only way back was to remove
+// the person and invite them again, which unassigns every task they were
+// responsible for. Fixing a dropdown should not cost somebody their work.
+func TestAMembersRoleCanBeChangedWithoutRemovingThem(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	member := ts.newUser(t, "anden@example.dk", "Anden")
+
+	memberUser, err := ts.db.UserByEmail(t.Context(), "anden@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Delt"})
+	projectID := project["id"].(string)
+	ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites", map[string]any{
+		"email": "anden@example.dk", "role": "viewer",
+	})
+
+	// A viewer cannot write. That is the rule, not the bug.
+	if resp, _ := member.do(t, "POST", "/api/v1/tasks",
+		map[string]any{"content": "prøv", "project_id": projectID}); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("a viewer created a task: status %d", resp.StatusCode)
+	}
+
+	resp, _ := ts.do(t, "PATCH", "/api/v1/projects/"+projectID+"/members/"+memberUser.ID,
+		map[string]any{"role": "editor"})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("promote to editor: status %d", resp.StatusCode)
+	}
+
+	if resp, _ := member.do(t, "POST", "/api/v1/tasks",
+		map[string]any{"content": "nu kan jeg", "project_id": projectID}); resp.StatusCode != http.StatusCreated {
+		t.Errorf("an editor could not create a task: status %d", resp.StatusCode)
+	}
+	_, members := ts.do(t, "GET", "/api/v1/projects/"+projectID+"/members", nil)
+	for _, raw := range members["members"].([]any) {
+		if m := raw.(map[string]any); m["user_id"] == memberUser.ID && m["role"] != "editor" {
+			t.Errorf("role = %v after the change, want editor", m["role"])
+		}
+	}
+}
+
+// The owner is not a member row, and ownership is not a role you can hand out.
+func TestTheOwnersStandingCannotBeChanged(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	member := ts.newUser(t, "anden@example.dk", "Anden")
+
+	owner, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberUser, err := ts.db.UserByEmail(t.Context(), "anden@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Delt"})
+	projectID := project["id"].(string)
+	ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites", map[string]any{
+		"email": "anden@example.dk", "role": "editor",
+	})
+
+	// Demoting the owner would leave a project nobody can administer.
+	if resp, _ := ts.do(t, "PATCH", "/api/v1/projects/"+projectID+"/members/"+owner.ID,
+		map[string]any{"role": "viewer"}); resp.StatusCode != http.StatusConflict {
+		t.Errorf("changing the owner's role: status %d, want 409", resp.StatusCode)
+	}
+	// And no member may promote themselves to owner.
+	if resp, _ := ts.do(t, "PATCH", "/api/v1/projects/"+projectID+"/members/"+memberUser.ID,
+		map[string]any{"role": "owner"}); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("granting ownership: status %d, want 422", resp.StatusCode)
+	}
+	// Nor may an editor change anybody's role: this is the owner's to do.
+	if resp, _ := member.do(t, "PATCH", "/api/v1/projects/"+projectID+"/members/"+memberUser.ID,
+		map[string]any{"role": "viewer"}); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("an editor changed a role: status %d, want 404", resp.StatusCode)
+	}
+	// Somebody with no membership at all is not quietly given one.
+	stranger := ts.newUser(t, "tredje@example.dk", "Tredje")
+	_ = stranger
+	strangerUser, _ := ts.db.UserByEmail(t.Context(), "tredje@example.dk")
+	if resp, _ := ts.do(t, "PATCH", "/api/v1/projects/"+projectID+"/members/"+strangerUser.ID,
+		map[string]any{"role": "editor"}); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("a non-member was given a role: status %d, want 404", resp.StatusCode)
+	}
+}

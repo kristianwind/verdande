@@ -245,6 +245,33 @@
 		}
 	}
 
+	/**
+	 * What each standing is called in the interface.
+	 *
+	 * The API's words are `owner`, `editor` and `viewer`, and they were being
+	 * printed straight into a Danish page. These are the same three words the
+	 * invite form already uses, so the list and the form agree.
+	 */
+	const ROLES = { owner: 'Ejer', editor: 'Kan redigere', viewer: 'Kan kun se' };
+
+	/**
+	 * Changes what somebody may do, without removing them.
+	 *
+	 * Removing and re-inviting was the only way to correct a role, and it
+	 * unassigns every task they were responsible for on the way past — so fixing a
+	 * dropdown cost somebody their work.
+	 */
+	async function setMemberRole(member, role) {
+		const previous = members;
+		members = members.map((m) => (m.user_id === member.user_id ? { ...m, role } : m));
+		try {
+			await api.setMemberRole(project.id, member.user_id, role);
+		} catch (e) {
+			members = previous;
+			app.toast(humanMessage(e));
+		}
+	}
+
 	async function invite(event) {
 		event.preventDefault();
 		inviteError = '';
@@ -360,7 +387,22 @@
 								{member.name[0]?.toUpperCase()}
 							</span>
 							<span class="member-name">{member.name}</span>
-							<span class="role">{member.role}</span>
+							<!-- The owner's standing is not a choice: ownership is transferred,
+							     not granted, and the server refuses it. A disabled dropdown
+							     would be a control that exists to say no. -->
+							{#if isOwner && member.role !== 'owner'}
+								<select
+									class="role-picker"
+									value={member.role}
+									aria-label="Rolle for {member.name}"
+									onchange={(e) => setMemberRole(member, e.currentTarget.value)}
+								>
+									<option value="editor">{ROLES.editor}</option>
+									<option value="viewer">{ROLES.viewer}</option>
+								</select>
+							{:else}
+								<span class="role">{ROLES[member.role] ?? member.role}</span>
+							{/if}
 							{#if isOwner && member.role !== 'owner'}
 								<button
 									class="remove"
@@ -762,6 +804,24 @@
 	.role {
 		color: var(--ink-faint);
 		font-size: var(--text-xs);
+	}
+
+	.role-picker {
+		flex: none;
+		padding: var(--s1) var(--s2);
+		background: var(--surface-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink-muted);
+		font-size: var(--text-xs);
+		outline: none;
+		transition: border-color var(--fast) var(--ease);
+	}
+
+	.role-picker:hover,
+	.role-picker:focus {
+		border-color: var(--accent);
+		color: var(--ink);
 	}
 
 	.remove {

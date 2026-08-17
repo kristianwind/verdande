@@ -292,6 +292,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 						r.Patch("/", s.handleUpdateProject)
 						r.Delete("/", s.handleDeleteProject)
 						r.Post("/invites", s.handleInvite)
+						r.Patch("/members/{userID}", s.handleSetMemberRole)
 						r.Delete("/members/{userID}", s.handleRemoveMember)
 					})
 				})

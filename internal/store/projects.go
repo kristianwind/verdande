@@ -389,6 +389,33 @@ func (db *DB) AddMember(ctx context.Context, projectID, userID string, role Role
 	return err
 }
 
+// SetMemberRole changes what an existing member may do.
+//
+// An UPDATE rather than the upsert AddMember does, and the difference is the
+// point: this is a PATCH against a membership that exists. Somebody who is not a
+// member is not silently made one — that is an invite, it belongs to the invite
+// flow, and doing it here would let a typo in a user id add a stranger to a
+// project without anybody being asked.
+//
+// Owner is refused for the same reason AddMember refuses it: ownership is
+// transferred, not granted, and two owners is a state with no way to settle a
+// disagreement about who may remove whom.
+func (db *DB) SetMemberRole(ctx context.Context, projectID, userID string, role Role) error {
+	if !role.Valid() || role == RoleOwner {
+		return errors.New("store: members may be editor or viewer")
+	}
+	res, err := db.ExecContext(ctx,
+		`UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?`,
+		string(role), projectID, userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (db *DB) RemoveMember(ctx context.Context, projectID, userID string) error {
 	return db.Tx(ctx, func(tx *sql.Tx) error {
 		// Anything assigned to them is unassigned rather than left pointing at

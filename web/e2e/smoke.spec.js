@@ -706,6 +706,63 @@ test('den sidste administrator kan hverken fjernes eller slette sig selv', async
 });
 
 /**
+ * A member's role can be corrected without removing them.
+ *
+ * This is what a viewer who cannot add tasks looks like from the other side. The
+ * rule itself is right — a viewer may not write — but until now the only way to
+ * fix an invite sent with the wrong role was to remove the person and invite them
+ * again, which unassigns every task they were responsible for on the way past.
+ *
+ * Driven end to end because the interesting part is that the *other* browser's
+ * permissions actually change: the server decides, and the page has to agree.
+ */
+test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Fælles');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+
+	await page.getByRole('button', { name: 'Del' }).click();
+	await page.getByLabel('Inviter via e-mail').fill('andreas@example.dk');
+	await page.getByLabel('Rolle').selectOption('viewer');
+	await page.getByRole('button', { name: 'Inviter' }).click();
+	const link = await page.locator('.link-out code').textContent();
+
+	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const andreas = await context.newPage();
+	await andreas.goto(link);
+	await andreas.getByLabel('Navn').fill('andreas');
+	await andreas.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
+	await andreas.getByRole('button', { name: 'Opret konto' }).click();
+	await expect(andreas.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+
+	await andreas
+		.getByRole('navigation', { name: 'Hovedmenu' })
+		.getByRole('link', { name: /Fælles/ })
+		.click();
+	// A viewer sees the project and is told, plainly, that it is read-only.
+	await expect(andreas.getByText('Du kan se dette projekt, men ikke ændre det')).toBeVisible();
+	await expect(andreas.getByLabel('Ny opgave')).toHaveCount(0);
+
+	// The owner promotes them from the member list. The owner's own row is text,
+	// not a dropdown: ownership is transferred, not granted.
+	await page.reload();
+	await page.getByRole('button', { name: /Delt/ }).click();
+	await expect(page.getByText('Ejer')).toBeVisible();
+	await page.getByLabel('Rolle for andreas').selectOption('editor');
+
+	await andreas.reload();
+	await expect(andreas.getByLabel('Ny opgave')).toBeVisible();
+	await expect(andreas.getByText('Du kan se dette projekt')).toHaveCount(0);
+	await context.close();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * The MCP connector address must not fall through to the app shell.
  *
  * It did: `/mcp` was not a route, so the SPA fallback answered 200 with a page

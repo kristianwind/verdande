@@ -502,6 +502,53 @@ func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, inviteResponse{Link: link, Emailed: emailed})
 }
 
+type memberRoleRequest struct {
+	Role string `json:"role"`
+}
+
+// handleSetMemberRole changes an existing member between editor and viewer.
+//
+// Until now the only way to correct an invite sent with the wrong role was to
+// remove the person and invite them again — which also unassigns everything they
+// were responsible for, because removing a member clears their tasks' assignee.
+// Fixing a dropdown should not cost somebody their work.
+func (s *Server) handleSetMemberRole(w http.ResponseWriter, r *http.Request) {
+	var req memberRoleRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	projectID := chi.URLParam(r, "projectID")
+	userID := chi.URLParam(r, "userID")
+
+	role := store.Role(req.Role)
+	if !role.Valid() || role == store.RoleOwner {
+		writeFieldErrors(w, map[string]string{"role": "must be editor or viewer"})
+		return
+	}
+
+	// The owner has no project_members row at all — ownership lives on the project
+	// — so this would report "not a member", which is true and completely
+	// unhelpful. Say the real reason instead.
+	owner, err := s.db.ProjectOwner(r.Context(), projectID)
+	if err != nil {
+		s.storeError(w, "project owner", err)
+		return
+	}
+	if userID == owner {
+		writeError(w, http.StatusConflict, CodeConflict,
+			"the owner's standing cannot be changed; ownership is transferred, not granted")
+		return
+	}
+
+	if err := s.db.SetMemberRole(r.Context(), projectID, userID, role); err != nil {
+		s.storeError(w, "set member role", err)
+		return
+	}
+	s.activity(r, projectID, "", "member.role_changed",
+		map[string]any{"user_id": userID, "role": string(role)})
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
 	userID := chi.URLParam(r, "userID")

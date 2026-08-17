@@ -205,6 +205,8 @@ export const api = {
 
 	listMembers: (projectId) => get(`/projects/${projectId}/members`),
 	invite: (projectId, email, role) => post(`/projects/${projectId}/invites`, { email, role }),
+	setMemberRole: (projectId, userId, role) =>
+		patch(`/projects/${projectId}/members/${userId}`, { role }),
 	removeMember: (projectId, userId) => del(`/projects/${projectId}/members/${userId}`),
 	activity: (projectId) => get(`/projects/${projectId}/activity`),
 

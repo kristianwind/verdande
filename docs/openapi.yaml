@@ -1211,9 +1211,46 @@ paths:
     parameters:
       - { name: projectID, in: path, required: true, schema: { type: string } }
       - { name: userID, in: path, required: true, schema: { type: string } }
+    patch:
+      tags: [projects]
+      summary: Change what an existing member may do. The project's owner only.
+      description: |
+        Editor or viewer. An UPDATE against a membership that already exists —
+        somebody who is not a member is not silently made one, because that is an
+        invite and belongs to the invite flow.
+
+        Not the owner: ownership is transferred, not granted, and two owners is a
+        state with no way to settle a disagreement about who may remove whom. The
+        owner also has no membership row at all — ownership lives on the project —
+        so this answers 409 with the real reason rather than "not a member".
+
+        Correcting a role used to mean removing the person and inviting them
+        again, which also unassigns every task they were responsible for.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [editor, viewer] }
+      responses:
+        "204": { description: Changed. }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The owner's standing cannot be changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/Validation" }
     delete:
       tags: [projects]
       summary: Remove somebody from a project. Its owner only.
+      description: |
+        Their tasks are unassigned rather than left pointing at somebody who can
+        no longer see the project — which is why changing a role is a PATCH and
+        not a remove-and-reinvite.
       responses:
         "204": { description: Removed. }
         "404": { $ref: "#/components/responses/NotFound" }
