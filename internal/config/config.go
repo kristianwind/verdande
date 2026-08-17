@@ -28,6 +28,16 @@ type Config struct {
 
 	SMTP SMTP
 
+	// Gmail is the OAuth client the operator registered in Google Cloud. It
+	// belongs to the instance: one registration, any number of users.
+	GmailClientID     string
+	GmailClientSecret string
+
+	// UpdateCheck asks GitHub whether a newer release exists. Off unless asked
+	// for: a self-hosted app that reaches out without being told to has broken
+	// the deal its operator made by self-hosting.
+	UpdateCheck bool
+
 	// TrashRetention is how long a soft-deleted task or project stays recoverable.
 	TrashRetention time.Duration
 
@@ -57,6 +67,10 @@ func Load() (*Config, error) {
 		DataDir:        env("VERDANDE_DATA_DIR", "/data"),
 		TrashRetention: 30 * 24 * time.Hour,
 		Dev:            envBool("VERDANDE_DEV", false),
+
+		GmailClientID:     env("VERDANDE_GMAIL_CLIENT_ID", ""),
+		GmailClientSecret: env("VERDANDE_GMAIL_CLIENT_SECRET", ""),
+		UpdateCheck:       envBool("VERDANDE_UPDATE_CHECK", false),
 	}
 
 	var err error
@@ -97,6 +111,11 @@ func Load() (*Config, error) {
 func (c *Config) DBPath() string     { return filepath.Join(c.DataDir, "verdande.db") }
 func (c *Config) FilesDir() string   { return filepath.Join(c.DataDir, "files") }
 func (c *Config) BackupsDir() string { return filepath.Join(c.DataDir, "backups") }
+
+// GmailRedirectURL has to match what was registered in Google Cloud exactly,
+// including the scheme — which is why it is derived from BaseURL rather than
+// configured separately and left to drift out of step with it.
+func (c *Config) GmailRedirectURL() string { return c.BaseURL + "/oauth/gmail/callback" }
 
 func env(key, def string) string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {

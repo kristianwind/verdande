@@ -54,6 +54,7 @@ func run() error {
 	defer db.Close()
 	log.Info("database ready", "path", db.Path())
 
+	httpapi.Version = version
 	api := httpapi.New(cfg, db, log, webAssets(log))
 
 	// Background work: reminders, the nightly backup, and the trash emptying
@@ -62,6 +63,7 @@ func run() error {
 	jobCtx, stopJobs := context.WithCancel(context.Background())
 	defer stopJobs()
 	runner := jobs.New(cfg, db, log, api.Mail(), api.Hub())
+	runner.SyncGmail = api.SyncGmail
 	runner.Start(jobCtx)
 
 	srv := &http.Server{

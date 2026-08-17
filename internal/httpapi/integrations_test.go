@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/kristianwind/verdande/internal/config"
 )
 
 // --- MCP -----------------------------------------------------------------------------
@@ -580,5 +583,191 @@ func TestGmailSettings(t *testing.T) {
 	_, after := ts.do(t, "GET", "/api/v1/gmail", nil)
 	if after["trigger"] != "starred" || after["label"] != "Til handling" {
 		t.Errorf("settings did not persist: %v", after)
+	}
+}
+
+// --- Gmail OAuth ------------------------------------------------------------------------
+
+// Without an OAuth client registered by the operator there is nothing to authorise
+// against, and saying so is more useful than a broken redirect to Google.
+func TestGmailAuthorizeNeedsAnOAuthClient(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, body := ts.do(t, "POST", "/api/v1/gmail/authorize", nil)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status %d, want 409", resp.StatusCode)
+	}
+	if msg, _ := body["error"].(string); !strings.Contains(msg, "OAuth") {
+		t.Errorf("the message does not explain what is missing: %q", msg)
+	}
+}
+
+func TestGmailAuthorizeBuildsAConsentURL(t *testing.T) {
+	ts := newTestServerWith(t, func(cfg *config.Config) {
+		cfg.GmailClientID = "client-123"
+		cfg.GmailClientSecret = "secret"
+	})
+	ts.bootstrap(t)
+
+	resp, body := ts.do(t, "POST", "/api/v1/gmail/authorize", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("authorize: %d %v", resp.StatusCode, body)
+	}
+
+	raw, _ := body["url"].(string)
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("the URL does not parse: %v", err)
+	}
+	if parsed.Host != "accounts.google.com" {
+		t.Errorf("host = %q", parsed.Host)
+	}
+	q := parsed.Query()
+	if q.Get("code_challenge") == "" || q.Get("code_challenge_method") != "S256" {
+		t.Error("the URL carries no PKCE challenge")
+	}
+	if q.Get("state") == "" {
+		t.Error("the URL carries no state")
+	}
+
+	// The verifier is kept server-side against the user, never sent to the browser.
+	user, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := ts.db.UserSettings(t.Context(), user.ID, "gmail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier, _ := settings["pkce_verifier"].(string)
+	if verifier == "" {
+		t.Fatal("no verifier was stored")
+	}
+	if strings.Contains(raw, verifier) {
+		t.Error("the verifier was put in the URL handed to the browser")
+	}
+	if settings["pkce_state"] != q.Get("state") {
+		t.Error("the stored state does not match the one in the URL")
+	}
+}
+
+// The callback is where an attacker would try to plant somebody else's code. A
+// mismatched, missing or expired state has to be refused.
+func TestGmailCallbackChecksState(t *testing.T) {
+	ts := newTestServerWith(t, func(cfg *config.Config) {
+		cfg.GmailClientID = "client-123"
+		cfg.GmailClientSecret = "secret"
+	})
+	ts.bootstrap(t)
+	ts.do(t, "POST", "/api/v1/gmail/authorize", nil)
+
+	user, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name, query, wantParam string
+	}{
+		{"no state", "?code=abc", "invalid"},
+		{"no code", "?state=abc", "invalid"},
+		{"wrong state", "?code=abc&state=forkert", "state"},
+		{"user declined", "?error=access_denied", "access_denied"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// A redirect, because the person is looking at a browser tab.
+			client := &http.Client{
+				Jar: ts.client.Jar,
+				CheckRedirect: func(*http.Request, []*http.Request) error {
+					return http.ErrUseLastResponse
+				},
+			}
+			req, err := http.NewRequest("GET", ts.URL+"/oauth/gmail/callback"+tc.query, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Sec-Fetch-Site", "same-origin")
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusFound {
+				t.Fatalf("status %d, want a redirect", resp.StatusCode)
+			}
+			if loc := resp.Header.Get("Location"); !strings.Contains(loc, tc.wantParam) {
+				t.Errorf("redirected to %q, want it to mention %q", loc, tc.wantParam)
+			}
+		})
+	}
+
+	// And nothing was connected by any of that.
+	settings, err := ts.db.UserSettings(t.Context(), user.ID, "gmail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings["refresh_token"] != nil {
+		t.Error("a refresh token was stored by a rejected callback")
+	}
+}
+
+// A connected mailbox has to be pollable without a browser, which is what the
+// background job does. With nothing connected it is a no-op rather than an error.
+func TestGmailSyncIsANoOpWhenNotConnected(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, body := ts.do(t, "POST", "/api/v1/gmail/sync", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("sync: %d %v", resp.StatusCode, body)
+	}
+	if body["created"] != float64(0) {
+		t.Errorf("created = %v with nothing connected", body["created"])
+	}
+}
+
+// --- version ------------------------------------------------------------------------------
+
+// The check is off unless the operator asked for it. A self-hosted app that reaches
+// out without being told to has broken the deal its operator made.
+func TestVersionCheckIsOffByDefault(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, body := ts.do(t, "GET", "/api/v1/version", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("version: %d %v", resp.StatusCode, body)
+	}
+	if body["disabled"] != true {
+		t.Errorf("disabled = %v, want true on a fresh instance", body["disabled"])
+	}
+	if body["update_available"] == true {
+		t.Error("an update was reported with checking turned off")
+	}
+	if body["current"] == nil {
+		t.Error("the current version is not reported")
+	}
+}
+
+// Only an administrator can do anything about an out-of-date server, so only an
+// administrator is told.
+func TestUpdateNoticeIsForAdministratorsOnly(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	member := ts.newUser(t, "medlem@example.dk", "Medlem")
+
+	_, body := member.do(t, "GET", "/api/v1/version", nil)
+	if body["update_available"] == true {
+		t.Error("an ordinary member was told the server is out of date")
+	}
+	if body["latest"] != nil && body["latest"] != "" {
+		t.Errorf("latest = %v for a non-admin", body["latest"])
+	}
+	// They still see which version they are on, which is what a bug report needs.
+	if body["current"] == nil {
+		t.Error("the current version is hidden from members")
 	}
 }

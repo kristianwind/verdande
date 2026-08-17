@@ -31,6 +31,12 @@ type Runner struct {
 	mail *mail.Sender
 	hub  *realtime.Hub
 
+	// SyncGmail is supplied by the HTTP layer, which owns the token refresh and
+	// the task creation. Passed in as a function rather than importing it, because
+	// the other direction would be a cycle: httpapi already depends on jobs being
+	// startable from main.
+	SyncGmail func(ctx context.Context, user *store.User) (int, error)
+
 	wg sync.WaitGroup
 }
 
@@ -49,6 +55,11 @@ func (r *Runner) Start(ctx context.Context) {
 	r.every(ctx, "backup", time.Hour, r.nightlyBackup)
 	r.every(ctx, "trash", time.Hour, r.emptyTrash)
 	r.every(ctx, "sessions", 6*time.Hour, r.purgeSessions)
+	// Ten minutes is a compromise: Gmail's push notifications would be instant but
+	// need a public webhook and a Cloud Pub/Sub topic, which is a lot of Google
+	// account for a to-do app. Ten minutes is fast enough for something somebody
+	// starred and slow enough not to look like abuse.
+	r.every(ctx, "gmail", 10*time.Minute, r.syncGmailAccounts)
 }
 
 func (r *Runner) Wait() { r.wg.Wait() }
@@ -210,6 +221,33 @@ func (r *Runner) rotateBackups() error {
 			continue
 		}
 		r.log.Info("old backup removed", "path", path)
+	}
+	return nil
+}
+
+// --- gmail ---------------------------------------------------------------------------
+
+// syncGmailAccounts polls every connected mailbox.
+//
+// One at a time, and a failure on one account does not stop the others: a revoked
+// token or an expired refresh is a problem for that person alone.
+func (r *Runner) syncGmailAccounts(ctx context.Context) error {
+	if r.SyncGmail == nil {
+		return nil
+	}
+	users, err := r.db.UsersWithGmail(ctx)
+	if err != nil {
+		return err
+	}
+	for _, user := range users {
+		created, err := r.SyncGmail(ctx, &user)
+		if err != nil {
+			r.log.Warn("gmail sync", "err", err, "user", user.ID)
+			continue
+		}
+		if created > 0 {
+			r.log.Info("tasks created from gmail", "user", user.ID, "count", created)
+		}
 	}
 	return nil
 }

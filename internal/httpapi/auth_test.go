@@ -31,6 +31,13 @@ type testServer struct {
 
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
+	return newTestServerWith(t, nil)
+}
+
+// newTestServerWith lets a test vary the configuration — a registered OAuth client,
+// update checking on — without every other test paying for it.
+func newTestServerWith(t *testing.T, configure func(*config.Config)) *testServer {
+	t.Helper()
 
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -46,6 +53,10 @@ func newTestServer(t *testing.T) *testServer {
 		ResetTTL:   time.Hour,
 		Dev:        true,
 	}
+	if configure != nil {
+		configure(cfg)
+	}
+
 	// Discard: a passing test should print nothing, and these handlers log freely.
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 

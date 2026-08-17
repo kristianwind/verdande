@@ -72,14 +72,15 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | CalDAV server (two-way VTODO) | Done, tested |
 | Mail-to-task | Done, tested |
 | AI layer (Anthropic/OpenAI/Google/local) | Built, degrades when unconfigured |
-| Gmail settings | Partial — see below |
+| Gmail: OAuth2 with PKCE, polling, one-way to tasks | Done, tested |
+| Update notice for administrators | Done, tested |
 | Documentation, landing page, licence | Done |
 
-**Not finished:** the Gmail integration stores its settings but has no OAuth2 flow
-yet, so it cannot actually connect. Web Push and the AI providers are implemented
-but have only been exercised against their specs, not against live services. And
-the interface does not yet expose comments, attachments, reminders, templates,
-import/export or the settings pages — all of it works through the API.
+**Not finished:** Web Push, the AI providers and the Gmail API calls are
+implemented against their specifications but have only been exercised there, not
+against live services. And the interface does not yet expose comments,
+attachments, reminders, templates, import/export or the settings pages — all of it
+works through the API.
 
 Search finds `grøn` when you type `gron`, because Unicode does not consider `ø` an
 accented `o` and a Danish-first app that cannot do this is broken for its own users.
@@ -146,6 +147,9 @@ to put one that the operator would ever see.
 | `VERDANDE_SMTP_FROM` | `verdande@localhost` | Sender address. |
 | `VERDANDE_SMTP_STARTTLS` | `true` unless port 465 | Port 465 is TLS from the first byte; everything else negotiates. |
 | `VERDANDE_SMTP_INSECURE` | `false` | Skip certificate verification. For a self-signed internal mail server, and nothing else. |
+| `VERDANDE_GMAIL_CLIENT_ID` | — | OAuth client from Google Cloud, if anyone will connect a mailbox. |
+| `VERDANDE_GMAIL_CLIENT_SECRET` | — | |
+| `VERDANDE_UPDATE_CHECK` | `false` | Ask GitHub whether a newer release exists. Sends nothing about your instance. |
 | `VERDANDE_DEV` | `false` | Human-readable logs at debug level. |
 
 ## What lives in `/data`
@@ -171,8 +175,7 @@ is part of it.
    views, durations, ICS feeds, templates, automatic backups. *(done)*
 4. **Import/export** — Todoist CSV and official export in, CSV/JSON/ICS out. *(done)*
 5. **Integrations** — CalDAV server, mail-to-task, Gmail, MCP server for Claude,
-   and a provider-agnostic AI layer that also talks to a local model. *(done,
-   except Gmail's OAuth flow)*
+   and a provider-agnostic AI layer that also talks to a local model. *(done)*
 6. **Publication** — documentation, landing page, open-source scaffolding. *(done)*
 
 ## Development

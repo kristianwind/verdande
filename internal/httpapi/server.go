@@ -21,16 +21,23 @@ import (
 	"github.com/kristianwind/verdande/internal/mcp"
 	"github.com/kristianwind/verdande/internal/realtime"
 	"github.com/kristianwind/verdande/internal/store"
+	"github.com/kristianwind/verdande/internal/update"
 )
 
+// Version is stamped by main at build time, and is what the update check compares
+// against. A package-level variable rather than a config field because it is a
+// property of the binary, not of how it was configured.
+var Version = "dev"
+
 type Server struct {
-	cfg  *config.Config
-	db   *store.DB
-	log  *slog.Logger
-	web  fs.FS
-	mail *mail.Sender
-	hub  *realtime.Hub
-	mcp  *mcp.Server
+	cfg     *config.Config
+	db      *store.DB
+	log     *slog.Logger
+	web     fs.FS
+	mail    *mail.Sender
+	hub     *realtime.Hub
+	mcp     *mcp.Server
+	updates *update.Checker
 
 	// Password guessing is the attack this application is actually exposed to, so
 	// the endpoints that check a secret are limited separately and more tightly
@@ -57,6 +64,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	}
 	s.csp = contentSecurityPolicy(scriptHashes(web))
 	s.mcp = s.buildMCP()
+	s.updates = update.New(Version, cfg.UpdateCheck)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -81,6 +89,14 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	// Inbound mail. Delivered by the mail server rather than by a browser, and
 	// authenticated by the token in the recipient address.
 	r.Post("/inbound/mail", s.handleInboundMail)
+
+	// Google sends the browser here after consent. Outside /api/v1 because it is a
+	// top-level navigation rather than a fetch, but still behind the session — the
+	// tokens it exchanges belong to whoever is signed in.
+	r.Group(func(r chi.Router) {
+		r.Use(s.requireAuth)
+		r.Get("/oauth/gmail/callback", s.handleGmailCallback)
+	})
 	r.Route("/caldav", s.caldavRoutes)
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -181,10 +197,14 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Post("/tasks/{taskID}/split", s.handleAISplit)
 			})
 
+			r.Get("/version", s.handleVersion)
+
 			r.Route("/gmail", func(r chi.Router) {
 				r.Get("/", s.handleGetGmail)
 				r.Put("/", s.handleSetGmail)
 				r.Delete("/", s.handleDisconnectGmail)
+				r.Post("/authorize", s.handleGmailAuthorize)
+				r.Post("/sync", s.handleGmailSyncNow)
 			})
 
 			r.Route("/import", func(r chi.Router) {

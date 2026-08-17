@@ -270,6 +270,44 @@ func (db *DB) UserByMailToken(ctx context.Context, token string) (*User, error) 
 	return db.scanUser(ctx, `SELECT `+userColumns+` FROM users WHERE mail_token = ?`, token)
 }
 
+// UsersWithGmail returns everybody who has connected a mailbox, which is who the
+// poller has to visit. Selected by the presence of a refresh token rather than by a
+// flag, so a disconnected account drops out of the sweep the moment its tokens are
+// cleared.
+func (db *DB) UsersWithGmail(ctx context.Context) ([]User, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT u.id FROM users u
+		JOIN user_settings s ON s.user_id = u.id
+		WHERE s.scope = 'gmail' AND s.values_json LIKE '%"refresh_token":"%'`)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]User, 0, len(ids))
+	for _, id := range ids {
+		user, err := db.UserByID(ctx, id)
+		if err != nil {
+			continue
+		}
+		out = append(out, *user)
+	}
+	return out, nil
+}
+
 // --- per-user settings ------------------------------------------------------------------
 
 // UserSettings reads one scope of a person's integration settings. A missing row is

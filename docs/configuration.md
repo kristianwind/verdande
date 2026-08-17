@@ -39,6 +39,32 @@ Any Go duration: `720h`, `30m`, `45s`.
     yourself, password resets are written to the log, and reminders arrive in the
     app and as Web Push rather than by email.
 
+## Gmail
+
+Only needed if anyone will connect a mailbox. Register an OAuth client in Google
+Cloud (**APIs & Services → Credentials → OAuth client ID → Web application**) with
+the redirect URI `https://your-address/oauth/gmail/callback`, enable the Gmail API,
+and add the `gmail.readonly` scope.
+
+| Variable | What it does |
+|---|---|
+| `VERDANDE_GMAIL_CLIENT_ID` | The client id from Google Cloud. |
+| `VERDANDE_GMAIL_CLIENT_SECRET` | The client secret. |
+
+One registration serves every user on the instance; each person authorises their
+own mailbox from **Settings → Gmail**. The redirect URI is derived from
+`VERDANDE_BASE_URL`, so it cannot drift out of step with what you registered.
+
+## Update checks
+
+| Variable | Default | What it does |
+|---|---|---|
+| `VERDANDE_UPDATE_CHECK` | `false` | Ask GitHub whether a newer release exists. |
+
+Off unless you turn it on. When on, verdande asks the public GitHub releases API
+at most every six hours and sends nothing about your instance — no identifier, no
+version, no count of anything. Only administrators are shown the result.
+
 ## What is *not* configured here
 
 **AI providers** are per-user, under settings in the app — see [AI](ai.md). One
