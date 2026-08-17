@@ -1,0 +1,5 @@
+# Pinned deliberately. The Material maintainers have announced that MkDocs 2.0
+# removes the plugin system and breaks every theme override with no migration
+# path, so an unpinned install would break this build on the day it lands — for a
+# docs site nobody was editing.
+mkdocs-material==9.7.7

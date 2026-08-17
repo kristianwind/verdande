@@ -75,3 +75,8 @@ markdown_extensions:
 
 plugins:
   - search
+
+# The pinned toolchain lives in docs/ so the Pages workflow can cache on it; it is
+# not a page.
+exclude_docs: |
+  requirements.txt

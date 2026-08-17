@@ -31,12 +31,9 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+          cache-dependency-path: docs/requirements.txt
 
-      # Pinned deliberately. The Material maintainers have announced that MkDocs
-      # 2.0 removes the plugin system and breaks every theme override with no
-      # migration path — an unpinned install would break this build on the day it
-      # lands, for a docs site nobody was editing.
-      - run: pip install 'mkdocs-material==9.7.7'
+      - run: pip install -r docs/requirements.txt
 
       - run: mkdocs build --strict
 
