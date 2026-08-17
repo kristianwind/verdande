@@ -11,7 +11,7 @@ gameskill:
     invites and reminders, then start it and open the URL to create the first
     admin account.
   author: "kristianwind"
-  version: 1
+  version: 2
   icon: "app"
 
   # The image is distroless — no shell — so keep_entrypoint runs the binary the
@@ -69,6 +69,14 @@ gameskill:
       default: "720h"
       pattern: '^[0-9]+(ns|us|ms|s|m|h)$'
       hint: "must be a duration like 720h, 30m or 45s"
+
+    # Off by default because it is an outbound request nobody asked for. It sends
+    # no identifier and reads one public URL — GitHub's releases API — but that is
+    # a choice to make rather than a default to inherit.
+    - key: VERDANDE_UPDATE_CHECK
+      name: "Look for new releases (asks GitHub once a day; sends nothing about you)"
+      type: bool
+      default: false
 
   install:
     # The image has no shell, so the install step borrows one. It only has to make
