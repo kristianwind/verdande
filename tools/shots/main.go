@@ -108,6 +108,10 @@ func run(base, cookie, out string, width, height int) error {
 		{name: "today", path: "/", theme: "dark", wait: 2500 * time.Millisecond},
 		{name: "today-light", path: "/", theme: "light", wait: 1500 * time.Millisecond},
 		{name: "upcoming", path: "/upcoming", theme: "dark", wait: 2000 * time.Millisecond},
+		// The integrations page rather than the account one: it shows the feed
+		// address and the mail-to-task address, which are the parts people ask
+		// what they look like. Account settings are a password form.
+		{name: "settings", path: "/indstillinger/integrationer", theme: "dark", wait: 2000 * time.Millisecond},
 	}
 	if project := os.Getenv("SHOT_PROJECT"); project != "" {
 		shots = append(shots,
