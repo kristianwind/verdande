@@ -3,7 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
+
+	"github.com/kristianwind/verdande/internal/auth"
 )
 
 type Notification struct {
@@ -229,4 +232,79 @@ func (db *DB) InstanceKeys(ctx context.Context, generate func() (public, private
 		return "", "", err
 	}
 	return public, private, nil
+}
+
+// --- mail-to-task tokens -------------------------------------------------------------
+
+func (db *DB) EnsureMailToken(ctx context.Context, userID string) (string, error) {
+	var token sql.NullString
+	err := db.QueryRowContext(ctx, `SELECT mail_token FROM users WHERE id = ?`, userID).Scan(&token)
+	if err != nil {
+		return "", err
+	}
+	if token.Valid && token.String != "" {
+		return token.String, nil
+	}
+
+	fresh, err := auth.NewToken()
+	if err != nil {
+		return "", err
+	}
+	if err := db.SetMailToken(ctx, userID, fresh); err != nil {
+		return "", err
+	}
+	return fresh, nil
+}
+
+func (db *DB) SetMailToken(ctx context.Context, userID, token string) error {
+	_, err := db.ExecContext(ctx,
+		`UPDATE users SET mail_token = ?, updated_at = ? WHERE id = ?`,
+		token, time.Now().Unix(), userID)
+	return err
+}
+
+func (db *DB) UserByMailToken(ctx context.Context, token string) (*User, error) {
+	if token == "" {
+		return nil, ErrNotFound
+	}
+	return db.scanUser(ctx, `SELECT `+userColumns+` FROM users WHERE mail_token = ?`, token)
+}
+
+// --- per-user settings ------------------------------------------------------------------
+
+// UserSettings reads one scope of a person's integration settings. A missing row is
+// an empty map, not an error: nobody has settings until they set some.
+func (db *DB) UserSettings(ctx context.Context, userID, scope string) (map[string]any, error) {
+	var raw string
+	err := db.QueryRowContext(ctx,
+		`SELECT values_json FROM user_settings WHERE user_id = ? AND scope = ?`,
+		userID, scope).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	values := map[string]any{}
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return map[string]any{}, nil
+	}
+	return values, nil
+}
+
+func (db *DB) SetUserSettings(ctx context.Context, userID, scope string, values map[string]any) error {
+	raw, err := json.Marshal(values)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO user_settings (user_id, scope, values_json, updated_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT (user_id) DO UPDATE SET
+		    scope = excluded.scope,
+		    values_json = excluded.values_json,
+		    updated_at = excluded.updated_at`,
+		userID, scope, string(raw), time.Now().Unix())
+	return err
 }

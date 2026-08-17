@@ -151,6 +151,12 @@ func bearerToken(r *http.Request) string {
 	return ""
 }
 
+// withUser puts a user on the context. Used by the CalDAV handlers, which
+// authenticate with Basic rather than through the session middleware.
+func withUser(ctx context.Context, user *store.User) context.Context {
+	return context.WithValue(ctx, ctxUser, user)
+}
+
 func userFrom(ctx context.Context) *store.User {
 	u, _ := ctx.Value(ctxUser).(*store.User)
 	return u

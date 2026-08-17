@@ -13,6 +13,7 @@ package ics
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -220,4 +221,149 @@ func Filename(name string) string {
 		safe = "verdande"
 	}
 	return fmt.Sprintf("%s.ics", safe)
+}
+
+// --- reading ----------------------------------------------------------------------
+
+// Parsed is what a client's VTODO says, reduced to the fields verdande stores.
+type Parsed struct {
+	UID         string
+	Summary     string
+	Description string
+	DueDate     string
+	DueDatetime *time.Time
+	Priority    int
+	Recurrence  string
+	Completed   bool
+}
+
+// ParseVTODO reads a calendar object sent by a CalDAV client.
+//
+// Deliberately forgiving: this is the input side of a protocol spoken by Apple
+// Reminders, Thunderbird and a long tail of phone apps, each with its own habits
+// about folding, parameters and which properties it bothers to send. Anything not
+// understood is ignored rather than refused, because refusing a PUT makes a client
+// show a sync error and stop — losing the edit the person just made.
+func ParseVTODO(body string) (Parsed, error) {
+	var p Parsed
+	inTodo := false
+
+	for _, line := range unfold(body) {
+		name, params, value := splitLine(line)
+
+		switch strings.ToUpper(name) {
+		case "BEGIN":
+			if strings.EqualFold(value, "VTODO") {
+				inTodo = true
+			}
+		case "END":
+			if strings.EqualFold(value, "VTODO") {
+				inTodo = false
+			}
+		}
+		if !inTodo {
+			continue
+		}
+
+		switch strings.ToUpper(name) {
+		case "UID":
+			p.UID = value
+		case "SUMMARY":
+			p.Summary = unescape(value)
+		case "DESCRIPTION":
+			p.Description = unescape(value)
+		case "RRULE":
+			p.Recurrence = value
+		case "STATUS":
+			p.Completed = strings.EqualFold(value, "COMPLETED")
+		case "PERCENT-COMPLETE":
+			if value == "100" {
+				p.Completed = true
+			}
+		case "COMPLETED":
+			p.Completed = true
+		case "PRIORITY":
+			// RFC 5545 runs 1..9 with 0 meaning undefined; verdande runs 1..4 with
+			// 4 meaning none. The bands here are the inverse of what the writer does.
+			switch n, _ := strconv.Atoi(value); {
+			case n == 0:
+				p.Priority = 4
+			case n <= 2:
+				p.Priority = 1
+			case n <= 5:
+				p.Priority = 2
+			case n <= 7:
+				p.Priority = 3
+			default:
+				p.Priority = 4
+			}
+		case "DUE":
+			if strings.Contains(strings.ToUpper(params), "VALUE=DATE") || len(value) == 8 {
+				if t, err := time.Parse("20060102", value); err == nil {
+					p.DueDate = t.Format("2006-01-02")
+				}
+				continue
+			}
+			for _, layout := range []string{"20060102T150405Z", "20060102T150405"} {
+				if t, err := time.Parse(layout, value); err == nil {
+					utc := t.UTC()
+					p.DueDate = utc.Format("2006-01-02")
+					p.DueDatetime = &utc
+					break
+				}
+			}
+		}
+	}
+
+	if p.Priority == 0 {
+		p.Priority = 4
+	}
+	if p.Summary == "" && p.UID == "" {
+		return p, fmt.Errorf("ics: no VTODO found")
+	}
+	return p, nil
+}
+
+// unfold rejoins continuation lines, which the spec folds at 75 octets by beginning
+// the next line with a space or tab.
+func unfold(body string) []string {
+	raw := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+
+	var out []string
+	for _, line := range raw {
+		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') && len(out) > 0 {
+			out[len(out)-1] += line[1:]
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// splitLine separates NAME;PARAMS:VALUE. The parameters can themselves contain a
+// colon inside quotes, so the split is on the first colon outside quotes.
+func splitLine(line string) (name, params, value string) {
+	inQuotes := false
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case '"':
+			inQuotes = !inQuotes
+		case ':':
+			if inQuotes {
+				continue
+			}
+			left := line[:i]
+			value = line[i+1:]
+			if semi := strings.Index(left, ";"); semi >= 0 {
+				return left[:semi], left[semi+1:], value
+			}
+			return left, "", value
+		}
+	}
+	return line, "", ""
+}
+
+func unescape(s string) string {
+	r := strings.NewReplacer(`\n`, "\n", `\N`, "\n", `\,`, ",", `\;`, ";", `\\`, `\`)
+	return r.Replace(s)
 }

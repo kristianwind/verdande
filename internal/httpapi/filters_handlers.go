@@ -181,6 +181,12 @@ func filterContext(user *store.User) filterquery.Context {
 	}
 }
 
+// parseFilter compiles an expression for a user. Shared with the MCP tools, so a
+// filter written in Claude means exactly what the same filter means in the app.
+func parseFilter(query string, user *store.User) (filterquery.Compiled, error) {
+	return filterquery.Parse(query, filterContext(user))
+}
+
 func checkFilterQuery(query string, user *store.User) string {
 	if strings.TrimSpace(query) == "" {
 		return "required"

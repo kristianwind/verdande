@@ -18,6 +18,7 @@ import (
 
 	"github.com/kristianwind/verdande/internal/config"
 	"github.com/kristianwind/verdande/internal/mail"
+	"github.com/kristianwind/verdande/internal/mcp"
 	"github.com/kristianwind/verdande/internal/realtime"
 	"github.com/kristianwind/verdande/internal/store"
 )
@@ -29,6 +30,7 @@ type Server struct {
 	web  fs.FS
 	mail *mail.Sender
 	hub  *realtime.Hub
+	mcp  *mcp.Server
 
 	// Password guessing is the attack this application is actually exposed to, so
 	// the endpoints that check a secret are limited separately and more tightly
@@ -54,6 +56,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 		resetLimiter: newLimiter(5, time.Hour),
 	}
 	s.csp = contentSecurityPolicy(scriptHashes(web))
+	s.mcp = s.buildMCP()
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -70,6 +73,15 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	// The calendar feed is outside /api/v1 and outside the session: a calendar
 	// client cannot log in, so the token in the path is the whole credential.
 	r.Get("/ics/{token}", s.handleICSFeed)
+
+	// CalDAV, outside /api/v1 because clients do well-known-path discovery
+	// against the root and authenticate with Basic rather than a session.
+	r.Get("/.well-known/caldav", s.wellKnownCalDAV)
+
+	// Inbound mail. Delivered by the mail server rather than by a browser, and
+	// authenticated by the token in the recipient address.
+	r.Post("/inbound/mail", s.handleInboundMail)
+	r.Route("/caldav", s.caldavRoutes)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(s.requireCSRF)
@@ -119,6 +131,10 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 
 			r.Get("/ws", s.handleWebSocket)
 
+			// The MCP endpoint. Reachable with a personal API token, so a connector
+			// sees exactly what its owner sees.
+			r.Post("/mcp", s.handleMCP)
+
 			r.Get("/today", s.handleToday)
 			r.Get("/filters/preview", s.handlePreviewFilter)
 
@@ -154,6 +170,22 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Delete("/", s.handleDeleteComment)
 			})
 			r.Post("/feed/rotate", s.handleRotateFeed)
+
+			r.Get("/mail-address", s.handleGetMailAddress)
+			r.Post("/mail-address/rotate", s.handleRotateMailAddress)
+
+			r.Route("/ai", func(r chi.Router) {
+				r.Get("/settings", s.handleGetAISettings)
+				r.Put("/settings", s.handleSetAISettings)
+				r.Post("/summary", s.handleAISummary)
+				r.Post("/tasks/{taskID}/split", s.handleAISplit)
+			})
+
+			r.Route("/gmail", func(r chi.Router) {
+				r.Get("/", s.handleGetGmail)
+				r.Put("/", s.handleSetGmail)
+				r.Delete("/", s.handleDisconnectGmail)
+			})
 
 			r.Route("/import", func(r chi.Router) {
 				r.Post("/todoist", s.handleImportTodoist)
