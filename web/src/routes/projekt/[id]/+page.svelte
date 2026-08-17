@@ -66,19 +66,19 @@
 	let open = $derived(app.tasks.filter((t) => !t.completed && !t.parent_id));
 	let unsectioned = $derived(open.filter((t) => !t.section_id));
 
+	let editing = $state(false);
+
 	/** Renames on blur. A no-op when nothing changed, so tabbing through is free. */
 	async function rename(input) {
 		const name = input.value.trim();
-		if (!name || name === project.name) {
-			input.value = project.name;
-			return;
-		}
+		editing = false;
+		if (!name || name === project.name) return;
+
 		try {
 			project = await api.updateProject(project.id, { name });
 			// The sidebar reads its own copy, so it has to be told.
 			await app.refreshProjects();
 		} catch (e) {
-			input.value = project.name;
 			app.toast(humanMessage(e));
 		}
 	}
@@ -123,11 +123,16 @@
 <div class="view">
 	{#if project}
 		<header>
-			{#if isOwner}
-				<!-- A heading that happens to be editable, rather than a field that
-				     looks like one. Saves on blur; Escape puts the old name back. -->
+			<!-- A heading first, a field second. Swapping the h1 out for an input
+			     outright cost the page its heading — which the sidebar smoke test
+			     caught, and which is a real loss: every view here has one, and it is
+			     what a screen reader announces on arrival. So the heading stays and
+			     becomes editable on click. -->
+			{#if editing}
+				<!-- svelte-ignore a11y_autofocus -->
 				<input
 					class="title"
+					autofocus
 					value={project.name}
 					aria-label="Projektets navn"
 					onblur={(e) => rename(e.currentTarget)}
@@ -135,12 +140,20 @@
 						if (e.key === 'Enter') e.currentTarget.blur();
 						if (e.key === 'Escape') {
 							e.currentTarget.value = project.name;
-							e.currentTarget.blur();
+							editing = false;
 						}
 					}}
 				/>
 			{:else}
-				<h1>{project.name}</h1>
+				<h1 class:renameable={isOwner}>
+					{#if isOwner}
+						<button onclick={() => (editing = true)} title="Klik for at omdøbe">
+							{project.name}
+						</button>
+					{:else}
+						{project.name}
+					{/if}
+				</h1>
 			{/if}
 			<div class="views" role="group" aria-label="Visning">
 				{#each [['list', 'Liste'], ['board', 'Board'], ['calendar', 'Kalender']] as [value, label]}
@@ -287,7 +300,21 @@
 		overflow-wrap: anywhere;
 	}
 
-	/* Reads as the heading it replaces until you put the cursor in it. */
+	/* The heading's button carries no button-ness: it is the heading, and the only
+	   hint that it does anything is the underline on hover. */
+	h1.renameable button {
+		font: inherit;
+		letter-spacing: inherit;
+		color: inherit;
+		text-align: left;
+		border-bottom: 1px solid transparent;
+	}
+
+	h1.renameable button:hover {
+		border-bottom-color: var(--line-strong);
+	}
+
+	/* Matches the heading it stands in for, so the swap does not move the page. */
 	.title {
 		flex: 1;
 		min-width: 0;
