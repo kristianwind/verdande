@@ -62,6 +62,12 @@ type TaskFilter struct {
 	CompletedOnly bool
 
 	Search string
+	// FilterSQL is a compiled saved-filter expression: a WHERE fragment over `t`
+	// with its own bound arguments. It is produced by the filterquery package and
+	// never assembled from user text here.
+	FilterSQL  string
+	FilterArgs []any
+
 	Limit  int
 	Offset int
 }
@@ -132,6 +138,10 @@ func (db *DB) ListTasks(ctx context.Context, userID string, f TaskFilter) ([]Tas
 	if expr := MatchExpr(f.Search); expr != "" {
 		where = append(where, `t.rowid IN (SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ?)`)
 		args = append(args, expr)
+	}
+	if f.FilterSQL != "" {
+		where = append(where, "("+f.FilterSQL+")")
+		args = append(args, f.FilterArgs...)
 	}
 
 	query := `

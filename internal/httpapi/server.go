@@ -116,6 +116,22 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			r.Get("/ws", s.handleWebSocket)
 
 			r.Get("/today", s.handleToday)
+			r.Get("/filters/preview", s.handlePreviewFilter)
+
+			r.Route("/filters", func(r chi.Router) {
+				r.Get("/", s.handleListFilters)
+				r.Post("/", s.handleCreateFilter)
+				r.Get("/{filterID}/tasks", s.handleRunFilter)
+				r.Patch("/{filterID}", s.handleUpdateFilter)
+				r.Delete("/{filterID}", s.handleDeleteFilter)
+			})
+
+			r.Route("/labels", func(r chi.Router) {
+				r.Get("/", s.handleListLabels)
+				r.Post("/", s.handleCreateLabel)
+				r.Patch("/{labelID}", s.handleUpdateLabel)
+				r.Delete("/{labelID}", s.handleDeleteLabel)
+			})
 			r.Get("/upcoming", s.handleUpcoming)
 			r.Get("/search", s.handleSearch)
 

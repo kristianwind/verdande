@@ -839,3 +839,170 @@ func TestCompletingAPlainTaskStillCloses(t *testing.T) {
 		t.Error("a plain task reported as recurring")
 	}
 }
+
+// --- saved filters ----------------------------------------------------------------
+
+func TestSavedFilters(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Firma"})
+	projectID := project["id"].(string)
+
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "betal moms", "project_id": projectID,
+		"priority": 1, "due_date": userDate(t, 0), "labels": []string{"regnskab"},
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "ryd op", "project_id": projectID, "priority": 4,
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "forsinket ting", "due_date": userDate(t, -3), "priority": 2,
+	})
+
+	resp, filter := ts.do(t, "POST", "/api/v1/filters", map[string]any{
+		"name": "Haster i dag", "query": "today & p1",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create filter: %d %v", resp.StatusCode, filter)
+	}
+
+	resp, result := ts.do(t, "GET", "/api/v1/filters/"+filter["id"].(string)+"/tasks", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("run filter: %d %v", resp.StatusCode, result)
+	}
+	tasks, _ := result["tasks"].([]any)
+	if len(tasks) != 1 {
+		t.Fatalf("the filter matched %d tasks, want 1", len(tasks))
+	}
+	if tasks[0].(map[string]any)["content"] != "betal moms" {
+		t.Errorf("matched the wrong task: %v", tasks[0])
+	}
+}
+
+func TestFilterPreviewRunsWithoutSaving(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "forsinket", "due_date": userDate(t, -2),
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{"content": "ingen dato"})
+
+	resp, body := ts.do(t, "GET", "/api/v1/filters/preview?query=overdue", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview: %d %v", resp.StatusCode, body)
+	}
+	tasks, _ := body["tasks"].([]any)
+	if len(tasks) != 1 {
+		t.Errorf("overdue matched %d tasks, want 1", len(tasks))
+	}
+
+	_, list := ts.do(t, "GET", "/api/v1/filters", nil)
+	if saved, _ := list["filters"].([]any); len(saved) != 0 {
+		t.Errorf("the preview saved %d filters", len(saved))
+	}
+}
+
+// A filter that cannot be compiled must be refused when it is saved, not when it
+// is next opened and silently returns nothing.
+func TestInvalidFilterIsRefusedOnSave(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, body := ts.do(t, "POST", "/api/v1/filters", map[string]any{
+		"name": "Ødelagt", "query": "today & (p1",
+	})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422", resp.StatusCode)
+	}
+	fields, _ := body["fields"].(map[string]any)
+	if fields["query"] == nil {
+		t.Errorf("the error does not name the query field: %v", body)
+	}
+}
+
+// A filter belongs to one person and must not reach anybody else's tasks.
+func TestFiltersAreScopedToTheirOwner(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	other := ts.newUser(t, "anden@example.dk", "Anden")
+
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "min private opgave", "priority": 1, "due_date": userDate(t, 0),
+	})
+	_, filter := ts.do(t, "POST", "/api/v1/filters", map[string]any{
+		"name": "Mit filter", "query": "today & p1",
+	})
+	filterID := filter["id"].(string)
+
+	// Somebody else cannot run it.
+	resp, _ := other.do(t, "GET", "/api/v1/filters/"+filterID+"/tasks", nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("another user ran the filter: status %d", resp.StatusCode)
+	}
+
+	// And writing the same expression themselves finds none of the owner's tasks.
+	_, result := other.do(t, "GET", "/api/v1/filters/preview?query=today+%26+p1", nil)
+	if tasks, _ := result["tasks"].([]any); len(tasks) != 0 {
+		t.Errorf("an identical filter reached another user's tasks: %v", tasks)
+	}
+}
+
+func TestLabelsCRUD(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	// Labels appear by being used, without being created first.
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "med etiket", "labels": []string{"venter"},
+	})
+	_, list := ts.do(t, "GET", "/api/v1/labels", nil)
+	labels, _ := list["labels"].([]any)
+	if len(labels) != 1 {
+		t.Fatalf("got %d labels, want the one created by using it", len(labels))
+	}
+	if labels[0].(map[string]any)["task_count"] != float64(1) {
+		t.Errorf("task_count = %v, want 1", labels[0].(map[string]any)["task_count"])
+	}
+
+	resp, created := ts.do(t, "POST", "/api/v1/labels", map[string]any{"name": "haster"})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create label: %d %v", resp.StatusCode, created)
+	}
+	// The same name twice is a conflict, not a second label.
+	resp, _ = ts.do(t, "POST", "/api/v1/labels", map[string]any{"name": "HASTER"})
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("duplicate label: status %d, want 409", resp.StatusCode)
+	}
+
+	resp, _ = ts.do(t, "DELETE", "/api/v1/labels/"+created["id"].(string), nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf("delete label: status %d", resp.StatusCode)
+	}
+}
+
+// Deleting a label is tidying, not a request to delete the work filed under it.
+func TestDeletingALabelKeepsItsTasks(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "vigtig opgave", "labels": []string{"venter"},
+	})
+	taskID := task["id"].(string)
+
+	_, list := ts.do(t, "GET", "/api/v1/labels", nil)
+	labels, _ := list["labels"].([]any)
+	labelID := labels[0].(map[string]any)["id"].(string)
+
+	ts.do(t, "DELETE", "/api/v1/labels/"+labelID, nil)
+
+	resp, after := ts.do(t, "GET", "/api/v1/tasks/"+taskID, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("the task went with its label: %d", resp.StatusCode)
+	}
+	if got, _ := after["labels"].([]any); len(got) != 0 {
+		t.Errorf("labels = %v, want empty", got)
+	}
+}
