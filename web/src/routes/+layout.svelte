@@ -1,6 +1,6 @@
 <script>
 	import '../app.css';
-	import { app, theme } from '$lib/stores.svelte.js';
+	import { app, theme, sidebar } from '$lib/stores.svelte.js';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import Sidebar from '$lib/components/Sidebar.svelte';
@@ -66,11 +66,20 @@
 {:else if !app.user}
 	<SignIn />
 {:else}
-	<div class="shell" class:sidebar-open={sidebarOpen}>
+	<div
+		class="shell"
+		class:sidebar-open={sidebarOpen}
+		class:sidebar-collapsed={sidebar.collapsed}
+		style="--sidebar-width: {sidebar.width}px"
+	>
 		<Sidebar onnavigate={() => (sidebarOpen = false)} />
 
 		<main>
 			<header class="topbar">
+				<!-- Two controls, not one: on a phone the sidebar is a drawer that
+				     opens over the page, on a desktop it is a column that folds away.
+				     Same words, different actions, so each is shown only where it
+				     applies. -->
 				<button
 					class="menu"
 					onclick={() => (sidebarOpen = !sidebarOpen)}
@@ -79,6 +88,19 @@
 				>
 					<svg viewBox="0 0 24 24" aria-hidden="true">
 						<path d="M4 7h16M4 12h16M4 17h16" />
+					</svg>
+				</button>
+
+				<button
+					class="fold"
+					onclick={() => sidebar.toggle()}
+					aria-label={sidebar.collapsed ? 'Vis sidebjælken' : 'Skjul sidebjælken'}
+					aria-pressed={sidebar.collapsed}
+					title={sidebar.collapsed ? 'Vis sidebjælken' : 'Skjul sidebjælken'}
+				>
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<rect x="3" y="4" width="18" height="16" rx="2" />
+						<path d="M9 4v16" />
 					</svg>
 				</button>
 
@@ -173,7 +195,32 @@
 		color: var(--ink-muted);
 	}
 
+	.fold {
+		display: grid;
+		width: 32px;
+		height: 32px;
+		place-items: center;
+		border-radius: var(--radius);
+		color: var(--ink-faint);
+		transition: color var(--fast) var(--ease);
+	}
+
+	.fold:hover {
+		color: var(--ink);
+	}
+
+	/* Folded away rather than merely narrow: width 0 with the border gone, so
+	   nothing of it is left to catch the eye. */
+	.shell.sidebar-collapsed :global(.sidebar) {
+		width: 0;
+		padding-left: 0;
+		padding-right: 0;
+		border-right: 0;
+		overflow: hidden;
+	}
+
 	.menu svg,
+	.fold svg,
 	.theme svg {
 		width: 18px;
 		height: 18px;
@@ -277,6 +324,11 @@
 			display: grid;
 		}
 
+		/* The drawer is the whole answer here; folding a drawer means nothing. */
+		.fold {
+			display: none;
+		}
+
 		.scrim {
 			display: block;
 		}
@@ -291,6 +343,16 @@
 
 		.shell.sidebar-open :global(.sidebar) {
 			transform: translateX(0);
+		}
+
+		/* A collapsed desktop sidebar must not follow you to a phone, where the
+		   drawer would then open to nothing. */
+		.shell.sidebar-collapsed :global(.sidebar) {
+			width: var(--sidebar-width);
+			padding-left: max(var(--s3), env(safe-area-inset-left));
+			padding-right: var(--s3);
+			border-right: 1px solid var(--line);
+			overflow-y: auto;
 		}
 	}
 </style>
