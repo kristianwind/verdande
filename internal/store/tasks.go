@@ -136,8 +136,23 @@ func (db *DB) ListTasks(ctx context.Context, userID string, f TaskFilter) ([]Tas
 		args = append(args, f.DueFrom)
 	}
 	if expr := MatchExpr(f.Search); expr != "" {
-		where = append(where, `t.rowid IN (SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ?)`)
-		args = append(args, expr)
+		// Text or a label. A label is how you find a task whose wording you have
+		// forgotten — "that thing about the accounts" is a search for @regnskab —
+		// and leaving them out made the box look like it had lost the task.
+		//
+		// The label side is a plain lowercase match rather than another FTS index:
+		// labels are short, and their names are typed by the person searching for
+		// them, so there is no spelling to be generous about. The diacritic
+		// folding that matters for task text does not earn a second index here.
+		where = append(where, `(
+			t.rowid IN (SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ?)
+			OR t.id IN (
+				SELECT tl.task_id FROM task_labels tl
+				JOIN labels l ON l.id = tl.label_id
+				WHERE lower(l.name) LIKE ?
+			)
+		)`)
+		args = append(args, expr, "%"+strings.ToLower(strings.TrimSpace(f.Search))+"%")
 	}
 	if f.FilterSQL != "" {
 		where = append(where, "("+f.FilterSQL+")")
