@@ -286,6 +286,58 @@ class AppState {
 
 export const app = new AppState();
 
+/**
+ * How wide the sidebar is, and whether it is showing at all.
+ *
+ * Kept in localStorage rather than on the account: it is a property of the
+ * screen you are sitting at, not of you. The same person on a laptop and on a
+ * wide monitor wants different answers, and syncing it would make one of those
+ * two wrong every time they switch.
+ */
+const SIDEBAR_MIN = 200;
+const SIDEBAR_MAX = 480;
+const SIDEBAR_DEFAULT = 268;
+
+function storedNumber(key, fallback) {
+	if (typeof localStorage === 'undefined') return fallback;
+	const raw = Number(localStorage.getItem(key));
+	return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+
+class SidebarLayout {
+	width = $state(storedNumber('verdande:sidebar-width', SIDEBAR_DEFAULT));
+	collapsed = $state(
+		typeof localStorage !== 'undefined' && localStorage.getItem('verdande:sidebar-collapsed') === '1'
+	);
+
+	setWidth(px) {
+		// Clamped here rather than in the drag handler, so every caller gets the
+		// same rule and a stored value from an older build cannot make the
+		// sidebar unusably narrow.
+		this.width = Math.round(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, px)));
+		this.#save('verdande:sidebar-width', String(this.width));
+	}
+
+	toggle() {
+		this.collapsed = !this.collapsed;
+		this.#save('verdande:sidebar-collapsed', this.collapsed ? '1' : '0');
+	}
+
+	reset() {
+		this.setWidth(SIDEBAR_DEFAULT);
+	}
+
+	#save(key, value) {
+		try {
+			localStorage.setItem(key, value);
+		} catch {
+			// Private browsing; the choice simply will not persist.
+		}
+	}
+}
+
+export const sidebar = new SidebarLayout();
+
 /** Theme, kept in localStorage and applied to the document element. */
 export const theme = {
 	get current() {

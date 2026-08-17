@@ -1,5 +1,5 @@
 <script>
-	import { app } from '$lib/stores.svelte.js';
+	import { app, sidebar } from '$lib/stores.svelte.js';
 	import { api } from '$lib/api.js';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -41,6 +41,32 @@
 			.sort((a, b) => a.sort_order - b.sort_order)
 	);
 	let current = $derived($page.url.pathname);
+
+	// --- resizing -------------------------------------------------------------------
+
+	let resizing = $state(false);
+
+	/**
+	 * Pointer events rather than mouse events, so a trackpad, a mouse and a stylus
+	 * all work. Capturing the pointer means the drag keeps following even when it
+	 * leaves the handle, which at 4px wide it does constantly.
+	 */
+	function startResize(event) {
+		event.preventDefault();
+		resizing = true;
+		event.currentTarget.setPointerCapture(event.pointerId);
+	}
+
+	function onResize(event) {
+		if (!resizing) return;
+		sidebar.setWidth(event.clientX);
+	}
+
+	function endResize(event) {
+		if (!resizing) return;
+		resizing = false;
+		event.currentTarget.releasePointerCapture?.(event.pointerId);
+	}
 
 	// --- reordering ---------------------------------------------------------------
 
@@ -241,6 +267,29 @@
 			<span class="signout">Log ud</span>
 		</button>
 	</div>
+	<!-- Also a slider for the keyboard: arrow keys move it, and Home puts it back.
+	     A drag handle with no keyboard equivalent is a setting some people simply
+	     cannot reach. -->
+	<div
+		class="resize"
+		class:resizing
+		role="separator"
+		aria-orientation="vertical"
+		aria-label="Bredde på sidebjælken"
+		tabindex="0"
+		onpointerdown={startResize}
+		onpointermove={onResize}
+		onpointerup={endResize}
+		onpointercancel={endResize}
+		ondblclick={() => sidebar.reset()}
+		onkeydown={(e) => {
+			if (e.key === 'ArrowLeft') sidebar.setWidth(sidebar.width - 16);
+			else if (e.key === 'ArrowRight') sidebar.setWidth(sidebar.width + 16);
+			else if (e.key === 'Home') sidebar.reset();
+			else return;
+			e.preventDefault();
+		}}
+	></div>
 </nav>
 
 <style>
@@ -255,6 +304,45 @@
 		border-right: 1px solid var(--line);
 		overflow-y: auto;
 		padding-left: max(var(--s3), env(safe-area-inset-left));
+		position: relative;
+	}
+
+	/* Sits on the border, wider than it looks: a 1px target is a target you miss.
+	   The visible line stays the border; this only widens what the pointer hits. */
+	.resize {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		right: -3px;
+		width: 7px;
+		cursor: col-resize;
+		z-index: 10;
+	}
+
+	.resize::after {
+		content: '';
+		position: absolute;
+		inset: 0 3px;
+		background: var(--accent);
+		opacity: 0;
+		transition: opacity var(--fast) var(--ease);
+	}
+
+	.resize:hover::after,
+	.resize:focus-visible::after,
+	.resize.resizing::after {
+		opacity: 1;
+	}
+
+	.resize:focus-visible {
+		outline: none;
+	}
+
+	@media (max-width: 820px) {
+		/* The drawer has a fixed width and no room to drag against. */
+		.resize {
+			display: none;
+		}
 	}
 
 	.brand {
