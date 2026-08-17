@@ -365,6 +365,21 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
+
+	// /.well-known/ is reserved by RFC 8615 and is never a route in the app.
+	// Handing back the shell there does not merely waste a response: it tells
+	// whoever asked that the thing they were looking for exists.
+	//
+	// That is not hypothetical. Claude probes
+	// /.well-known/oauth-authorization-server before connecting to an MCP server,
+	// read 200 and a page of HTML as "there is an authorization server here", and
+	// then failed trying to register with it — reporting a broken sign-in service
+	// on a server that has none and needs none. A 404 means "no OAuth here", the
+	// client stops asking, and the key in the URL is used as intended.
+	if strings.HasPrefix(r.URL.Path, "/.well-known/") {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
 	if s.web == nil {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
