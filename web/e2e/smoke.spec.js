@@ -82,6 +82,12 @@ test('hvert link i sidebjælken fører et sted hen', async ({ page }) => {
 	for (const href of hrefs) {
 		await sidebar.locator(`a[href="${href}"]`).first().click();
 
+		// Wait for the navigation before looking at the page. Without this the
+		// assertion can be satisfied by the heading of the page you just left —
+		// which is not a hypothetical: a change that removed a project page's
+		// heading entirely passed here on a fast machine and failed on CI.
+		await page.waitForURL(`**${href}`);
+
 		// Something with a heading rendered. A route written outside the routes
 		// tree lands on the SPA shell and renders nothing — which is exactly how
 		// the label route broke, and it answered 200 the whole time.
@@ -196,9 +202,11 @@ test('et projekt kan omdøbes, slettes og hentes tilbage', async ({ page }) => {
 	await sidebar.getByLabel('Projektnavn').fill('Ferie');
 	await sidebar.getByLabel('Projektnavn').press('Enter');
 
-	const title = page.getByLabel('Projektets navn');
-	await expect(title).toHaveValue('Ferie');
+	await expect(page.getByRole('heading', { name: 'Ferie' })).toBeVisible();
 
+	// The heading is the rename affordance: click it, and it becomes a field.
+	await page.getByRole('button', { name: 'Ferie' }).click();
+	const title = page.getByLabel('Projektets navn');
 	await title.fill('Sommerferie');
 	await title.press('Enter');
 	await expect(sidebar.getByRole('link', { name: 'Sommerferie' })).toBeVisible();
