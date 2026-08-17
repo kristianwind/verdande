@@ -20,6 +20,23 @@
 	let priority = $state(4);
 	let dueDate = $state('');
 	let labels = $state('');
+	let projectId = $state('');
+	let recurrence = $state('');
+	let assignee = $state('');
+
+	/** Who the task can be given to. Only ever more than one on a shared project. */
+	let members = $state([]);
+
+	// The rules worth a menu entry. Anything more specific is typed into the
+	// title, where the parser understands far more than a list ever could.
+	const REPEATS = [
+		{ rule: '', label: 'Aldrig' },
+		{ rule: 'FREQ=DAILY', label: 'Hver dag' },
+		{ rule: 'FREQ=WEEKLY', label: 'Hver uge' },
+		{ rule: 'FREQ=WEEKLY;INTERVAL=2', label: 'Hver anden uge' },
+		{ rule: 'FREQ=MONTHLY', label: 'Hver måned' },
+		{ rule: 'FREQ=YEARLY', label: 'Hvert år' }
+	];
 
 	let subtasks = $state([]);
 	let comments = $state([]);
@@ -46,6 +63,17 @@
 		priority = task.priority;
 		dueDate = task.due_date ?? '';
 		labels = (task.labels ?? []).join(', ');
+		projectId = task.project_id;
+		recurrence = task.recurrence_rule ?? '';
+		assignee = task.assignee_id ?? '';
+
+		members = [];
+		api.listMembers(task.project_id)
+			.then((r) => r.members.length > 1 && (members = r.members))
+			.catch(() => {
+				// A project you are not the owner of may refuse the member list.
+				// Then there is nobody to choose from, which is the same as none.
+			});
 
 		subtasks = [];
 		comments = [];
@@ -73,13 +101,83 @@
 		await app.update(task.id, patch);
 	}
 
-	function saveContent() {
+	/**
+	 * Saves the title, reading it the way quick add would.
+	 *
+	 * Typing "i morgen kl. 14" into a title used to leave it as those words. The
+	 * same sentence in the quick-add box becomes a date, which made where you
+	 * typed it decide what it meant.
+	 *
+	 * The parse runs on the server — the grammar is Danish and English and lives
+	 * there — and is only applied when it actually consumed something. What it
+	 * took is said out loud, because a title that edits itself without a word is
+	 * worse than one that does nothing.
+	 */
+	async function saveContent() {
 		const trimmed = content.trim();
 		if (!trimmed || trimmed === task.content) {
 			content = task.content;
 			return;
 		}
-		save({ content: trimmed });
+
+		let parsed = null;
+		try {
+			parsed = await api.quickAddPreview(trimmed);
+		} catch {
+			// Offline, or the parser refused. Saving the words is still right.
+		}
+
+		const patch = { content: trimmed };
+		const took = [];
+		if (parsed && parsed.content && parsed.content !== trimmed) {
+			patch.content = parsed.content;
+			if (parsed.due_date) {
+				patch.due_date = parsed.due_date;
+				took.push(parsed.due_date);
+			}
+			if (parsed.priority && parsed.priority < 4) {
+				patch.priority = parsed.priority;
+				took.push(`P${parsed.priority}`);
+			}
+			if (parsed.recurrence) {
+				patch.recurrence_rule = parsed.recurrence;
+				took.push('gentagelse');
+			}
+			if (parsed.labels?.length) {
+				patch.labels = [...new Set([...(task.labels ?? []), ...parsed.labels])];
+				took.push(parsed.labels.map((l) => `@${l}`).join(' '));
+			}
+		}
+
+		await save(patch);
+
+		// The fields are seeded once per task so a save cannot overwrite what
+		// somebody is typing. That rule has to bend exactly here: this save
+		// changed the very fields on screen, and leaving them showing what was
+		// typed while the toast reports something else is the worst of both.
+		if (took.length) {
+			content = patch.content;
+			if (patch.due_date) dueDate = patch.due_date;
+			if (patch.priority) priority = patch.priority;
+			if (patch.recurrence_rule) recurrence = patch.recurrence_rule;
+			if (patch.labels) labels = patch.labels.join(', ');
+			app.toast(`Læst som ${took.join(', ')}.`);
+		}
+	}
+
+	async function saveProject() {
+		if (projectId === task.project_id) return;
+		await save({ project_id: projectId });
+	}
+
+	async function saveRecurrence() {
+		if (recurrence === (task.recurrence_rule ?? '')) return;
+		await save({ recurrence_rule: recurrence });
+	}
+
+	async function saveAssignee() {
+		if (assignee === (task.assignee_id ?? '')) return;
+		await save({ assignee_id: assignee });
 	}
 
 	function saveDescription() {
@@ -316,8 +414,42 @@
 			/>
 		</div>
 
-		{#if task.recurrence_text}
-			<p class="repeats">Gentages {task.recurrence_text}.</p>
+		<div class="grid">
+			<div class="field">
+				<label for="project">Projekt</label>
+				<select id="project" bind:value={projectId} onchange={saveProject}>
+					{#each app.projects as project (project.id)}
+						<option value={project.id}>{project.name}</option>
+					{/each}
+				</select>
+			</div>
+
+			<div class="field">
+				<label for="repeat">Gentages</label>
+				<select id="repeat" bind:value={recurrence} onchange={saveRecurrence}>
+					{#each REPEATS as option (option.rule)}
+						<option value={option.rule}>{option.label}</option>
+					{/each}
+					<!-- A rule typed as "hver anden tirsdag" has no entry in the list;
+					     showing it rather than snapping to the nearest preset is the
+					     difference between a menu and a menu that quietly edits. -->
+					{#if recurrence && !REPEATS.some((o) => o.rule === recurrence)}
+						<option value={recurrence}>{task.recurrence_text ?? 'Som skrevet'}</option>
+					{/if}
+				</select>
+			</div>
+		</div>
+
+		{#if members.length > 1}
+			<div class="field">
+				<label for="assignee">Ansvarlig</label>
+				<select id="assignee" bind:value={assignee} onchange={saveAssignee}>
+					<option value="">Ingen</option>
+					{#each members as member (member.user_id)}
+						<option value={member.user_id}>{member.name}</option>
+					{/each}
+				</select>
+			</div>
 		{/if}
 
 		<section>

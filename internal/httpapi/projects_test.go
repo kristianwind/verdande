@@ -153,3 +153,44 @@ func TestReorderProjectsLeavesSomebodyElsesAlone(t *testing.T) {
 		}
 	}
 }
+
+// The member list errored on every project — the ORDER BY named an expression,
+// which SQLite refuses across a UNION — so the share panel had never shown
+// anybody, not even the owner.
+func TestListMembersWorksAtAll(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]string{"name": "Firma"})
+
+	resp, body := ts.do(t, "GET", "/api/v1/projects/"+project["id"].(string)+"/members", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, body %v", resp.StatusCode, body)
+	}
+	members, _ := body["members"].([]any)
+	if len(members) != 1 {
+		t.Fatalf("a project with no invites lists %d members, want its owner", len(members))
+	}
+	if m := members[0].(map[string]any); m["role"] != "owner" {
+		t.Errorf("role = %v, want owner", m["role"])
+	}
+}
+
+// And the Inbox, which is the one every task drawer asks about.
+func TestListMembersWorksForTheInbox(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, list := ts.do(t, "GET", "/api/v1/projects", nil)
+	var inboxID string
+	for _, raw := range list["projects"].([]any) {
+		if p := raw.(map[string]any); p["is_inbox"] == true {
+			inboxID = p["id"].(string)
+		}
+	}
+
+	resp, body := ts.do(t, "GET", "/api/v1/projects/"+inboxID+"/members", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, body %v", resp.StatusCode, body)
+	}
+}

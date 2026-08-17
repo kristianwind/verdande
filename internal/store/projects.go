@@ -328,15 +328,27 @@ type Member struct {
 // project_members row — ownership is the projects table — so they are unioned in
 // rather than left out of the list of people who can see it.
 func (db *DB) ListMembers(ctx context.Context, projectID string) ([]Member, error) {
+	// The owner first, then everybody else by name.
+	//
+	// The ordering is a column rather than an expression, and the whole compound
+	// select is wrapped: SQLite only accepts ORDER BY terms from the result set
+	// of a UNION, so `ORDER BY role = 'owner' DESC` — which reads perfectly well
+	// — fails at query time with "1st ORDER BY term does not match any column in
+	// the result set". Every call errored, so the share panel had never listed
+	// anybody.
 	rows, err := db.QueryContext(ctx, `
-		SELECT u.id, u.email, u.name, u.avatar_color, 'owner' AS role, p.created_at
-		FROM projects p JOIN users u ON u.id = p.owner_id
-		WHERE p.id = ?
-		UNION ALL
-		SELECT u.id, u.email, u.name, u.avatar_color, m.role, m.added_at
-		FROM project_members m JOIN users u ON u.id = m.user_id
-		WHERE m.project_id = ?
-		ORDER BY role = 'owner' DESC, name`, projectID, projectID)
+		SELECT id, email, name, avatar_color, role, added_at FROM (
+			SELECT u.id, u.email, u.name, u.avatar_color, 'owner' AS role,
+			       p.created_at AS added_at, 0 AS rank
+			FROM projects p JOIN users u ON u.id = p.owner_id
+			WHERE p.id = ?
+			UNION ALL
+			SELECT u.id, u.email, u.name, u.avatar_color, m.role,
+			       m.added_at, 1 AS rank
+			FROM project_members m JOIN users u ON u.id = m.user_id
+			WHERE m.project_id = ?
+		)
+		ORDER BY rank, name`, projectID, projectID)
 	if err != nil {
 		return nil, err
 	}
