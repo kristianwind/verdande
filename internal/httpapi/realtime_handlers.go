@@ -28,6 +28,19 @@ func (s *Server) publish(projectID, event string, payload any) {
 	s.hub.Publish(projectID, event, payload)
 }
 
+// publishToOwner sends a change that belongs to a person rather than to a
+// project: their projects, their labels, their saved filters.
+//
+// Project membership is what the socket subscribes to, and a project that has
+// just been created has no subscribers — the person is not watching a thing that
+// did not exist a moment ago. So these go to the user instead, which also
+// reaches their other devices.
+func (s *Server) publishToOwner(r *http.Request, event string, payload any) {
+	if user := userFrom(r.Context()); user != nil {
+		s.hub.PublishToUser(user.ID, event, payload)
+	}
+}
+
 // handleWebSocket is the live-sync connection.
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r.Context())

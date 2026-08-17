@@ -29,6 +29,16 @@ class AppState {
 	 */
 	detailId = $state(null);
 
+	/**
+	 * Bumped whenever a label changes anywhere.
+	 *
+	 * A counter rather than the labels themselves: the sidebar wants each label's
+	 * task count, which no single event carries and which changes whenever a task
+	 * gains or loses one. Whoever is showing labels re-reads them; that is one
+	 * small request against modelling a count in two places.
+	 */
+	labelsChanged = $state(0);
+
 	#socket = null;
 	#reconnectDelay = 1000;
 
@@ -110,6 +120,25 @@ class AppState {
 			case 'task.deleted':
 				this.tasks = this.tasks.filter((t) => t.id !== task?.id);
 				break;
+
+			// Projects and labels belong to a person rather than to a project, so
+			// they arrive on the user's own channel — a project that has just been
+			// created has no subscribers, because nobody was watching a thing that
+			// did not exist a moment ago.
+			case 'project.created':
+			case 'project.updated':
+				this.upsertProject(task);
+				break;
+			case 'project.deleted':
+				this.projects = this.projects.filter((p) => p.id !== task?.id);
+				break;
+
+			// The payload is not always the label — a rename says only that
+			// something changed — and the sidebar wants counts anyway, which no
+			// single event carries. Asking is cheaper than modelling it.
+			case 'label.changed':
+				this.labelsChanged++;
+				break;
 		}
 	}
 
@@ -136,6 +165,13 @@ class AppState {
 	 * copy is not worth a moment's thought next to the class of bug it removes.
 	 */
 	replace(id, next) {
+		// A task can invent a label just by mentioning one — "@regnskab" in quick
+		// add creates it — and no label event is sent for that, because it happened
+		// inside a task write. Comparing the two lists is what keeps the sidebar
+		// honest without re-reading the labels on every completed checkbox.
+		const before = this.tasks.find((t) => t.id === id)?.labels ?? [];
+		if ((next?.labels ?? []).join() !== before.join()) this.labelsChanged++;
+
 		this.tasks = this.tasks.map((t) => (t.id === id ? next : t));
 	}
 
@@ -151,12 +187,31 @@ class AppState {
 	 */
 	upsert(task) {
 		if (!task?.id) return;
-		if (this.tasks.some((t) => t.id === task.id)) this.replace(task.id, task);
-		else this.tasks = [...this.tasks, task];
+		if (this.tasks.some((t) => t.id === task.id)) {
+			this.replace(task.id, task);
+			return;
+		}
+		if (task.labels?.length) this.labelsChanged++;
+		this.tasks = [...this.tasks, task];
 	}
 
 	get(id) {
 		return this.tasks.find((t) => t.id === id);
+	}
+
+	/**
+	 * Adds a project, or replaces it if the list already has it.
+	 *
+	 * The same guard the tasks need, and for the same reason: a project arrives
+	 * twice, once as the response to the request that created it and once over
+	 * the socket. Appending both puts two rows with one id into a keyed `{#each}`,
+	 * which throws and stops the sidebar rendering.
+	 */
+	upsertProject(project) {
+		if (!project?.id) return;
+		this.projects = this.projects.some((p) => p.id === project.id)
+			? this.projects.map((p) => (p.id === project.id ? project : p))
+			: [...this.projects, project];
 	}
 
 	/**
@@ -233,7 +288,7 @@ class AppState {
 	async createProject(name) {
 		try {
 			const project = await api.createProject({ name });
-			this.projects = [...this.projects, project];
+			this.upsertProject(project);
 			return project;
 		} catch (e) {
 			this.toast(humanMessage(e));
