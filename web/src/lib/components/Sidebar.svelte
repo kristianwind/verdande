@@ -380,6 +380,7 @@
 		>
 			<h2>Projekter</h2>
 			<button
+				class="icon"
 				onclick={() => {
 					adding = !adding;
 					addingGroup = false;
@@ -387,7 +388,7 @@
 				aria-label="Nyt projekt">+</button
 			>
 			<button
-				class="new-group"
+				class="icon new-group"
 				onclick={() => {
 					addingGroup = !addingGroup;
 					adding = false;
@@ -705,7 +706,12 @@
 		color: var(--ink-faint);
 	}
 
-	.group-head > button {
+	/* Only the square icon buttons — "+" and the folder — and asked for by class
+	   rather than by "a button in a heading". A group's heading also has Omdøb and
+	   Slet in it, and they are words: a selector that reached them squeezed both
+	   into a 20px box, where they overflowed and were drawn on top of each other.
+	   The class is the boundary, so the next text button added here is safe. */
+	.group-head > button.icon {
 		width: 20px;
 		height: 20px;
 		display: grid;
@@ -717,7 +723,7 @@
 		flex: none;
 	}
 
-	.group-head > button:hover {
+	.group-head > button.icon:hover {
 		color: var(--ink);
 		background: var(--surface-raised);
 	}

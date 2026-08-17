@@ -257,6 +257,25 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	await expect(heading).toBeVisible();
 	await expect(sidebar.getByText('Træk et projekt herop')).toBeVisible();
 
+	// The words in the heading must not sit on top of each other.
+	//
+	// Everything else here clicks by accessible name, which is exactly why this
+	// needs saying out loud: "Omdøb" and "Slet" once got the 20px square meant for
+	// the "+" icon beside "Projekter", overflowed it, and were drawn overlapping.
+	// Both buttons still worked, so every assertion in this file passed.
+	const boxes = await sidebar.locator('.folder-head').evaluate((el) =>
+		[...el.querySelectorAll('button')].map((b) => {
+			const r = b.getBoundingClientRect();
+			return { text: b.textContent.trim(), left: r.left, right: r.right };
+		})
+	);
+	for (let i = 1; i < boxes.length; i++) {
+		expect(
+			boxes[i].left,
+			`"${boxes[i - 1].text}" og "${boxes[i].text}" overlapper i gruppehovedet`
+		).toBeGreaterThanOrEqual(boxes[i - 1].right);
+	}
+
 	// Dragged in, then dragged back out onto "Projekter" — which is the reason
 	// that heading is a drop target at all: with every project filed away there
 	// would otherwise be no loose row left to aim at.
