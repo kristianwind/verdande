@@ -246,6 +246,29 @@ class AppState {
 		this.projects = projects;
 	}
 
+	/**
+	 * Puts the projects in the given order.
+	 *
+	 * The whole list rather than one moved item: it is a handful of rows, and
+	 * sending the order you want cannot land in the half-applied state a sequence
+	 * of individual moves can. `sort_order` is set here as well as on the server,
+	 * so the sidebar settles immediately rather than after a round trip.
+	 */
+	async reorderProjects(ids) {
+		const previous = this.projects;
+		const rank = new Map(ids.map((id, i) => [id, i]));
+
+		this.projects = this.projects.map((p) =>
+			rank.has(p.id) ? { ...p, sort_order: rank.get(p.id) } : p
+		);
+		try {
+			await api.reorderProjects(ids);
+		} catch (e) {
+			this.projects = previous;
+			this.toast(humanMessage(e));
+		}
+	}
+
 	// --- toasts -------------------------------------------------------------------
 
 	toast(message) {

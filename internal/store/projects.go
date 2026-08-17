@@ -556,3 +556,30 @@ func joinComma(parts []string) string {
 	}
 	return out
 }
+
+// ReorderProjects writes the given order, and only for projects the user owns.
+//
+// The whole list at once, rather than the midpoint-between-neighbours dance the
+// tasks do. A person has a handful of projects, not a thousand, so writing
+// 0, 1, 2 … is one small transaction that cannot run out of precision — the
+// failure the task ordering has to respace a section to recover from.
+//
+// Scoped to ownership because sort_order lives on the project row rather than
+// per viewer: a shared project sits where its owner put it, and a member
+// reordering their sidebar must not rearrange somebody else's. Ids that are not
+// the caller's are skipped rather than refused, so one shared project in the
+// list does not fail the whole drag.
+func (db *DB) ReorderProjects(ctx context.Context, userID string, ids []string) error {
+	return db.Tx(ctx, func(tx *sql.Tx) error {
+		now := time.Now().Unix()
+		for i, id := range ids {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE projects SET sort_order = ?, updated_at = ?
+				 WHERE id = ? AND owner_id = ? AND deleted_at IS NULL`,
+				float64(i), now, id, userID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

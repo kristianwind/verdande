@@ -33,8 +33,54 @@
 	});
 
 	let shared = $derived(app.projects.filter((p) => !p.is_inbox && p.shared));
-	let own = $derived(app.projects.filter((p) => !p.is_inbox && !p.shared));
+	// Sorted here rather than relying on the order the server sent, so a drag
+	// settles the moment it is dropped instead of after the round trip.
+	let own = $derived(
+		app.projects
+			.filter((p) => !p.is_inbox && !p.shared)
+			.sort((a, b) => a.sort_order - b.sort_order)
+	);
 	let current = $derived($page.url.pathname);
+
+	// --- reordering ---------------------------------------------------------------
+
+	let draggingId = $state(null);
+	let overId = $state(null);
+	let overBelow = $state(false);
+
+	function onDragStart(event, project) {
+		draggingId = project.id;
+		event.dataTransfer.effectAllowed = 'move';
+		// Firefox refuses to start a drag unless something is set on the transfer.
+		event.dataTransfer.setData('text/plain', project.id);
+	}
+
+	function onDragOver(event, project) {
+		if (!draggingId || draggingId === project.id) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = 'move';
+
+		const box = event.currentTarget.getBoundingClientRect();
+		overId = project.id;
+		overBelow = event.clientY > box.top + box.height / 2;
+	}
+
+	async function onDrop(event, target) {
+		event.preventDefault();
+		const id = draggingId;
+		const below = overBelow;
+		draggingId = null;
+		overId = null;
+		if (!id || id === target.id) return;
+
+		const without = own.filter((p) => p.id !== id);
+		const at = without.findIndex((p) => p.id === target.id);
+		if (at < 0) return;
+
+		const ordered = [...without];
+		ordered.splice(below ? at + 1 : at, 0, own.find((p) => p.id === id));
+		await app.reorderProjects(ordered.map((p) => p.id));
+	}
 </script>
 
 <nav class="sidebar" aria-label="Hovedmenu">
@@ -90,8 +136,21 @@
 		{#each own as project (project.id)}
 			<a
 				href="/projekt/{project.id}"
+				class="sortable"
 				class:active={current === `/projekt/${project.id}`}
+				class:dragging={draggingId === project.id}
+				class:drop-above={overId === project.id && !overBelow}
+				class:drop-below={overId === project.id && overBelow}
 				onclick={onnavigate}
+				draggable="true"
+				ondragstart={(e) => onDragStart(e, project)}
+				ondragend={() => {
+					draggingId = null;
+					overId = null;
+				}}
+				ondragover={(e) => onDragOver(e, project)}
+				ondragleave={() => (overId = null)}
+				ondrop={(e) => onDrop(e, project)}
 			>
 				<span class="dot" aria-hidden="true"></span>
 				{project.name}
@@ -278,6 +337,39 @@
 		background: var(--surface-raised);
 		color: var(--ink);
 		font-weight: 500;
+	}
+
+	/* Only your own projects reorder. A shared one sits where its owner put it —
+	   sort_order is a column on the project, not a preference per viewer. */
+	a.sortable {
+		position: relative;
+	}
+
+	a.sortable.dragging {
+		opacity: 0.4;
+	}
+
+	/* A line in the gap rather than a highlighted row: the gap is the target. */
+	a.sortable::before {
+		content: '';
+		position: absolute;
+		left: var(--s2);
+		right: var(--s2);
+		height: 2px;
+		background: var(--accent);
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity var(--fast) var(--ease);
+	}
+
+	a.sortable.drop-above::before {
+		top: -1px;
+		opacity: 1;
+	}
+
+	a.sortable.drop-below::before {
+		bottom: -1px;
+		opacity: 1;
 	}
 
 	.dot {

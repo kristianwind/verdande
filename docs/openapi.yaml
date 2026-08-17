@@ -756,6 +756,35 @@ paths:
         "201": { $ref: "#/components/responses/Project" }
         "422": { $ref: "#/components/responses/Validation" }
 
+  /api/v1/projects/reorder:
+    post:
+      tags: [projects]
+      summary: Set the order projects appear in.
+      description: |
+        The whole list at once rather than one move at a time. A person has a
+        handful of projects, so sending the order you want is simpler than
+        midpoints and cannot land half-applied.
+
+        Projects you do not own are skipped: `sort_order` is a column on the
+        project rather than a preference per viewer, so a shared one stays where
+        its owner put it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  maxItems: 500
+                  items: { type: string }
+                  description: Project ids, top to bottom.
+      responses:
+        "204": { description: Reordered. }
+        "422": { $ref: "#/components/responses/Validation" }
+
   /api/v1/projects/{projectID}:
     parameters:
       - { name: projectID, in: path, required: true, schema: { type: string } }
