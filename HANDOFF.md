@@ -16,31 +16,37 @@ bruger det. Dette er noget andet: beslutningerne, hullerne og fælderne.
 | Repo | `kristianwind/verdande`, privat |
 | Lokal sti | `~/Documents/Code/verdande` |
 | Stack | Go 1.26, SQLite (modernc, ingen cgo), SvelteKit 5, én binary |
-| Udgivet | `v0.1.0` — `ghcr.io/kristianwind/verdande`, amd64 + arm64 |
+| Udgivet | `v0.2.0` — `ghcr.io/kristianwind/verdande`, amd64 + arm64 |
 | Deployes som | Rune i Yggdrasil Panel; kører også som almindelig Docker |
 | CI | Go (fmt, vet, race), OpenAPI-lint, Playwright, Docker-build, MkDocs |
 | Omfang | ~23.000 linjer Go, ~7.100 linjer frontend, 610 tests + 6 røgtests, 20 pakker |
 
-## Registret er privat
+## GHCR-pakken skal være offentlig
 
-Imaget ligger på GHCR, og **pakken er privat**. En anonym pull fejler med noget,
-der lyder som om imaget slet ikke findes:
+Ikke af princip — fordi Yggdrasil ikke kan andet.
+
+Panelets `PullImage` kalder Docker-SDK'ets `ImagePull` med et tomt
+`image.PullOptions{}`. `RegistryAuth` bliver aldrig sat, og der findes ingen
+registry-legitimationsoplysninger nogen steder i panelet. Et privat image svarer
+altså 401. `pullImageRetry` kasserer den fejl ("second failure surfaces at
+create"), og `ContainerCreate` — som kun slår op lokalt — melder bagefter:
 
 ```
 create container: Error response from daemon:
 No such image: ghcr.io/kristianwind/verdande:latest
 ```
 
-Det er en rettighedsfejl med forkert hat på. Docker-dæmonen **på Yggdrasil-værten**
-skal logge ind én gang, som den bruger der kører dæmonen:
+Beskeden lyver: taggen findes udmærket i registret.
 
-```bash
-echo "$GHCR_TOKEN" | docker login ghcr.io -u kristianwind --password-stdin
-```
+**`docker login` på værten hjælper ikke.** Det er rent klient-side — dæmonen
+gemmer ingen legitimationsoplysninger, CLI'en sender dem selv pr. request.
+Yggdrasil er en anden klient og sender ingen. Det kostede en runde at finde ud af,
+så det står her.
 
-`GHCR_TOKEN` er et GitHub-token med `read:packages` og intet andet. Alternativet er
-at gøre pakken offentlig under **Packages → verdande → Package settings**; repoet
-kan sagtens forblive privat.
+Vil man alligevel holde pakken privat, skal imaget lægges på værten manuelt med
+`docker login` efterfulgt af `docker pull` — før serveren oprettes, og igen efter
+hver udgivelse. Panelets eget pull fejler stadig lydløst; det finder bare imaget,
+der allerede er der.
 
 ## Navnet
 
@@ -316,21 +322,26 @@ blev valgt. De er ikke købt.
 
 ## Hvor denne session slap
 
-`v0.1.0` er tagget og publiceret. Hullerne fra den oprindelige overlevering er
-lukket på nær dem, der kræver rigtige tjenester — de står under
-[huller](#huller).
+`v0.1.0` og `v0.2.0` er tagget og publiceret; `latest` peger på 0.2.0. Hullerne
+fra den oprindelige overlevering er lukket på nær dem, der kræver rigtige
+tjenester — de står under [huller](#huller).
 
-Fire fejl blev fundet undervejs, alle af røgtestene, og alle rettet: samtidige
+Fem fejl blev fundet undervejs, alle af røgtestene, og alle rettet: samtidige
 skrivninger gav `SQLITE_BUSY`, en opgave man lukkede beholdt sin række, den samme
-opgave kunne havne to gange i listen, og en databasefejl loggede folk ud i stedet
-for at fejle ærligt. De tre første var der fra begyndelsen; ingen af dem kunne ses
-fra en Go-test. Det er argumentet for at have røgtestene, sagt kortere end
-forgængeren sagde det.
+opgave kunne havne to gange i listen, en databasefejl loggede folk ud i stedet for
+at fejle ærligt, og sidebjælke-testen talte links, før siden var hydreret — den
+sidste fandt CI, ikke maskinen her. De tre første var der fra begyndelsen; ingen
+af dem kunne ses fra en Go-test. Det er argumentet for at have røgtestene, sagt
+kortere end forgængeren sagde det.
 
 Tilføjet ud over hullerne: `PATCH /auth/me` (navn, tidszone og sprog kunne ikke
 ændres nogen steder), og hele `/tokens`-fladen — `docs/api.md` henviste til
 &ldquo;Settings → API tokens&rdquo;, men der fandtes hverken UI eller endpoints,
 kun `store`-laget.
 
-Arbejdstræet er ikke committet. Der ligger ingen halvfærdig kode, men ændringerne
-fra denne session står som ucommittede filer.
+To ting venter på et menneske. GHCR-pakken skal sættes til offentlig i web-UI'et;
+GitHub har intet API til det, og indtil da kan Yggdrasil ikke hente imaget —
+se [ovenfor](#ghcr-pakken-skal-være-offentlig). Og der ligger en 8,9 MB kompileret
+macOS-binary ved navn `shots` i repo-roden, committet ved et uheld i `a8e523b`;
+kilden i `tools/shots/` er det, der skal bruges, og `go build ./tools/shots` uden
+`-o` overskriver den sporede fil.

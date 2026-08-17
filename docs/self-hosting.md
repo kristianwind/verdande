@@ -5,15 +5,12 @@ cache, no queue and no second process.
 
 ## Docker
 
-!!! warning "Log in to the registry first"
-    The package is private, and an anonymous pull fails with `No such image`
-    rather than with a permission error. Once per host:
-
-    ```bash
-    echo "$GHCR_TOKEN" | docker login ghcr.io -u kristianwind --password-stdin
-    ```
-
-    `GHCR_TOKEN` is a GitHub token with the `read:packages` scope.
+!!! note "If the pull is refused"
+    The GHCR package is public, so this needs no credentials. If it is ever set
+    back to private, `docker login ghcr.io` with a token carrying the
+    `read:packages` scope before pulling — and see
+    [the Rune page](rune.md#if-the-image-will-not-pull), because a private image
+    fails differently and much more confusingly under Yggdrasil.
 
 ```bash
 docker run -d --name verdande \
