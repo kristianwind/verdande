@@ -90,7 +90,44 @@ async function request(method, path, body, options = {}) {
 const get = (path, options) => request('GET', path, undefined, options);
 const post = (path, body, options) => request('POST', path, body ?? {}, options);
 const patch = (path, body) => request('PATCH', path, body);
+const put = (path, body) => request('PUT', path, body);
 const del = (path) => request('DELETE', path);
+
+/**
+ * Uploads a file. Not routed through `request`, which serialises JSON and sets a
+ * Content-Type — a multipart body has to set its own boundary, and the browser
+ * only does that when nothing has claimed the header.
+ */
+async function upload(path, file, field = 'file') {
+	const form = new FormData();
+	form.append(field, file);
+
+	let res;
+	try {
+		res = await fetch(`/api/v1${path}`, { method: 'POST', body: form, credentials: 'same-origin' });
+	} catch {
+		throw new ApiError(0, 'offline', 'ingen forbindelse');
+	}
+
+	const text = await res.text();
+	let payload = null;
+	if (text) {
+		try {
+			payload = JSON.parse(text);
+		} catch {
+			payload = null;
+		}
+	}
+	if (!res.ok) {
+		throw new ApiError(
+			res.status,
+			payload?.code ?? 'internal_error',
+			payload?.error ?? res.statusText,
+			payload?.fields
+		);
+	}
+	return payload;
+}
 
 export const api = {
 	// --- auth
@@ -100,6 +137,7 @@ export const api = {
 	loginTOTP: (code) => post('/auth/login/totp', { code }),
 	logout: () => post('/auth/logout'),
 	me: () => get('/auth/me'),
+	updateProfile: (data) => patch('/auth/me', data),
 	signup: (data) => post('/auth/signup', data),
 	forgotPassword: (email) => post('/auth/password/forgot', { email }),
 	resetPassword: (token, password) => post('/auth/password/reset', { token, password }),
@@ -174,6 +212,54 @@ export const api = {
 	saveTemplate: (data) => post('/templates', data),
 	useTemplate: (id, data) => post(`/templates/${id}/use`, data),
 	deleteTemplate: (id) => del(`/templates/${id}`),
+
+	// --- comments and attachments
+	listComments: (taskId) => get(`/tasks/${taskId}/comments`),
+	createComment: (taskId, body) => post(`/tasks/${taskId}/comments`, { body }),
+	updateComment: (id, body) => patch(`/comments/${id}`, { body }),
+	deleteComment: (id) => del(`/comments/${id}`),
+
+	uploadAttachment: (taskId, file) => upload(`/tasks/${taskId}/attachments`, file),
+	deleteAttachment: (id) => del(`/attachments/${id}`),
+	attachmentURL: (id) => `/api/v1/attachments/${id}`,
+
+	// --- API tokens
+	listTokens: () => get('/tokens'),
+	createToken: (name, expiresInDays) =>
+		post('/tokens', { name, expires_in_days: expiresInDays ?? 0 }),
+	deleteToken: (id) => del(`/tokens/${id}`),
+
+	// --- notifications and push
+	listNotifications: () => get('/notifications'),
+	markNotificationsRead: (id) => post(id ? `/notifications/${id}/read` : '/notifications/read'),
+
+	pushKey: () => get('/push/key'),
+	subscribePush: (subscription) => post('/push/subscribe', subscription),
+	unsubscribePush: (endpoint) => post('/push/unsubscribe', { endpoint, keys: {} }),
+
+	// --- integrations
+	getMailAddress: () => get('/mail-address'),
+	rotateMailAddress: () => post('/mail-address/rotate'),
+
+	getGmail: () => get('/gmail'),
+	setGmail: (data) => put('/gmail', data),
+	disconnectGmail: () => del('/gmail'),
+	authorizeGmail: () => post('/gmail/authorize'),
+	syncGmail: () => post('/gmail/sync'),
+
+	getAISettings: () => get('/ai/settings'),
+	setAISettings: (data) => put('/ai/settings', data),
+	aiSummary: () => post('/ai/summary'),
+	aiSplit: (taskId) => post(`/ai/tasks/${taskId}/split`),
+
+	version: () => get('/version'),
+
+	// --- import and export
+	importTodoist: (file) => upload('/import/todoist', file),
+	importCSV: (data) => post('/import/csv', data),
+	exportAccountURL: () => '/api/v1/export/account',
+	exportProjectCSVURL: (id) => `/api/v1/export/projects/${id}.csv`,
+	exportProjectICSURL: (id) => `/api/v1/export/projects/${id}.ics`,
 
 	// --- views
 	today: () => get('/today'),
