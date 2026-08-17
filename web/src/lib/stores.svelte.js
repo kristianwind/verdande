@@ -393,21 +393,65 @@ class SidebarLayout {
 
 export const sidebar = new SidebarLayout();
 
+/**
+ * The themes on offer.
+ *
+ * `dark` is the tokens on bare :root; the rest are [data-theme] blocks in
+ * app.css. The list lives here so the picker and the stylesheet cannot drift —
+ * an entry with no CSS behind it renders as the default and looks like a bug in
+ * the picker rather than a missing block.
+ */
+export const THEMES = [
+	{ id: 'dark', name: 'Nordlys', note: 'Mørk med grøn accent.', dark: true },
+	{ id: 'dusk', name: 'Skumring', note: 'Mørk og varm, med rav.', dark: true },
+	{ id: 'light', name: 'Dagslys', note: 'Lys og køligt neutral.', dark: false },
+	{ id: 'paper', name: 'Papir', note: 'Lys og varm, som papir.', dark: false },
+	{ id: 'contrast', name: 'Kontrast', note: 'Sort på hvidt, til skarpt lys.', dark: false }
+];
+
 /** Theme, kept in localStorage and applied to the document element. */
-export const theme = {
-	get current() {
-		if (typeof document === 'undefined') return 'dark';
-		return document.documentElement.dataset.theme ?? 'dark';
-	},
-	toggle() {
-		const next = this.current === 'dark' ? 'light' : 'dark';
-		document.documentElement.dataset.theme = next;
+class Theme {
+	/**
+	 * Mirrors the attribute on <html>, which app.html sets before first paint —
+	 * that is the only way to avoid a white flash on load, and it means the
+	 * document, not this object, is where the truth lives.
+	 */
+	current = $state(
+		typeof document === 'undefined' ? 'dark' : (document.documentElement.dataset.theme ?? 'dark')
+	);
+
+	set(id) {
+		if (!THEMES.some((t) => t.id === id)) return;
+		this.current = id;
+		document.documentElement.dataset.theme = id;
+
+		// The browser paints its own chrome from this — the address bar on a
+		// phone, the frame of an installed PWA. Left alone it stays the colour of
+		// whichever theme shipped in the markup.
+		const ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
+		document.querySelector('meta[name="theme-color"]')?.setAttribute('content', ground);
+
 		try {
-			localStorage.setItem('verdande:theme', next);
+			localStorage.setItem('verdande:theme', id);
 		} catch {
 			// Private browsing; the choice simply will not persist.
 		}
 	}
-};
+
+	/**
+	 * The topbar button, which flips between light and dark rather than walking
+	 * all five. Somebody who has chosen Skumring wants the light one to be Papir,
+	 * not to be marched back to the default — so it moves to the other side of
+	 * the list and stays warm or stays cool.
+	 */
+	toggle() {
+		const now = THEMES.find((t) => t.id === this.current) ?? THEMES[0];
+		const opposite = THEMES.filter((t) => t.dark !== now.dark);
+		const index = THEMES.filter((t) => t.dark === now.dark).indexOf(now);
+		this.set((opposite[index] ?? opposite[0]).id);
+	}
+}
+
+export const theme = new Theme();
 
 export { ApiError, humanMessage };

@@ -87,7 +87,157 @@
 	--content-max: 720px;
 }
 
-:root[data-theme='light'] {
+/*
+ * The dark palette again, by name.
+ *
+ * :root carries it as the default, and :root only ever matches <html> — so a
+ * swatch in the settings picker asking for data-theme="dark" would otherwise
+ * inherit whatever the page is wearing. Repeated rather than restructured: the
+ * alternative is splitting the token block in two and leaving somebody to work
+ * out which half a new token belongs in.
+ */
+[data-theme='dark'] {
+	--ground: #111312;
+	--surface: #171a19;
+	--surface-raised: #1d211f;
+	--surface-sunken: #0d0f0e;
+	--line: #262b29;
+	--line-strong: #343a37;
+
+	--ink: #e8ebe9;
+	--ink-muted: #9aa39e;
+	--ink-faint: #6b736f;
+
+	--accent: #5fbf8f;
+	--accent-hover: #6fcf9f;
+	--accent-sunken: #1c3329;
+	--accent-ink: #0d1411;
+
+	--p1: #cf6b6b;
+	--p2: #d69f5c;
+	--p3: #6b9ecf;
+	--p4: var(--ink-faint);
+
+	--danger: #cf6b6b;
+	--danger-sunken: #33201f;
+
+	--shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+	--shadow-lg: 0 8px 32px rgb(0 0 0 / 0.35);
+}
+
+/*
+ * The other themes.
+ *
+ * Each one redefines colour and nothing else: no spacing, no type, no radii.
+ * That is what keeps them themes rather than five separate designs, and it is
+ * why a component that reaches for a raw hex breaks in four places at once
+ * instead of one.
+ *
+ * Every theme states its full palette rather than inheriting the dark one and
+ * patching it. A partial theme looks finished until somebody adds a token, at
+ * which point four themes silently fall back to a colour from a fifth.
+ */
+
+/* Skumring — the same dark, turned warm, with amber where the green was. */
+[data-theme='dusk'] {
+	--ground: #14110f;
+	--surface: #1b1714;
+	--surface-raised: #221d19;
+	--surface-sunken: #100d0b;
+	--line: #2b2521;
+	--line-strong: #3a322c;
+
+	--ink: #ece6df;
+	--ink-muted: #a3988c;
+	/* Light enough to clear 4.5:1 against the ground. The quiet tier is where
+	   dates and counts live, and it is the first thing to disappear. */
+	--ink-faint: #8d8377;
+
+	--accent: #d99a4e;
+	--accent-hover: #e8a95c;
+	--accent-sunken: #33261480;
+	--accent-ink: #16110a;
+
+	--p1: #cf6b6b;
+	--p2: #d69f5c;
+	--p3: #6b9ecf;
+	--p4: var(--ink-faint);
+
+	--danger: #cf6b6b;
+	--danger-sunken: #33201f;
+
+	--shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+	--shadow-lg: 0 8px 32px rgb(0 0 0 / 0.4);
+}
+
+/* Papir — warm light, closer to paper than to a screen. */
+[data-theme='paper'] {
+	--ground: #f6f1e7;
+	--surface: #fffcf6;
+	--surface-raised: #fffcf6;
+	--surface-sunken: #ece5d7;
+	--line: #ded5c3;
+	--line-strong: #c8bda6;
+
+	--ink: #241f18;
+	--ink-muted: #665c4c;
+	--ink-faint: #756a55;
+
+	--accent: #8a5a2b;
+	--accent-hover: #74491f;
+	--accent-sunken: #ebdfcb;
+	--accent-ink: #fffcf6;
+
+	--p1: #b0452f;
+	--p2: #96701f;
+	--p3: #3f6b8a;
+	--p4: var(--ink-faint);
+
+	--danger: #b0452f;
+	--danger-sunken: #f3e2dc;
+
+	--shadow: 0 1px 2px rgb(60 40 10 / 0.08);
+	--shadow-lg: 0 8px 32px rgb(60 40 10 / 0.14);
+}
+
+/*
+ * Kontrast — for reading in bright sun, or for eyes that the quiet greys of the
+ * other four do not serve. Pure black on white, borders that are actually
+ * visible, and an accent dark enough to pass against white text.
+ *
+ * The muted inks are deliberately much darker than elsewhere: "secondary text"
+ * at 60% grey is the first thing to disappear, and it is where dates live.
+ */
+[data-theme='contrast'] {
+	--ground: #ffffff;
+	--surface: #ffffff;
+	--surface-raised: #f2f2f2;
+	--surface-sunken: #e8e8e8;
+	--line: #767676;
+	--line-strong: #1a1a1a;
+
+	--ink: #000000;
+	--ink-muted: #2b2b2b;
+	--ink-faint: #4a4a4a;
+
+	--accent: #005c2e;
+	--accent-hover: #00753a;
+	--accent-sunken: #cfe8da;
+	--accent-ink: #ffffff;
+
+	--p1: #a10000;
+	--p2: #7a4a00;
+	--p3: #00417a;
+	--p4: var(--ink-faint);
+
+	--danger: #a10000;
+	--danger-sunken: #f7dcdc;
+
+	--shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+	--shadow-lg: 0 8px 32px rgb(0 0 0 / 0.35);
+}
+
+[data-theme='light'] {
 	--ground: #faf9f7;
 	--surface: #ffffff;
 	--surface-raised: #ffffff;
