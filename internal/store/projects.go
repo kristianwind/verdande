@@ -20,6 +20,11 @@ type Project struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
+	// GroupID is which sidebar group the *asking* user has filed it under, and is
+	// empty for a project shared with them: the column is on the project row, so
+	// the owner's filing is not an answer anybody else asked for.
+	GroupID string
+
 	// Role is the asking user's standing, filled in by the list and get calls so
 	// the frontend can grey out what they cannot do without a second request.
 	Role Role
@@ -44,7 +49,8 @@ func (db *DB) ListProjects(ctx context.Context, userID string, includeArchived b
 		SELECT p.id, p.name, p.color, p.icon, p.view_mode, p.owner_id, p.is_inbox,
 		       p.archived, p.sort_order, p.created_at, p.updated_at,
 		       CASE WHEN p.owner_id = ? THEN 'owner' ELSE COALESCE(m.role, '') END AS role,
-		       (SELECT count(*) FROM project_members pm WHERE pm.project_id = p.id) + 1 AS member_count
+		       (SELECT count(*) FROM project_members pm WHERE pm.project_id = p.id) + 1 AS member_count,
+		       CASE WHEN p.owner_id = ? THEN p.group_id END AS group_id
 		FROM projects p
 		LEFT JOIN project_members m ON m.project_id = p.id AND m.user_id = ?
 		WHERE p.deleted_at IS NULL
@@ -54,7 +60,7 @@ func (db *DB) ListProjects(ctx context.Context, userID string, includeArchived b
 	}
 	query += ` ORDER BY p.is_inbox DESC, p.sort_order, p.created_at`
 
-	rows, err := db.QueryContext(ctx, query, userID, userID, userID)
+	rows, err := db.QueryContext(ctx, query, userID, userID, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +87,9 @@ func (db *DB) GetProject(ctx context.Context, projectID, userID string) (*Projec
 		SELECT p.id, p.name, p.color, p.icon, p.view_mode, p.owner_id, p.is_inbox,
 		       p.archived, p.sort_order, p.created_at, p.updated_at,
 		       ? AS role,
-		       (SELECT count(*) FROM project_members pm WHERE pm.project_id = p.id) + 1
-		FROM projects p WHERE p.id = ? AND p.deleted_at IS NULL`, string(role), projectID)
+		       (SELECT count(*) FROM project_members pm WHERE pm.project_id = p.id) + 1,
+		       CASE WHEN p.owner_id = ? THEN p.group_id END
+		FROM projects p WHERE p.id = ? AND p.deleted_at IS NULL`, string(role), userID, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -100,17 +107,18 @@ func (db *DB) GetProject(ctx context.Context, projectID, userID string) (*Projec
 
 func scanProject(rows *sql.Rows) (Project, error) {
 	var p Project
-	var icon sql.NullString
+	var icon, groupID sql.NullString
 	var isInbox, archived int
 	var created, updated int64
 	var role string
 
 	err := rows.Scan(&p.ID, &p.Name, &p.Color, &icon, &p.ViewMode, &p.OwnerID, &isInbox,
-		&archived, &p.SortOrder, &created, &updated, &role, &p.MemberCount)
+		&archived, &p.SortOrder, &created, &updated, &role, &p.MemberCount, &groupID)
 	if err != nil {
 		return p, err
 	}
 	p.Icon = icon.String
+	p.GroupID = groupID.String
 	p.IsInbox = isInbox == 1
 	p.Archived = archived == 1
 	p.CreatedAt = time.Unix(created, 0).UTC()

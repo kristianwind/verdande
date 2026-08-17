@@ -7,8 +7,32 @@
 	 * misread the whole month at a glance.
 	 */
 	import { app } from '$lib/stores.svelte.js';
+	import { TASK, startDrag, carries, dragged, accept } from '$lib/dnd.js';
 
-	let { onselect } = $props();
+	let {
+		/**
+		 * What a chip does when clicked. Opening the task is what it should do
+		 * everywhere, so it is the default rather than something each caller has to
+		 * remember — the project page did not, and its chips were dead for as long
+		 * as the month view has existed.
+		 */
+		onselect = (task) => app.openDetail(task.id),
+		/**
+		 * Told which dates the grid is showing, whenever that changes.
+		 *
+		 * A project's month view needs nothing: the page has already loaded every
+		 * task in the project. Kommende is the other case — it cannot load every
+		 * task anybody has ever dated — so it asks for the month on screen, and
+		 * this is how it learns which one that is.
+		 */
+		onrange,
+		/**
+		 * Narrows the grid to one project. The store holds whatever the last view
+		 * loaded, so a project's month has to say which project it is — Kommende,
+		 * which shows every project, is the one that leaves this out.
+		 */
+		projectId = null
+	} = $props();
 
 	let cursor = $state(startOfMonth(new Date()));
 
@@ -41,10 +65,23 @@
 		return days;
 	});
 
+	// Reported after the grid is worked out rather than from the cursor, because
+	// the grid runs whole weeks: a month view nearly always shows a few days of the
+	// month before it and a few of the one after, and a caller loading only the
+	// month itself would leave those corners empty.
+	$effect(() => {
+		onrange?.({ from: iso(grid[0]), to: iso(grid[grid.length - 1]) });
+	});
+
 	const todayISO = iso(new Date());
 
 	const tasksOn = (date) =>
-		app.tasks.filter((t) => !t.completed && t.due_date === iso(date));
+		app.tasks.filter(
+			(t) =>
+				!t.completed &&
+				t.due_date === iso(date) &&
+				(!projectId || t.project_id === projectId)
+		);
 
 	const monthName = $derived(
 		cursor.toLocaleDateString('da-DK', { month: 'long', year: 'numeric' })
@@ -52,6 +89,25 @@
 
 	function step(months) {
 		cursor = new Date(cursor.getFullYear(), cursor.getMonth() + months, 1);
+	}
+
+	// --- dropping a task on a day ---------------------------------------------------
+
+	/** The cell lit up under the pointer. */
+	let over = $state(null);
+
+	function onDragOver(event, date) {
+		if (!carries(event, TASK)) return;
+		accept(event);
+		over = iso(date);
+	}
+
+	async function onDrop(event, date) {
+		event.preventDefault();
+		const id = dragged(event, TASK);
+		over = null;
+		if (!id) return;
+		await app.reschedule(id, iso(date));
 	}
 </script>
 
@@ -73,11 +129,32 @@
 		{#each grid as date (date.toISOString())}
 			{@const tasks = tasksOn(date)}
 			{@const outside = date.getMonth() !== cursor.getMonth()}
-			<div class="day" class:outside class:today={iso(date) === todayISO}>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="day"
+				data-date={iso(date)}
+				class:outside
+				class:today={iso(date) === todayISO}
+				class:over={over === iso(date)}
+				ondragover={(e) => onDragOver(e, date)}
+				ondragleave={() => (over = null)}
+				ondrop={(e) => onDrop(e, date)}
+			>
 				<span class="number">{date.getDate()}</span>
 
 				{#each tasks.slice(0, 3) as task (task.id)}
-					<button class="chip" data-priority={task.priority} onclick={() => onselect?.(task)}>
+					<!-- Draggable as well as clickable: within a month, moving something
+					     to another day is the whole reason to be looking at a month. The
+					     browser needs a few pixels of movement before it calls a press a
+					     drag, so the click survives. -->
+					<button
+						class="chip"
+						data-priority={task.priority}
+						draggable="true"
+						ondragstart={(e) => startDrag(e, TASK, task.id)}
+						ondragend={() => (over = null)}
+						onclick={() => onselect?.(task)}
+					>
 						{task.content}
 					</button>
 				{/each}
@@ -120,7 +197,12 @@
 		color: var(--ink);
 	}
 
-	.today {
+	/* Scoped to the header, because `.today` is not only this button: the day cell
+	   for today carries the same class, and an unscoped `margin-left: auto` made a
+	   grid item shrink to its content and sit against the right of its column. The
+	   month always had one cell narrower than the other six, on every project
+	   calendar, and it read as a grid that had not quite laid out yet. */
+	header .today {
 		width: auto;
 		margin-left: auto;
 		padding: 0 var(--s3);
@@ -176,6 +258,13 @@
 	.number {
 		font-size: var(--text-xs);
 		color: var(--ink-muted);
+	}
+
+	/* The whole cell, because the whole cell is the target: a day is a box, not a
+	   gap between two boxes. */
+	.day.over {
+		background: var(--surface-raised);
+		box-shadow: inset 0 0 0 1px var(--accent);
 	}
 
 	.day.today .number {

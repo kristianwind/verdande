@@ -180,6 +180,12 @@ export const api = {
 	listTrashedProjects: () => get('/trash/projects'),
 	restoreProject: (id) => post(`/trash/projects/${id}/restore`),
 
+	listProjectGroups: () => get('/project-groups'),
+	createProjectGroup: (name) => post('/project-groups', { name }),
+	updateProjectGroup: (id, data) => patch(`/project-groups/${id}`, data),
+	deleteProjectGroup: (id) => del(`/project-groups/${id}`),
+	reorderProjectGroups: (ids) => post('/project-groups/reorder', { ids }),
+
 	listSections: (projectId) => get(`/projects/${projectId}/sections`),
 	createSection: (projectId, name) => post(`/projects/${projectId}/sections`, { name }),
 	updateSection: (id, data) => patch(`/sections/${id}`, data),

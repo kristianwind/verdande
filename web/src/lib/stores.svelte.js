@@ -16,6 +16,8 @@ import { api, ApiError, humanMessage } from './api.js';
 class AppState {
 	user = $state(null);
 	projects = $state([]);
+	/** The foldable headings over the projects in the sidebar. */
+	groups = $state([]);
 	tasks = $state([]);
 	loading = $state(true);
 	/** Transient messages: a failed save, a rolled-back change. */
@@ -66,8 +68,12 @@ class AppState {
 		this.loading = true;
 		try {
 			this.user = await api.me();
-			const { projects } = await api.listProjects();
+			const [{ projects }, { groups }] = await Promise.all([
+				api.listProjects(),
+				api.listProjectGroups()
+			]);
 			this.projects = projects;
+			this.groups = groups;
 			this.connect();
 		} catch (e) {
 			this.user = null;
@@ -131,6 +137,17 @@ class AppState {
 				break;
 			case 'project.deleted':
 				this.projects = this.projects.filter((p) => p.id !== task?.id);
+				break;
+
+			case 'project_group.created':
+			case 'project_group.updated':
+				this.upsertGroup(task);
+				break;
+			case 'project_group.deleted':
+				// The projects filed under it are not deleted with it; they come back
+				// out as ungrouped, which the sidebar works out from the group being
+				// gone rather than from a second event per project.
+				this.groups = this.groups.filter((g) => g.id !== task?.id);
 				break;
 
 			// The payload is not always the label — a rename says only that
@@ -252,6 +269,35 @@ class AppState {
 		}
 	}
 
+	/**
+	 * Moves a task into another project, which is what dropping it on the sidebar
+	 * means.
+	 *
+	 * Through `move` rather than a `project_id` on an update: `sort_order` belongs
+	 * to the project, so a task arriving in a new one needs a place among its
+	 * tasks. The section goes too — sections belong to the project it is leaving,
+	 * and carrying the id across would file it under a heading that is not there.
+	 */
+	async moveToProject(id, projectId) {
+		const previous = this.get(id);
+		if (!previous || previous.project_id === projectId) return;
+
+		this.replace(id, { ...previous, project_id: projectId, section_id: '' });
+		try {
+			this.replace(id, await api.moveTask(id, { project_id: projectId, section_id: '' }));
+		} catch (e) {
+			this.replace(id, previous);
+			this.toast(humanMessage(e));
+		}
+	}
+
+	/** Puts a task on a day — dropping it on one, in Kommende or in a month grid. */
+	async reschedule(id, date) {
+		const previous = this.get(id);
+		if (!previous || previous.due_date === date) return;
+		await this.update(id, { due_date: date });
+	}
+
 	async remove(id) {
 		const previous = [...this.tasks];
 		this.tasks = this.tasks.filter((t) => t.id !== id);
@@ -324,6 +370,112 @@ class AppState {
 		}
 	}
 
+	// --- project groups -----------------------------------------------------------
+
+	/** The same new-array upsert the projects need, and for the same reason. */
+	upsertGroup(group) {
+		if (!group?.id) return;
+		this.groups = this.groups.some((g) => g.id === group.id)
+			? this.groups.map((g) => (g.id === group.id ? group : g))
+			: [...this.groups, group];
+	}
+
+	async createGroup(name) {
+		try {
+			const group = await api.createProjectGroup(name);
+			this.upsertGroup(group);
+			return group;
+		} catch (e) {
+			this.toast(humanMessage(e));
+			return null;
+		}
+	}
+
+	/**
+	 * Folds or unfolds a group.
+	 *
+	 * Applied first and saved after, like everything else here — a fold that waits
+	 * for a round trip feels like a click that did not land. The rollback matters
+	 * more than usual: this is stored on the account rather than in the browser, so
+	 * a failed save that left the arrow turned would be a lie that survives a
+	 * reload.
+	 */
+	async toggleGroup(id) {
+		const group = this.groups.find((g) => g.id === id);
+		if (!group) return;
+		await this.#patchGroup(id, { collapsed: !group.collapsed });
+	}
+
+	async renameGroup(id, name) {
+		await this.#patchGroup(id, { name });
+	}
+
+	async #patchGroup(id, patch) {
+		const previous = this.groups.find((g) => g.id === id);
+		if (!previous) return;
+
+		this.upsertGroup({ ...previous, ...patch });
+		try {
+			this.upsertGroup(await api.updateProjectGroup(id, patch));
+		} catch (e) {
+			this.upsertGroup(previous);
+			this.toast(humanMessage(e));
+		}
+	}
+
+	/**
+	 * Deletes the heading. The projects come back out as ungrouped, which is done
+	 * here too rather than waiting for a re-read: the sidebar reads `group_id` to
+	 * decide where a project sits, and a project pointing at a group that is gone
+	 * would otherwise vanish from the list entirely until the next load.
+	 */
+	async deleteGroup(id) {
+		const previousGroups = this.groups;
+		const previousProjects = this.projects;
+
+		this.groups = this.groups.filter((g) => g.id !== id);
+		this.projects = this.projects.map((p) => (p.group_id === id ? { ...p, group_id: '' } : p));
+		try {
+			await api.deleteProjectGroup(id);
+		} catch (e) {
+			this.groups = previousGroups;
+			this.projects = previousProjects;
+			this.toast(humanMessage(e));
+		}
+	}
+
+	async reorderGroups(ids) {
+		const previous = this.groups;
+		const rank = new Map(ids.map((id, i) => [id, i]));
+
+		this.groups = this.groups.map((g) =>
+			rank.has(g.id) ? { ...g, sort_order: rank.get(g.id) } : g
+		);
+		try {
+			await api.reorderProjectGroups(ids);
+		} catch (e) {
+			this.groups = previous;
+			this.toast(humanMessage(e));
+		}
+	}
+
+	/** Files a project under a group, or takes it out of one when groupId is ''. */
+	async setProjectGroup(projectId, groupId) {
+		const previous = this.projects.find((p) => p.id === projectId);
+		// `?? ''` because the server omits the field when there is no group, so
+		// "none" arrives as undefined and is compared against the '' that means the
+		// same thing.
+		if (!previous || (previous.group_id ?? '') === groupId) return;
+
+		this.upsertProject({ ...previous, group_id: groupId });
+		try {
+			this.upsertProject(await api.updateProject(projectId, { group_id: groupId }));
+		} catch (e) {
+			this.upsertProject(previous);
+			this.toast(humanMessage(e));
+		}
+	}
+
 	// --- toasts -------------------------------------------------------------------
 
 	toast(message) {
@@ -392,6 +544,35 @@ class SidebarLayout {
 }
 
 export const sidebar = new SidebarLayout();
+
+/**
+ * Whether Kommende shows the next seven days as a list, or the month as a grid.
+ *
+ * In localStorage rather than on the account, and for the same reason as the
+ * sidebar's width: a month grid of seven columns needs room, and the answer on a
+ * phone is not the answer on a wide monitor. A project keeps its `view_mode` on
+ * the row because that is a fact about the project — this is a fact about the
+ * screen.
+ */
+class UpcomingView {
+	mode = $state(
+		typeof localStorage !== 'undefined' && localStorage.getItem('verdande:upcoming') === 'calendar'
+			? 'calendar'
+			: 'list'
+	);
+
+	set(next) {
+		if (next !== 'list' && next !== 'calendar') return;
+		this.mode = next;
+		try {
+			localStorage.setItem('verdande:upcoming', next);
+		} catch {
+			// Private browsing; the choice simply will not persist.
+		}
+	}
+}
+
+export const upcomingView = new UpcomingView();
 
 /**
  * The themes on offer.

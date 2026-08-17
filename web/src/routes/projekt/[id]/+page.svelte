@@ -63,7 +63,13 @@
 	let canEdit = $derived(project?.role === 'owner' || project?.role === 'editor');
 	let isOwner = $derived(project?.role === 'owner');
 
-	let open = $derived(app.tasks.filter((t) => !t.completed && !t.parent_id));
+	// Filtered by project as well as by state. The store holds whatever the last
+	// view loaded, and a task can now leave this project while you are looking at
+	// it — dropped on another project in the sidebar, or moved by somebody else —
+	// so "what the page asked for" is not the same as "what is in the store".
+	let open = $derived(
+		app.tasks.filter((t) => !t.completed && !t.parent_id && t.project_id === project?.id)
+	);
 	let unsectioned = $derived(open.filter((t) => !t.section_id));
 
 	let editing = $state(false);
@@ -295,7 +301,7 @@
 		{#if mode === 'board'}
 			<BoardView {project} {sections} {canEdit} />
 		{:else if mode === 'calendar'}
-			<CalendarView />
+			<CalendarView projectId={project.id} />
 		{:else}
 			<section>
 				<TaskList tasks={unsectioned} projectId={project.id} sectionId="" {canEdit} />

@@ -1,6 +1,7 @@
 <script>
 	import { app, sidebar } from '$lib/stores.svelte.js';
 	import { api } from '$lib/api.js';
+	import { TASK, PROJECT, GROUP, startDrag, carries, dragged, accept } from '$lib/dnd.js';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
@@ -46,6 +47,60 @@
 	);
 	let current = $derived($page.url.pathname);
 
+	// --- groups -------------------------------------------------------------------
+
+	let groups = $derived([...app.groups].sort((a, b) => a.sort_order - b.sort_order));
+	let groupIds = $derived(new Set(groups.map((g) => g.id)));
+
+	/**
+	 * Which heading a project renders under — '' for the loose ones at the top.
+	 *
+	 * It is not simply `group_id`, and the difference is not paranoia: a group
+	 * deleted in another tab arrives as one event, without a second one per
+	 * project, so for a moment the projects here still name a heading that no
+	 * longer renders. Filing by the raw id would drop them out of the sidebar
+	 * entirely — under a group that is not drawn, which is nowhere.
+	 */
+	const bucketOf = (p) => (p.group_id && groupIds.has(p.group_id) ? p.group_id : '');
+
+	let ungrouped = $derived(own.filter((p) => bucketOf(p) === ''));
+	const inGroup = (id) => own.filter((p) => p.group_id === id);
+
+	let addingGroup = $state(false);
+	let newGroupName = $state('');
+	let renamingGroup = $state(null);
+	let groupName = $state('');
+
+	async function createGroup(event) {
+		event.preventDefault();
+		const name = newGroupName.trim();
+		if (!name) return;
+		newGroupName = '';
+		addingGroup = false;
+		await app.createGroup(name);
+	}
+
+	async function renameGroup(event, group) {
+		event.preventDefault();
+		const name = groupName.trim();
+		renamingGroup = null;
+		if (!name || name === group.name) return;
+		await app.renameGroup(group.id, name);
+	}
+
+	async function removeGroup(group) {
+		const count = inGroup(group.id).length;
+		// Says what happens to the projects, because "slet gruppen" reads like it
+		// might take them with it. It does not: only the heading goes.
+		const kept =
+			count === 1
+				? 'Projektet i den bliver, men ligger bagefter uden gruppe.'
+				: `De ${count} projekter bliver, men ligger bagefter uden gruppe.`;
+		if (!confirm(count ? `Slet gruppen "${group.name}"? ${kept}` : `Slet gruppen "${group.name}"?`))
+			return;
+		await app.deleteGroup(group.id);
+	}
+
 	// --- resizing -------------------------------------------------------------------
 
 	let resizing = $state(false);
@@ -77,39 +132,156 @@
 	let draggingId = $state(null);
 	let overId = $state(null);
 	let overBelow = $state(false);
+	/** The group whose heading is lit up as a drop target. */
+	let overGroup = $state(null);
+	let draggingGroup = $state(null);
+
+	function clearDrag() {
+		draggingId = null;
+		draggingGroup = null;
+		overId = null;
+		overGroup = null;
+		overProject = null;
+	}
 
 	function onDragStart(event, project) {
 		draggingId = project.id;
-		event.dataTransfer.effectAllowed = 'move';
-		// Firefox refuses to start a drag unless something is set on the transfer.
-		event.dataTransfer.setData('text/plain', project.id);
+		startDrag(event, PROJECT, project.id);
 	}
 
 	function onDragOver(event, project) {
-		if (!draggingId || draggingId === project.id) return;
-		event.preventDefault();
-		event.dataTransfer.dropEffect = 'move';
+		if (!carries(event, PROJECT) || draggingId === project.id) return;
+		accept(event);
 
 		const box = event.currentTarget.getBoundingClientRect();
 		overId = project.id;
+		overGroup = null;
 		overBelow = event.clientY > box.top + box.height / 2;
 	}
 
+	/**
+	 * Dropping onto a project puts the dragged one in that gap — and into the same
+	 * group, which is what makes dragging between two headings work without a
+	 * separate gesture. The order is one write and the group is another; each is
+	 * meaningful on its own, and neither can leave the other half-applied.
+	 */
 	async function onDrop(event, target) {
 		event.preventDefault();
-		const id = draggingId;
+		const id = dragged(event, PROJECT) || draggingId;
 		const below = overBelow;
-		draggingId = null;
-		overId = null;
+		clearDrag();
 		if (!id || id === target.id) return;
+
+		const moved = own.find((p) => p.id === id);
+		if (!moved) return;
 
 		const without = own.filter((p) => p.id !== id);
 		const at = without.findIndex((p) => p.id === target.id);
 		if (at < 0) return;
 
 		const ordered = [...without];
-		ordered.splice(below ? at + 1 : at, 0, own.find((p) => p.id === id));
+		ordered.splice(below ? at + 1 : at, 0, moved);
+
+		await app.setProjectGroup(id, bucketOf(target));
 		await app.reorderProjects(ordered.map((p) => p.id));
+	}
+
+	/**
+	 * Dropping onto a heading files the project under it and puts it last.
+	 *
+	 * Last rather than first: a heading is a wide target and dropping on it is the
+	 * coarse gesture — "somewhere in here" — where dropping on a row is the precise
+	 * one. Landing at the top would push whatever is already there down, which is a
+	 * rearrangement nobody asked for.
+	 */
+	async function onDropInGroup(event, groupID) {
+		event.preventDefault();
+		const id = dragged(event, PROJECT) || draggingId;
+		clearDrag();
+		if (!id) return;
+
+		const moved = own.find((p) => p.id === id);
+		if (!moved) return;
+
+		await app.setProjectGroup(id, groupID);
+
+		// Everything else keeps the order it already had; the dragged project is
+		// reinserted after the last one already under that heading.
+		const others = own.filter((p) => p.id !== id);
+		const ordered = [...others];
+		ordered.splice(others.findLastIndex((p) => bucketOf(p) === groupID) + 1, 0, moved);
+		await app.reorderProjects(ordered.map((p) => p.id));
+	}
+
+	// --- a task dropped on a project ------------------------------------------------
+
+	/** The project row lit up because a task is hovering over it. */
+	let overProject = $state(null);
+
+	/**
+	 * A viewer can open a project but not write to it, so it is not a place a task
+	 * can be dropped. Refusing here rather than letting the server refuse is the
+	 * difference between a row that does not light up and a task that visibly moves
+	 * and then jumps back.
+	 */
+	const canReceive = (project) => project.role === 'owner' || project.role === 'editor';
+
+	function onTaskDragOver(event, project) {
+		if (!carries(event, TASK) || !canReceive(project)) return;
+		accept(event);
+		overProject = project.id;
+	}
+
+	async function onTaskDrop(event, project) {
+		event.preventDefault();
+		const id = dragged(event, TASK);
+		overProject = null;
+		if (!id || !canReceive(project)) return;
+		await app.moveToProject(id, project.id);
+	}
+
+	function onGroupDragStart(event, group) {
+		draggingGroup = group.id;
+		startDrag(event, GROUP, group.id);
+	}
+
+	/**
+	 * A heading takes two kinds of drop, so it has to say which one it is showing.
+	 * A project joins the group; another heading reorders against it.
+	 */
+	function onGroupDragOver(event, group) {
+		if (carries(event, GROUP)) {
+			if (draggingGroup === group.id) return;
+			accept(event);
+			const box = event.currentTarget.getBoundingClientRect();
+			overId = group.id;
+			overGroup = null;
+			overBelow = event.clientY > box.top + box.height / 2;
+			return;
+		}
+		if (!carries(event, PROJECT)) return;
+		accept(event);
+		overGroup = group.id;
+		overId = null;
+	}
+
+	async function onGroupDrop(event, group) {
+		if (carries(event, GROUP)) {
+			event.preventDefault();
+			const id = dragged(event, GROUP) || draggingGroup;
+			const below = overBelow;
+			clearDrag();
+			if (!id || id === group.id) return;
+
+			const without = groups.filter((g) => g.id !== id);
+			const at = without.findIndex((g) => g.id === group.id);
+			if (at < 0) return;
+			const ordered = [...without];
+			ordered.splice(below ? at + 1 : at, 0, groups.find((g) => g.id === id));
+			await app.reorderGroups(ordered.map((g) => g.id));
+			return;
+		}
+		await onDropInGroup(event, group.id);
 	}
 </script>
 
@@ -132,21 +304,85 @@
 			Kommende
 		</a>
 		{#if app.inbox}
-			<a
-				href="/projekt/{app.inbox.id}"
-				class:active={current === `/projekt/${app.inbox.id}`}
-				onclick={onnavigate}
-			>
-				<span class="dot" aria-hidden="true"></span>
-				{app.inbox.name}
-			</a>
+			{@render projectRow(app.inbox, false)}
 		{/if}
 	</div>
 
+	<!-- One row for every project the sidebar shows — your own, the Inbox and the
+	     shared ones — because all three are somewhere a task can be dropped, and
+	     three copies of that would be three chances to fix a bug in two of them.
+	     Only your own reorder: `sort_order` is a column on the project, so a shared
+	     one stays where its owner put it. -->
+	{#snippet projectRow(project, sortable)}
+		<a
+			href="/projekt/{project.id}"
+			class:sortable
+			class:active={current === `/projekt/${project.id}`}
+			class:dragging={draggingId === project.id}
+			class:drop-above={sortable && overId === project.id && !overBelow}
+			class:drop-below={sortable && overId === project.id && overBelow}
+			class:receiving={overProject === project.id}
+			onclick={onnavigate}
+			draggable={sortable}
+			ondragstart={(e) => sortable && onDragStart(e, project)}
+			ondragend={clearDrag}
+			ondragover={(e) => {
+				if (carries(e, TASK)) onTaskDragOver(e, project);
+				else if (sortable) onDragOver(e, project);
+			}}
+			ondragleave={() => {
+				overId = null;
+				overProject = null;
+			}}
+			ondrop={(e) => (carries(e, TASK) ? onTaskDrop(e, project) : sortable && onDrop(e, project))}
+		>
+			<span class="dot" aria-hidden="true"></span>
+			{project.name}
+			{#if project.shared}
+				<span class="count">{project.member_count}</span>
+			{/if}
+		</a>
+	{/snippet}
+
 	<div class="group">
-		<div class="group-head">
+		<!-- The heading is also the drop target for "no group": without it, a project
+		     dragged into a group could only be got out again by emptying the group,
+		     and with every project filed there would be no loose row left to aim at. -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="group-head"
+			class:over={overGroup === ''}
+			ondragover={(e) => {
+				if (!carries(e, PROJECT)) return;
+				accept(e);
+				overGroup = '';
+				overId = null;
+			}}
+			ondragleave={() => (overGroup = null)}
+			ondrop={(e) => onDropInGroup(e, '')}
+		>
 			<h2>Projekter</h2>
-			<button onclick={() => (adding = !adding)} aria-label="Nyt projekt">+</button>
+			<button
+				onclick={() => {
+					adding = !adding;
+					addingGroup = false;
+				}}
+				aria-label="Nyt projekt">+</button
+			>
+			<button
+				class="new-group"
+				onclick={() => {
+					addingGroup = !addingGroup;
+					adding = false;
+					newGroupName = '';
+				}}
+				aria-label="Ny gruppe"
+				title="Ny gruppe"
+			>
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+				</svg>
+			</button>
 		</div>
 
 		{#if adding}
@@ -163,28 +399,22 @@
 			</form>
 		{/if}
 
-		{#each own as project (project.id)}
-			<a
-				href="/projekt/{project.id}"
-				class="sortable"
-				class:active={current === `/projekt/${project.id}`}
-				class:dragging={draggingId === project.id}
-				class:drop-above={overId === project.id && !overBelow}
-				class:drop-below={overId === project.id && overBelow}
-				onclick={onnavigate}
-				draggable="true"
-				ondragstart={(e) => onDragStart(e, project)}
-				ondragend={() => {
-					draggingId = null;
-					overId = null;
-				}}
-				ondragover={(e) => onDragOver(e, project)}
-				ondragleave={() => (overId = null)}
-				ondrop={(e) => onDrop(e, project)}
-			>
-				<span class="dot" aria-hidden="true"></span>
-				{project.name}
-			</a>
+		{#if addingGroup}
+			<form onsubmit={createGroup}>
+				<!-- svelte-ignore a11y_autofocus -->
+				<input
+					bind:value={newGroupName}
+					autofocus
+					placeholder="Gruppens navn"
+					aria-label="Gruppens navn"
+					onblur={() => !newGroupName.trim() && (addingGroup = false)}
+					onkeydown={(e) => e.key === 'Escape' && (addingGroup = false)}
+				/>
+			</form>
+		{/if}
+
+		{#each ungrouped as project (project.id)}
+			{@render projectRow(project, true)}
 		{/each}
 
 		{#if own.length === 0 && !adding}
@@ -192,19 +422,87 @@
 		{/if}
 	</div>
 
+	{#each groups as group (group.id)}
+		{@const inside = inGroup(group.id)}
+		<div class="group folder">
+			<!-- Draggable, except while it is being renamed: a draggable ancestor stops
+			     the pointer from selecting text in the field it contains. -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="group-head folder-head"
+				class:over={overGroup === group.id}
+				class:drop-above={overId === group.id && !overBelow}
+				class:drop-below={overId === group.id && overBelow}
+				class:dragging={draggingGroup === group.id}
+				draggable={renamingGroup !== group.id}
+				ondragstart={(e) => onGroupDragStart(e, group)}
+				ondragend={clearDrag}
+				ondragover={(e) => onGroupDragOver(e, group)}
+				ondragleave={() => {
+					overGroup = null;
+					overId = null;
+				}}
+				ondrop={(e) => onGroupDrop(e, group)}
+			>
+				{#if renamingGroup === group.id}
+					<form onsubmit={(e) => renameGroup(e, group)}>
+						<!-- svelte-ignore a11y_autofocus -->
+						<input
+							bind:value={groupName}
+							autofocus
+							aria-label="Gruppens navn"
+							onblur={() => (renamingGroup = null)}
+							onkeydown={(e) => e.key === 'Escape' && (renamingGroup = null)}
+						/>
+					</form>
+				{:else}
+					<!-- The button sits inside the heading, not around it, the same way a
+					     project's title does: a group *is* a heading in the sidebar, and
+					     wrapping an h2 in a button both invalidates the markup and takes
+					     the heading away from a screen reader. The whole heading folds —
+					     at this size a lone chevron is a target you miss, and the name is
+					     where the eye already is. -->
+					<h2 class="fold">
+						<button onclick={() => app.toggleGroup(group.id)} aria-expanded={!group.collapsed}>
+							<svg
+								class="chevron"
+								class:collapsed={group.collapsed}
+								viewBox="0 0 24 24"
+								aria-hidden="true"
+							>
+								<path d="M6 9l6 6 6-6" />
+							</svg>
+							{group.name}
+						</button>
+					</h2>
+					<span class="count">{inside.length}</span>
+					<button
+						class="group-action"
+						onclick={() => {
+							renamingGroup = group.id;
+							groupName = group.name;
+						}}>Omdøb</button
+					>
+					<button class="group-action remove" onclick={() => removeGroup(group)}>Slet</button>
+				{/if}
+			</div>
+
+			{#if !group.collapsed}
+				{#each inside as project (project.id)}
+					{@render projectRow(project, true)}
+				{/each}
+				{#if !inside.length}
+					<p class="empty">Tom — træk et projekt herop.</p>
+				{/if}
+			{/if}
+		</div>
+	{/each}
+
 	{#if shared.length}
 		<div class="group">
 			<div class="group-head"><h2>Delt med mig</h2></div>
 			{#each shared as project (project.id)}
-				<a
-					href="/projekt/{project.id}"
-					class:active={current === `/projekt/${project.id}`}
-					onclick={onnavigate}
-				>
-					<span class="dot" aria-hidden="true"></span>
-					{project.name}
-					<span class="count">{project.member_count}</span>
-				</a>
+				{@render projectRow(project, false)}
 			{/each}
 		</div>
 	{/if}
@@ -390,7 +688,7 @@
 		color: var(--ink-faint);
 	}
 
-	.group-head button {
+	.group-head > button {
 		width: 20px;
 		height: 20px;
 		display: grid;
@@ -399,11 +697,141 @@
 		color: var(--ink-faint);
 		font-size: var(--text-lg);
 		line-height: 1;
+		flex: none;
 	}
 
-	.group-head button:hover {
+	.group-head > button:hover {
 		color: var(--ink);
 		background: var(--surface-raised);
+	}
+
+	.new-group svg {
+		width: 14px;
+		height: 14px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.6;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	/* --- groups ------------------------------------------------------------- */
+
+	.folder {
+		margin-top: calc(var(--s3) * -1);
+	}
+
+	.folder-head {
+		position: relative;
+		gap: var(--s1);
+		border-radius: var(--radius);
+	}
+
+	.folder-head.dragging {
+		opacity: 0.4;
+	}
+
+	/* The heading lights up as a whole, because the whole heading is the target —
+	   unlike a project row, where the target is the gap next to it. Both headings
+	   do it: "Projekter" is where a project goes to leave its group. */
+	.group-head.over {
+		background: var(--surface-raised);
+		box-shadow: inset 0 0 0 1px var(--accent);
+		border-radius: var(--radius);
+	}
+
+	.folder-head::before {
+		content: '';
+		position: absolute;
+		left: var(--s2);
+		right: var(--s2);
+		height: 2px;
+		background: var(--accent);
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.folder-head.drop-above::before {
+		top: -1px;
+		opacity: 1;
+	}
+
+	.folder-head.drop-below::before {
+		bottom: -1px;
+		opacity: 1;
+	}
+
+	.fold {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.fold button {
+		display: flex;
+		align-items: center;
+		gap: var(--s1);
+		width: 100%;
+		min-width: 0;
+		font: inherit;
+		letter-spacing: inherit;
+		text-transform: inherit;
+		color: inherit;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.fold button:hover {
+		color: var(--ink);
+	}
+
+	.chevron {
+		width: 11px;
+		height: 11px;
+		flex: none;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2.4;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		transition: transform var(--fast) var(--ease);
+	}
+
+	.chevron.collapsed {
+		transform: rotate(-90deg);
+	}
+
+	/* Hidden until the heading is hovered, like the section actions on a project
+	   page: two buttons permanently beside a label stop it reading as a label. */
+	.group-action {
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+		padding: 0 var(--s1);
+		flex: none;
+		opacity: 0;
+		transition: opacity var(--fast) var(--ease);
+	}
+
+	.folder-head:hover .group-action,
+	.group-action:focus-visible {
+		opacity: 1;
+	}
+
+	.group-action:hover {
+		color: var(--ink);
+	}
+
+	.group-action.remove:hover {
+		color: var(--danger);
+	}
+
+	.folder-head .count {
+		margin-left: 0;
+	}
+
+	.folder-head form {
+		flex: 1;
+		min-width: 0;
 	}
 
 	a {
@@ -462,6 +890,15 @@
 	a.sortable.drop-below::before {
 		bottom: -1px;
 		opacity: 1;
+	}
+
+	/* A task hovering over a project lights the whole row, where a project hovering
+	   between two rows draws a line in the gap. Two different questions — "into
+	   this one" and "between these two" — so two different marks. */
+	a.receiving {
+		background: var(--surface-raised);
+		box-shadow: inset 0 0 0 1px var(--accent);
+		color: var(--ink);
 	}
 
 	.dot {

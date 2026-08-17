@@ -287,6 +287,18 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				})
 			})
 
+			// Groups are a person's own headings over their projects, so there is
+			// no project permission to check — every query here is scoped to the
+			// caller.
+			r.Route("/project-groups", func(r chi.Router) {
+				r.Get("/", s.handleListProjectGroups)
+				r.Post("/", s.handleCreateProjectGroup)
+				// Above /{groupID}, or chi reads "reorder" as an id.
+				r.Post("/reorder", s.handleReorderProjectGroups)
+				r.Patch("/{groupID}", s.handleUpdateProjectGroup)
+				r.Delete("/{groupID}", s.handleDeleteProjectGroup)
+			})
+
 			// The trash is outside the block above: a deleted project is invisible
 			// to the permission check by design, so these handlers resolve
 			// ownership themselves.

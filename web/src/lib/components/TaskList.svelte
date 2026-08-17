@@ -13,6 +13,7 @@
 	 */
 	import { app } from '$lib/stores.svelte.js';
 	import { api } from '$lib/api.js';
+	import { TASK, startDrag, carries, accept } from '$lib/dnd.js';
 	import TaskRow from './TaskRow.svelte';
 
 	let { tasks, projectId, sectionId = '', canEdit = true } = $props();
@@ -25,15 +26,15 @@
 	function onDragStart(event, task) {
 		if (!canEdit) return;
 		draggingId = task.id;
-		event.dataTransfer.effectAllowed = 'move';
-		// Firefox refuses to start a drag unless something is set on the transfer.
-		event.dataTransfer.setData('text/plain', task.id);
+		// Typed, because the same task can now be dropped somewhere else entirely —
+		// a project in the sidebar, a day in Kommende — and those targets have to be
+		// able to tell what is coming while the drag is still in the air.
+		startDrag(event, TASK, task.id);
 	}
 
 	function onDragOver(event, task) {
-		if (!canEdit || !draggingId || draggingId === task.id) return;
-		event.preventDefault();
-		event.dataTransfer.dropEffect = 'move';
+		if (!canEdit || !carries(event, TASK) || !draggingId || draggingId === task.id) return;
+		accept(event);
 
 		// Which half of the row the pointer is in decides the gap. Comparing against
 		// the row's own midpoint rather than counting rows is what keeps the line

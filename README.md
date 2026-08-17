@@ -34,7 +34,9 @@ mail-to-task address, and an MCP endpoint so Claude can work your task list dire
   @regnskab` becomes a task called "betal moms", due tomorrow at 10:00, priority 1,
   in Firma, labelled regnskab. Danish and English, mixed freely in one line.
 - **Projects, sections, sub-tasks, labels, saved filters.** List, board and calendar
-  views.
+  views, and foldable groups over the projects in the sidebar.
+- **Drag where it means something.** Reorder a list or a board, file a project under
+  a group, drop a task on another project, or drop it on another day.
 - **Sharing.** Internal users are created by an admin; anyone else joins through an
   invite link sent to their email. Owner, editor and viewer roles.
 - **Live sync.** A change made by somebody else appears without a refresh.
@@ -66,6 +68,9 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | Task detail: description, sub-tasks, comments, files, reminders | Done |
 | Settings: account, notifications, integrations, AI, tokens, data | Done |
 | Drag to reorder, in both the list and the board | Done |
+| Drag a task to another project or another day | Done, smoke-tested |
+| Foldable project groups in the sidebar | Done, tested |
+| Month view on Upcoming, not only per project | Done, smoke-tested |
 | Recurring tasks (RRULE, Danish + English) | Done, tested |
 | Reminders, absolute and relative | Done, tested |
 | Saved filters with a query language | Done, tested |

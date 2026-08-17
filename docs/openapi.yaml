@@ -818,6 +818,89 @@ paths:
         "204": { description: Deleted. }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/project-groups:
+    get:
+      tags: [projects]
+      summary: Your foldable sidebar groups.
+      description: |
+        A group is a heading over some of your projects. It is yours rather than
+        the project's: it has no members and no roles, and a project shared with
+        you can be filed under one of your groups without the owner seeing it.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items: { $ref: "#/components/schemas/ProjectGroup" }
+    post:
+      tags: [projects]
+      summary: Make a group.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectGroupInput" }
+      responses:
+        "201": { $ref: "#/components/responses/ProjectGroup" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /api/v1/project-groups/reorder:
+    post:
+      tags: [projects]
+      summary: Set the order groups appear in.
+      description: The whole list at once, for the same reasons as `/projects/reorder`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  maxItems: 500
+                  items: { type: string }
+                  description: Group ids, top to bottom.
+      responses:
+        "204": { description: Reordered. }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /api/v1/project-groups/{groupID}:
+    parameters:
+      - { name: groupID, in: path, required: true, schema: { type: string } }
+    patch:
+      tags: [projects]
+      summary: Rename a group, or fold it.
+      description: |
+        `collapsed` is stored on the account rather than in the browser. The
+        sidebar's width is a property of the screen you are at; a folded group is
+        a statement about the group, and is true wherever you sign in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectGroupInput" }
+      responses:
+        "200": { $ref: "#/components/responses/ProjectGroup" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Validation" }
+    delete:
+      tags: [projects]
+      summary: Delete a group.
+      description: |
+        The heading goes; the projects under it come back out as ungrouped. A
+        group holds no work of its own, so this is not soft-deleted — there is
+        nothing in it to recover.
+      responses:
+        "204": { description: Deleted. }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/v1/trash/projects:
     get:
       tags: [projects]
@@ -2007,6 +2090,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Project" }
+    ProjectGroup:
+      description: OK
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ProjectGroup" }
     FeedURL:
       description: OK
       content:
@@ -2202,6 +2290,12 @@ components:
         role: { type: string, enum: [owner, editor, viewer] }
         member_count: { type: integer }
         shared: { type: boolean }
+        group_id:
+          type: string
+          description: |
+            The sidebar group *you* have filed it under, absent for none. Always
+            absent on a project shared with you: grouping is a column on the
+            project row, so it is the owner's filing rather than yours.
 
     ProjectInput:
       type: object
@@ -2212,6 +2306,27 @@ components:
         view_mode: { type: string, enum: [list, board, calendar] }
         archived: { type: boolean }
         sort_order: { type: number }
+        group_id:
+          type: string
+          description: |
+            Files the project under one of your groups. The empty string takes it
+            out of one — `null` cannot mean that, because absent and null are the
+            same thing once decoded, and telling "put it nowhere" apart from "I
+            did not mention it" is what makes this a PATCH.
+
+    ProjectGroup:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        collapsed: { type: boolean }
+        sort_order: { type: number }
+
+    ProjectGroupInput:
+      type: object
+      properties:
+        name: { type: string }
+        collapsed: { type: boolean }
 
     Section:
       type: object

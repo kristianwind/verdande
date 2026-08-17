@@ -1,18 +1,39 @@
 <script>
-	/** Kommende: the next seven days, empty ones included. */
+	/**
+	 * Kommende: the next seven days as a list, or the month as a grid.
+	 *
+	 * The two views ask for different things and neither is a subset of the other —
+	 * seven days from today, against six whole weeks around a month that can be any
+	 * month — so each loads its own, and switching reloads. Loading both up front
+	 * would mean the list waiting on a month it is not showing.
+	 */
 	import { api } from '$lib/api.js';
-	import { app } from '$lib/stores.svelte.js';
+	import { app, upcomingView } from '$lib/stores.svelte.js';
+	import { TASK, startDrag, carries, dragged, accept } from '$lib/dnd.js';
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
+	import CalendarView from '$lib/components/CalendarView.svelte';
 
 	let days = $state([]);
 
 	$effect(() => {
+		if (upcomingView.mode !== 'list') return;
 		api.upcoming().then((data) => {
 			days = data.days;
 			app.tasks = data.days.flatMap((d) => d.tasks);
 		});
 	});
+
+	/**
+	 * Loads the dates the month grid is showing.
+	 *
+	 * The limit is raised well above the default: a busy month across every project
+	 * is more than two hundred rows, and a silently truncated grid is a calendar
+	 * that quietly lies about a day being clear.
+	 */
+	function loadMonth({ from, to }) {
+		app.loadTasks({ due_from: from, due_before: to, limit: 500 });
+	}
 
 	function heading(date) {
 		const day = new Date(date + 'T00:00:00');
@@ -25,28 +46,80 @@
 	}
 
 	// Reading tasks back out of the store keeps a completed row disappearing
-	// immediately rather than on the next load.
+	// immediately rather than on the next load. It is also what makes a task
+	// dragged from one day to another land in its new section straight away: the
+	// day it belongs to is decided here, not by which list the server put it in.
 	const live = (date) => app.tasks.filter((t) => t.due_date === date && !t.completed);
+
+	// --- dragging a task onto another day -------------------------------------------
+
+	/** The day section lit up under the pointer. */
+	let over = $state(null);
+
+	function onDragOver(event, date) {
+		if (!carries(event, TASK)) return;
+		accept(event);
+		over = date;
+	}
+
+	async function onDrop(event, date) {
+		event.preventDefault();
+		const id = dragged(event, TASK);
+		over = null;
+		if (!id) return;
+		await app.reschedule(id, date);
+	}
 </script>
 
-<div class="view">
-	<header><h1>Kommende</h1></header>
+<div class="view" class:wide={upcomingView.mode === 'calendar'}>
+	<header>
+		<h1>Kommende</h1>
+		<div class="views" role="group" aria-label="Visning">
+			{#each [['list', 'Liste'], ['calendar', 'Kalender']] as [value, label]}
+				<button
+					class:active={upcomingView.mode === value}
+					onclick={() => upcomingView.set(value)}
+					aria-pressed={upcomingView.mode === value}>{label}</button
+				>
+			{/each}
+		</div>
+	</header>
 
 	<QuickAdd />
 
-	{#each days as day (day.date)}
-		{@const tasks = live(day.date)}
-		<section>
-			<h2>{heading(day.date)}</h2>
-			{#if tasks.length}
-				{#each tasks as task (task.id)}
-					<TaskRow {task} />
-				{/each}
-			{:else}
-				<p class="empty">—</p>
-			{/if}
-		</section>
-	{/each}
+	{#if upcomingView.mode === 'calendar'}
+		<CalendarView onrange={loadMonth} />
+	{:else}
+		{#each days as day (day.date)}
+			{@const tasks = live(day.date)}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<section
+				class:over={over === day.date}
+				ondragover={(e) => onDragOver(e, day.date)}
+				ondragleave={() => (over = null)}
+				ondrop={(e) => onDrop(e, day.date)}
+			>
+				<h2>{heading(day.date)}</h2>
+				{#if tasks.length}
+					{#each tasks as task (task.id)}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							class="row"
+							draggable="true"
+							ondragstart={(e) => startDrag(e, TASK, task.id)}
+							ondragend={() => (over = null)}
+						>
+							<TaskRow {task} />
+						</div>
+					{/each}
+				{:else}
+					<!-- The empty day is still a section, and still a target: an em dash
+					     is a small thing to aim at, so the whole section takes the drop. -->
+					<p class="empty">—</p>
+				{/if}
+			</section>
+		{/each}
+	{/if}
 </div>
 
 <style>
@@ -56,13 +129,70 @@
 		padding: var(--s6) var(--s4) var(--s8);
 	}
 
+	/* A month grid needs the width a reading column deliberately withholds — the
+	   same allowance the project page makes for its board and calendar. */
+	.view.wide {
+		max-width: 1400px;
+	}
+
+	header {
+		display: flex;
+		align-items: center;
+		gap: var(--s4);
+		margin-bottom: var(--s5);
+	}
+
 	h1 {
 		font-size: var(--text-2xl);
-		margin-bottom: var(--s5);
+		flex: 1;
+		min-width: 0;
+	}
+
+	.views {
+		display: flex;
+		gap: 1px;
+		flex: none;
+		background: var(--line);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		overflow: hidden;
+	}
+
+	.views button {
+		padding: var(--s1) var(--s3);
+		font-size: var(--text-sm);
+		background: var(--ground);
+		color: var(--ink-muted);
+		transition:
+			background var(--fast) var(--ease),
+			color var(--fast) var(--ease);
+	}
+
+	.views button:hover {
+		color: var(--ink);
+	}
+
+	.views button.active {
+		background: var(--surface-raised);
+		color: var(--ink);
+		font-weight: 500;
 	}
 
 	section {
 		margin-top: var(--s5);
+		border-radius: var(--radius);
+	}
+
+	/* The day lights up as a whole. Its heading is the label on a box, and the box
+	   is what you are dropping into — not the gap between two rows, which is what a
+	   line would mean. */
+	section.over {
+		box-shadow: 0 0 0 1px var(--accent);
+		background: var(--surface-sunken);
+	}
+
+	.row[draggable='true'] {
+		cursor: grab;
 	}
 
 	h2 {

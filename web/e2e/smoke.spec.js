@@ -228,6 +228,140 @@ test('et projekt kan omdøbes, slettes og hentes tilbage', async ({ page }) => {
 });
 
 /**
+ * A group can be made, folded, filled and deleted without taking its projects
+ * with it.
+ *
+ * The fold is the part worth driving in a browser: it is stored on the account
+ * rather than in localStorage, so it is a round trip, and "the arrow turned" is
+ * not the same claim as "it came back folded after a reload".
+ */
+test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne med', async ({
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Regnskab');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(sidebar.getByRole('link', { name: 'Regnskab' })).toBeVisible();
+
+	await sidebar.getByRole('button', { name: 'Ny gruppe' }).click();
+	await sidebar.getByLabel('Gruppens navn').fill('Arbejde');
+	await sidebar.getByLabel('Gruppens navn').press('Enter');
+
+	const heading = sidebar.getByRole('button', { name: 'Arbejde' });
+	await expect(heading).toBeVisible();
+	await expect(sidebar.getByText('Træk et projekt herop')).toBeVisible();
+
+	// Dragged in, then dragged back out onto "Projekter" — which is the reason
+	// that heading is a drop target at all: with every project filed away there
+	// would otherwise be no loose row left to aim at.
+	await sidebar.getByRole('link', { name: 'Regnskab' }).dragTo(heading);
+	await expect(sidebar.getByText('Træk et projekt herop')).toBeHidden();
+
+	await sidebar
+		.getByRole('link', { name: 'Regnskab' })
+		.dragTo(sidebar.getByRole('heading', { name: 'Projekter' }));
+	await expect(sidebar.getByText('Træk et projekt herop')).toBeVisible();
+
+	// Folded, reloaded, still folded. localStorage would have passed the first
+	// half of that and failed the second on another machine.
+	await heading.click();
+	await expect(heading).toHaveAttribute('aria-expanded', 'false');
+	await page.reload();
+	await expect(sidebar.getByRole('button', { name: 'Arbejde' })).toHaveAttribute(
+		'aria-expanded',
+		'false'
+	);
+	await sidebar.getByRole('button', { name: 'Arbejde' }).click();
+
+	// Renaming writes one row rather than one per project, which is the reason a
+	// group is a table and not a string repeated on every project.
+	await sidebar.getByRole('button', { name: 'Omdøb' }).click();
+	const name = sidebar.getByLabel('Gruppens navn');
+	await name.fill('Kontoret');
+	await name.press('Enter');
+	await expect(sidebar.getByRole('button', { name: 'Kontoret' })).toBeVisible();
+
+	// Deleting the heading must not take the project filed under it. It is
+	// ungrouped here, which is the case that would look identical either way if
+	// the assertion were only "the group is gone".
+	page.once('dialog', (dialog) => dialog.accept());
+	await sidebar.getByRole('button', { name: 'Slet' }).click();
+	await expect(sidebar.getByRole('button', { name: 'Kontoret' })).toBeHidden();
+	await expect(sidebar.getByRole('link', { name: 'Regnskab' })).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * A task can be dragged onto another day, and onto another project.
+ *
+ * Both are one gesture standing in for a form, and both cross a component
+ * boundary: the row is dragged out of Kommende and dropped on the sidebar, which
+ * is a different part of the tree entirely. What decides whether a target will
+ * take it is the drag's MIME type, and that is only readable while the drag is in
+ * the air — so this is the one thing here that cannot be checked any other way.
+ */
+test('en opgave kan trækkes til en anden dag og videre til et projekt', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const box = page.getByLabel('Ny opgave');
+	await box.fill('hent pakken i dag');
+	await box.press('Enter');
+	await expect(page.getByText('hent pakken', { exact: true })).toBeVisible();
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Ærinder');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+
+	await page.goto('/upcoming');
+	await page.getByRole('button', { name: 'Liste', exact: true }).click();
+
+	const day = (name) =>
+		page.locator('section').filter({ has: page.getByRole('heading', { name, exact: true }) });
+	const row = page.locator('[draggable="true"]').filter({ hasText: 'hent pakken' });
+
+	await expect(day('I dag').getByText('hent pakken')).toBeVisible();
+	await row.dragTo(day('I morgen'));
+	await expect(day('I morgen').getByText('hent pakken')).toBeVisible();
+	await expect(day('I dag').getByText('hent pakken')).toBeHidden();
+
+	// And onto a project, which is a move rather than a field: the task has to
+	// find a place among that project's tasks, and leave its old section behind.
+	await row.dragTo(sidebar.getByRole('link', { name: 'Ærinder' }));
+	await sidebar.getByRole('link', { name: 'Ærinder' }).click();
+	await expect(page.getByRole('heading', { name: 'Ærinder' })).toBeVisible();
+	await expect(page.getByText('hent pakken', { exact: true })).toBeVisible();
+
+	// And the same task in the month grid, where a chip is dragged from one cell
+	// to another. The date is read off the grid rather than worked out here: the
+	// browser is pinned to Europe/Copenhagen and this process is not, and for two
+	// hours of every day they disagree about what today is.
+	await page.goto('/upcoming');
+	await page.getByRole('button', { name: 'Kalender' }).click();
+
+	const chip = page.locator('.chip').filter({ hasText: 'hent pakken' });
+	await expect(chip).toBeVisible();
+
+	const from = await page.locator('.day').filter({ has: chip }).getAttribute('data-date');
+	const to = new Date(new Date(`${from}T12:00:00Z`).getTime() + 86400000)
+		.toISOString()
+		.slice(0, 10);
+
+	await chip.dragTo(page.locator(`[data-date="${to}"]`));
+	await expect(page.locator(`[data-date="${to}"]`).getByText('hent pakken')).toBeVisible();
+	await expect(page.locator(`[data-date="${from}"]`).getByText('hent pakken')).toBeHidden();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * The MCP connector address must not fall through to the app shell.
  *
  * It did: `/mcp` was not a route, so the SPA fallback answered 200 with a page

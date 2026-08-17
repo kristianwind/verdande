@@ -24,6 +24,10 @@ type projectJSON struct {
 	Role        string  `json:"role"`
 	MemberCount int     `json:"member_count"`
 	Shared      bool    `json:"shared"`
+	// GroupID is the sidebar group the asking user has filed it under, empty for
+	// none. Always empty on a project shared with them: grouping is a column on
+	// the project row, so it is the owner's filing and nobody else's.
+	GroupID string `json:"group_id,omitempty"`
 }
 
 func toProjectJSON(p store.Project) projectJSON {
@@ -31,7 +35,7 @@ func toProjectJSON(p store.Project) projectJSON {
 		ID: p.ID, Name: p.Name, Color: p.Color, Icon: p.Icon, ViewMode: p.ViewMode,
 		OwnerID: p.OwnerID, IsInbox: p.IsInbox, Archived: p.Archived,
 		SortOrder: p.SortOrder, Role: string(p.Role), MemberCount: p.MemberCount,
-		Shared: p.MemberCount > 1,
+		Shared: p.MemberCount > 1, GroupID: p.GroupID,
 	}
 }
 
@@ -67,6 +71,11 @@ type projectRequest struct {
 	Icon     *string `json:"icon"`
 	ViewMode *string `json:"view_mode"`
 	Archived *bool   `json:"archived"`
+	// GroupID files the project under a sidebar group; "" takes it out of one.
+	// The empty string rather than a JSON null, because null and absent are the
+	// same nil pointer once decoded — and telling "put it nowhere" apart from
+	// "I did not mention it" is the whole point of a PATCH.
+	GroupID *string `json:"group_id"`
 }
 
 type reorderProjectsRequest struct {
@@ -161,6 +170,17 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.storeError(w, "update project", err)
 		return
+	}
+	// Grouping is written separately because it is scoped differently: the fields
+	// above belong to the project, and this one belongs to whoever is filing it.
+	// The route already requires ownership, so the check inside is a second lock
+	// on the same door rather than a different one.
+	if req.GroupID != nil {
+		if err := s.db.SetProjectGroup(r.Context(), projectID, *req.GroupID,
+			userFrom(r.Context()).ID); err != nil {
+			s.storeError(w, "set project group", err)
+			return
+		}
 	}
 	s.activity(r, projectID, "", "project.updated", nil)
 

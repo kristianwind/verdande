@@ -21,7 +21,9 @@ forward mail to, and an MCP endpoint so Claude can work your task list directly.
   10 p1 #Firma @regnskab` becomes a task due tomorrow at 10:00, priority 1, in
   Firma, labelled regnskab. Danish and English, mixed freely in one line.
 - **Projects, sections, sub-tasks, labels, [saved filters](filters.md).** List,
-  board and calendar views.
+  board and calendar views, and foldable groups over the projects in the sidebar.
+- **Drag where it means something** — reorder a list or a board, file a project
+  under a group, drop a task on another project, or drop it on another day.
 - **Sharing** with owner, editor and viewer roles. Anyone outside your instance
   joins through an invite link.
 - **Live sync** — a change made by somebody else appears without a refresh.

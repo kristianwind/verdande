@@ -10,6 +10,7 @@
 	 */
 	import { app } from '$lib/stores.svelte.js';
 	import { api } from '$lib/api.js';
+	import { TASK, startDrag, carries, accept } from '$lib/dnd.js';
 	import TaskRow from './TaskRow.svelte';
 
 	let { project, sections, canEdit } = $props();
@@ -24,23 +25,30 @@
 		...sections.map((s) => ({ id: s.id, name: s.name }))
 	]);
 
+	// Scoped to this project, not just to the section: the store holds whatever the
+	// last view loaded, and a task that has left the project would otherwise turn
+	// up in the "no section" column, which is exactly where a task with no section
+	// belongs — in some other project.
 	const tasksIn = (sectionId) =>
 		app.tasks
-			.filter((t) => !t.completed && !t.parent_id && (t.section_id ?? '') === sectionId)
+			.filter(
+				(t) =>
+					!t.completed &&
+					!t.parent_id &&
+					t.project_id === project.id &&
+					(t.section_id ?? '') === sectionId
+			)
 			.sort((a, b) => a.sort_order - b.sort_order);
 
 	function onDragStart(event, task) {
 		if (!canEdit) return;
 		draggingId = task.id;
-		event.dataTransfer.effectAllowed = 'move';
-		// Firefox refuses to start a drag unless something is set on the transfer.
-		event.dataTransfer.setData('text/plain', task.id);
+		startDrag(event, TASK, task.id);
 	}
 
 	function onDragOver(event, sectionId) {
-		if (!canEdit || !draggingId) return;
-		event.preventDefault();
-		event.dataTransfer.dropEffect = 'move';
+		if (!canEdit || !carries(event, TASK) || !draggingId) return;
+		accept(event);
 		overColumn = sectionId;
 	}
 
