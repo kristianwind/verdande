@@ -24,6 +24,14 @@
 		location.href = '/';
 	}
 
+	let filters = $state([]);
+	let labels = $state([]);
+
+	$effect(() => {
+		api.listFilters().then((r) => (filters = r.filters)).catch(() => {});
+		api.listLabels().then((r) => (labels = r.labels)).catch(() => {});
+	});
+
 	let shared = $derived(app.projects.filter((p) => !p.is_inbox && p.shared));
 	let own = $derived(app.projects.filter((p) => !p.is_inbox && !p.shared));
 	let current = $derived($page.url.pathname);
@@ -107,6 +115,39 @@
 					<span class="dot" aria-hidden="true"></span>
 					{project.name}
 					<span class="count">{project.member_count}</span>
+				</a>
+			{/each}
+		</div>
+	{/if}
+
+	{#if filters.length}
+		<div class="group">
+			<div class="group-head"><h2>Filtre</h2></div>
+			{#each filters as filter (filter.id)}
+				<a
+					href="/filter/{filter.id}"
+					class:active={current === `/filter/${filter.id}`}
+					onclick={onnavigate}
+				>
+					<span class="dot" aria-hidden="true"></span>
+					{filter.name}
+				</a>
+			{/each}
+		</div>
+	{/if}
+
+	{#if labels.length}
+		<div class="group">
+			<div class="group-head"><h2>Etiketter</h2></div>
+			{#each labels.filter((l) => l.task_count > 0) as label (label.id)}
+				<a
+					href="/etiket/{encodeURIComponent(label.name)}"
+					class:active={current === `/etiket/${encodeURIComponent(label.name)}`}
+					onclick={onnavigate}
+				>
+					<span class="dot" aria-hidden="true"></span>
+					{label.name}
+					<span class="count">{label.task_count}</span>
 				</a>
 			{/each}
 		</div>

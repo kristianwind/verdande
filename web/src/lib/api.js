@@ -150,6 +150,31 @@ export const api = {
 	quickAddPreview: (text, signal) =>
 		get(`/tasks/quick-add/preview?text=${encodeURIComponent(text)}`, { signal }),
 
+	// --- filters and labels
+	listFilters: () => get('/filters'),
+	createFilter: (data) => post('/filters', data),
+	updateFilter: (id, data) => patch(`/filters/${id}`, data),
+	deleteFilter: (id) => del(`/filters/${id}`),
+	runFilter: (id) => get(`/filters/${id}/tasks`),
+	previewFilter: (query) => get(`/filters/preview?query=${encodeURIComponent(query)}`),
+
+	listLabels: () => get('/labels'),
+	createLabel: (name) => post('/labels', { name }),
+	deleteLabel: (id) => del(`/labels/${id}`),
+
+	// --- reminders, feed and templates
+	listReminders: (taskId) => get(`/tasks/${taskId}/reminders`),
+	createReminder: (taskId, data) => post(`/tasks/${taskId}/reminders`, data),
+	deleteReminder: (id) => del(`/reminders/${id}`),
+
+	feed: () => get('/feed'),
+	rotateFeed: () => post('/feed/rotate'),
+
+	listTemplates: () => get('/templates'),
+	saveTemplate: (data) => post('/templates', data),
+	useTemplate: (id, data) => post(`/templates/${id}/use`, data),
+	deleteTemplate: (id) => del(`/templates/${id}`),
+
 	// --- views
 	today: () => get('/today'),
 	upcoming: (days) => get(`/upcoming${days ? `?days=${days}` : ''}`),

@@ -79,11 +79,22 @@
 			<span class="description">{task.description}</span>
 		{/if}
 
-		{#if due || task.labels?.length}
+		{#if due || task.labels?.length || task.recurrence_text}
 			<span class="meta">
 				{#if due}
 					<span class="due" data-tone={due.tone}>
 						{due.text}{#if time}&nbsp;{time}{/if}
+					</span>
+				{/if}
+				{#if task.recurrence_text}
+					<span class="repeat" title="Gentages {task.recurrence_text}">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M17 2l4 4-4 4" />
+							<path d="M3 11V9a4 4 0 014-4h14" />
+							<path d="M7 22l-4-4 4-4" />
+							<path d="M21 13v2a4 4 0 01-4 4H3" />
+						</svg>
+						{task.recurrence_text}
 					</span>
 				{/if}
 				{#each task.labels ?? [] as label}
@@ -227,6 +238,23 @@
 	.due[data-tone='soon'],
 	.due[data-tone='later'] {
 		color: var(--ink-muted);
+	}
+
+	.repeat {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		color: var(--ink-muted);
+	}
+
+	.repeat svg {
+		width: 11px;
+		height: 11px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
 	}
 
 	.label {

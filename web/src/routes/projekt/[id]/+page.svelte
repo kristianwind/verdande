@@ -5,6 +5,8 @@
 	import { app } from '$lib/stores.svelte.js';
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
+	import BoardView from '$lib/components/BoardView.svelte';
+	import CalendarView from '$lib/components/CalendarView.svelte';
 
 	let project = $state(null);
 	let sections = $state([]);
@@ -41,6 +43,22 @@
 		}
 	});
 
+	// The chosen view is kept locally as well as on the project, so switching is
+	// instant and only persists once the request lands.
+	let view = $state(null);
+	let mode = $derived(view ?? project?.view_mode ?? 'list');
+
+	async function setView(next) {
+		view = next;
+		if (project?.role === 'owner') {
+			try {
+				await api.updateProject(project.id, { view_mode: next });
+			} catch {
+				// A view that did not persist is a small thing; it still switched.
+			}
+		}
+	}
+
 	let canEdit = $derived(project?.role === 'owner' || project?.role === 'editor');
 	let isOwner = $derived(project?.role === 'owner');
 
@@ -70,6 +88,16 @@
 	{#if project}
 		<header>
 			<h1>{project.name}</h1>
+			<div class="views" role="group" aria-label="Visning">
+				{#each [['list', 'Liste'], ['board', 'Board'], ['calendar', 'Kalender']] as [value, label]}
+					<button
+						class:active={mode === value}
+						onclick={() => setView(value)}
+						aria-pressed={mode === value}>{label}</button
+					>
+				{/each}
+			</div>
+
 			{#if !project.is_inbox}
 				<button class="share" onclick={() => (showShare = !showShare)}>
 					{project.shared ? `Delt · ${project.member_count}` : 'Del'}
@@ -134,30 +162,36 @@
 			<QuickAdd projectId={project.id} />
 		{/if}
 
-		<section>
-			{#each unsectioned as task (task.id)}
-				<TaskRow {task} />
-			{/each}
-		</section>
-
-		{#each sections as section (section.id)}
-			{@const tasks = open.filter((t) => t.section_id === section.id)}
+		{#if mode === 'board'}
+			<BoardView {project} {sections} {canEdit} />
+		{:else if mode === 'calendar'}
+			<CalendarView />
+		{:else}
 			<section>
-				<h2>{section.name}</h2>
-				{#each tasks as task (task.id)}
+				{#each unsectioned as task (task.id)}
 					<TaskRow {task} />
 				{/each}
-				{#if !tasks.length}
-					<p class="empty">Tom</p>
-				{/if}
 			</section>
-		{/each}
 
-		{#if !open.length}
-			<p class="clear">
-				<span class="rune" aria-hidden="true">ᚹ</span>
-				Ingenting her endnu.
-			</p>
+			{#each sections as section (section.id)}
+				{@const tasks = open.filter((t) => t.section_id === section.id)}
+				<section>
+					<h2>{section.name}</h2>
+					{#each tasks as task (task.id)}
+						<TaskRow {task} />
+					{/each}
+					{#if !tasks.length}
+						<p class="empty">Tom</p>
+					{/if}
+				</section>
+			{/each}
+
+			{#if !open.length}
+				<p class="clear">
+					<span class="rune" aria-hidden="true">ᚹ</span>
+					Ingenting her endnu.
+				</p>
+			{/if}
 		{/if}
 
 		{#if project.role === 'viewer'}
@@ -175,6 +209,12 @@
 		padding: var(--s6) var(--s4) var(--s8);
 	}
 
+	/* A board and a month grid need the room; a list is easier to read narrow. */
+	.view:has(.board),
+	.view:has(.calendar) {
+		max-width: 1400px;
+	}
+
 	header {
 		display: flex;
 		align-items: center;
@@ -187,6 +227,36 @@
 		flex: 1;
 		min-width: 0;
 		overflow-wrap: anywhere;
+	}
+
+	.views {
+		display: flex;
+		gap: 1px;
+		flex: none;
+		background: var(--line);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		overflow: hidden;
+	}
+
+	.views button {
+		padding: var(--s1) var(--s3);
+		font-size: var(--text-sm);
+		background: var(--ground);
+		color: var(--ink-muted);
+		transition:
+			background var(--fast) var(--ease),
+			color var(--fast) var(--ease);
+	}
+
+	.views button:hover {
+		color: var(--ink);
+	}
+
+	.views button.active {
+		background: var(--surface-raised);
+		color: var(--ink);
+		font-weight: 500;
 	}
 
 	.share {

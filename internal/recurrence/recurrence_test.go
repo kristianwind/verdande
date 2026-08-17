@@ -270,8 +270,9 @@ func TestDescribe(t *testing.T) {
 		"FREQ=DAILY;INTERVAL=3":            "hver 3. dag",
 		"FREQ=WEEKLY":                      "hver uge",
 		"FREQ=WEEKLY;INTERVAL=2":           "hver anden uge",
-		"FREQ=WEEKLY;BYDAY=MO":             "hver uge mandag",
-		"FREQ=WEEKLY;BYDAY=MO,TH":          "hver uge mandag og torsdag",
+		"FREQ=WEEKLY;BYDAY=MO":             "hver mandag",
+		"FREQ=WEEKLY;BYDAY=MO,TH":          "hver mandag og torsdag",
+		"FREQ=WEEKLY;BYDAY=FR;INTERVAL=2":  "hver anden uge fredag",
 		"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR": "hverdage",
 		"FREQ=WEEKLY;BYDAY=SA,SU":          "hver weekend",
 		"FREQ=MONTHLY":                     "hver måned",
@@ -293,6 +294,7 @@ func TestDescribeRoundTrip(t *testing.T) {
 	phrases := []string{
 		"hver dag", "hver anden dag", "hver uge", "hver anden uge",
 		"hverdage", "hver weekend", "hver måned", "hvert år",
+		"hver mandag", "hver mandag og torsdag",
 	}
 	for _, phrase := range phrases {
 		t.Run(phrase, func(t *testing.T) {

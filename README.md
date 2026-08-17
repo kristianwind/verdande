@@ -40,9 +40,10 @@ mail-to-task address, and an MCP endpoint so Claude can work your task list dire
 
 ## What works today
 
-**Phase 1 is complete and phase 2 is most of the way there.** You can install it,
-create an account, add tasks by typing a sentence, share a project and watch
-somebody else's changes appear live.
+**Phases 1 and 3 are complete; phase 2 is most of the way there.** You can install
+it, create an account, add tasks by typing a sentence, share a project, watch
+somebody else's changes appear live, set up repeating chores and reminders, save
+filters, and subscribe to it from Apple Calendar.
 
 | Area | State |
 |---|---|
@@ -56,11 +57,17 @@ somebody else's changes appear live.
 | Sharing: invites, roles, members | Done, tested |
 | Live sync over WebSocket | Done |
 | Web interface: sign-in, views, quick add, ⌘K, shortcuts | Done |
-| Recurring tasks, reminders, saved filters, board/calendar | Planned — phase 3 |
+| Recurring tasks (RRULE, Danish + English) | Done, tested |
+| Reminders, absolute and relative | Done, tested |
+| Saved filters with a query language | Done, tested |
+| Board and calendar views | Done |
+| ICS calendar feed, task durations | Done, tested |
+| Project templates | Done, tested |
+| Nightly backups with rotation | Done, tested |
 | Import/export, CalDAV, mail-to-task, Gmail, MCP, AI | Planned — phases 4–5 |
 
-Not yet built: comments and attachments, drag-and-drop in the interface (the API
-supports it), Web Push, and everything from phase 3 onwards.
+Not yet built: comments and attachments, Web Push, and everything from phase 4
+onwards.
 
 Search finds `grøn` when you type `gron`, because Unicode does not consider `ø` an
 accented `o` and a Danish-first app that cannot do this is broken for its own users.
@@ -145,11 +152,11 @@ is part of it.
 ## Roadmap
 
 1. **MVP** — auth, projects, sections, tasks, sub-tasks, priorities, due dates,
-   quick add, Today and Upcoming, search, keyboard shortcuts.
+   quick add, Today and Upcoming, search, keyboard shortcuts. *(done)*
 2. **Sharing** — invites, roles, assignees, comments, attachments, activity log,
    realtime sync, notifications.
 3. **Pro parity** — recurring tasks, reminders, filter queries, board and calendar
-   views, durations, ICS feeds, templates, automatic backups.
+   views, durations, ICS feeds, templates, automatic backups. *(done)*
 4. **Import/export** — Todoist CSV and official export in, CSV/JSON/ICS out.
 5. **Integrations** — CalDAV server, mail-to-task, Gmail, MCP server for Claude,
    and a provider-agnostic AI layer that also talks to a local model.

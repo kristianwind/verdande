@@ -298,7 +298,15 @@ func Describe(rule string) string {
 		for _, code := range strings.Split(days, ",") {
 			names = append(names, danishDay(code))
 		}
-		return every(interval, "uge") + " " + strings.Join(names, " og ")
+		joined := strings.Join(names, " og ")
+
+		// "hver mandag", not "hver uge mandag". A weekly rule naming its days does
+		// not also need the word for the interval — that is how the phrase is said,
+		// and it is what the parser accepts back.
+		if interval <= 1 {
+			return "hver " + joined
+		}
+		return every(interval, "uge") + " " + joined
 	}
 
 	switch parts["FREQ"] {
