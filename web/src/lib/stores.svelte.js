@@ -22,6 +22,13 @@ class AppState {
 	toasts = $state([]);
 	connected = $state(false);
 
+	/**
+	 * The task whose detail drawer is open, as an id rather than a copy — so an
+	 * edit made here, or arriving over the socket from somebody else, is reflected
+	 * in the drawer without a second source of truth to keep in step.
+	 */
+	detailId = $state(null);
+
 	#socket = null;
 	#reconnectDelay = 1000;
 
@@ -31,6 +38,18 @@ class AppState {
 
 	projectById(id) {
 		return this.projects.find((p) => p.id === id);
+	}
+
+	get detailTask() {
+		return this.tasks.find((t) => t.id === this.detailId) ?? null;
+	}
+
+	openDetail(id) {
+		this.detailId = id;
+	}
+
+	closeDetail() {
+		this.detailId = null;
 	}
 
 	async load() {
@@ -85,13 +104,9 @@ class AppState {
 			case 'task.updated':
 			case 'task.completed':
 			case 'task.reopened':
-			case 'task.moved': {
-				if (!task?.id) return;
-				const i = this.tasks.findIndex((t) => t.id === task.id);
-				if (i >= 0) this.tasks[i] = task;
-				else this.tasks.push(task);
+			case 'task.moved':
+				this.upsert(task);
 				break;
-			}
 			case 'task.deleted':
 				this.tasks = this.tasks.filter((t) => t.id !== task?.id);
 				break;
@@ -107,57 +122,77 @@ class AppState {
 	}
 
 	/**
+	 * Swaps one task for a new version of it. **The single place a task in the list
+	 * is changed** — the optimistic updates below, the reconciliation after them,
+	 * the rollbacks, the websocket, and the drag handlers in BoardView and TaskList
+	 * all come through here.
+	 *
+	 * It builds a new array rather than writing `tasks[i] = next`. In-place index
+	 * assignment did not reach the views: a ticked-off task kept its row, and a
+	 * change arriving over the socket did not show at all, while `push` and whole
+	 * -array assignment both worked. Rather than depend on which mutations the
+	 * reactivity happens to see through, every write here produces a new array,
+	 * which it certainly does see. The lists are at most a few hundred rows; the
+	 * copy is not worth a moment's thought next to the class of bug it removes.
+	 */
+	replace(id, next) {
+		this.tasks = this.tasks.map((t) => (t.id === id ? next : t));
+	}
+
+	/**
+	 * Adds a task, or replaces it if the list already has it.
+	 *
+	 * Adding is never unconditional, because the same task arrives twice: once as
+	 * the response to the request that created it, and once over the socket, which
+	 * publishes to the whole project including whoever did it. Either can land
+	 * first. Appending both puts two rows with one id into an `{#each}` keyed by
+	 * id, which is not a duplicated row but a thrown error that stops the view
+	 * rendering.
+	 */
+	upsert(task) {
+		if (!task?.id) return;
+		if (this.tasks.some((t) => t.id === task.id)) this.replace(task.id, task);
+		else this.tasks = [...this.tasks, task];
+	}
+
+	get(id) {
+		return this.tasks.find((t) => t.id === id);
+	}
+
+	/**
 	 * Ticks a task off. The row is struck through and gone before the request
 	 * leaves — which is the single most-repeated action in the app, and the one
 	 * place latency would be felt all day.
 	 */
 	async complete(id) {
-		const index = this.tasks.findIndex((t) => t.id === id);
-		if (index < 0) return;
-		const previous = this.tasks[index];
-
-		this.tasks[index] = { ...previous, completed: true };
-		try {
-			const updated = await api.completeTask(id);
-			const i = this.tasks.findIndex((t) => t.id === id);
-			if (i >= 0) this.tasks[i] = updated;
-		} catch (e) {
-			const i = this.tasks.findIndex((t) => t.id === id);
-			if (i >= 0) this.tasks[i] = previous;
-			this.toast(humanMessage(e));
-		}
+		await this.#optimistic(id, { completed: true }, () => api.completeTask(id));
 	}
 
 	async reopen(id) {
-		const index = this.tasks.findIndex((t) => t.id === id);
-		if (index < 0) return;
-		const previous = this.tasks[index];
-
-		this.tasks[index] = { ...previous, completed: false };
-		try {
-			const updated = await api.reopenTask(id);
-			const i = this.tasks.findIndex((t) => t.id === id);
-			if (i >= 0) this.tasks[i] = updated;
-		} catch (e) {
-			const i = this.tasks.findIndex((t) => t.id === id);
-			if (i >= 0) this.tasks[i] = previous;
-			this.toast(humanMessage(e));
-		}
+		await this.#optimistic(id, { completed: false }, () => api.reopenTask(id));
 	}
 
 	async update(id, patch) {
-		const index = this.tasks.findIndex((t) => t.id === id);
-		if (index < 0) return;
-		const previous = this.tasks[index];
+		await this.#optimistic(id, patch, () => api.updateTask(id, patch));
+	}
 
-		this.tasks[index] = { ...previous, ...patch };
+	/**
+	 * Applies `patch` at once, then reconciles with whatever the server says.
+	 *
+	 * The rollback restores the version captured before the change rather than
+	 * inverting the patch: the server may have declined for a reason that has
+	 * nothing to do with the fields sent, and putting back what was there is the
+	 * only correction that is right in every case.
+	 */
+	async #optimistic(id, patch, request) {
+		const previous = this.get(id);
+		if (!previous) return;
+
+		this.replace(id, { ...previous, ...patch });
 		try {
-			const updated = await api.updateTask(id, patch);
-			const i = this.tasks.findIndex((t) => t.id === id);
-			if (i >= 0) this.tasks[i] = updated;
+			this.replace(id, await request());
 		} catch (e) {
-			const i = this.tasks.findIndex((t) => t.id === id);
-			if (i >= 0) this.tasks[i] = previous;
+			this.replace(id, previous);
 			this.toast(humanMessage(e));
 		}
 	}
@@ -185,7 +220,7 @@ class AppState {
 	async quickAdd(text, projectId) {
 		try {
 			const task = await api.quickAdd(text, projectId);
-			this.tasks.push(task);
+			this.upsert(task);
 			return task;
 		} catch (e) {
 			this.toast(humanMessage(e));
@@ -198,7 +233,7 @@ class AppState {
 	async createProject(name) {
 		try {
 			const project = await api.createProject({ name });
-			this.projects.push(project);
+			this.projects = [...this.projects, project];
 			return project;
 		} catch (e) {
 			this.toast(humanMessage(e));
