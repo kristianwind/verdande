@@ -131,6 +131,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			r.Group(func(r chi.Router) {
 				r.Use(s.requireAuth)
 				r.Get("/me", s.handleMe)
+				r.Patch("/me", s.handleUpdateProfile)
 				r.Post("/logout", s.handleLogout)
 				r.Post("/password/change", s.handleChangePassword)
 				r.Post("/totp/setup", s.handleTOTPSetup)
@@ -189,6 +190,15 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 
 			r.Get("/mail-address", s.handleGetMailAddress)
 			r.Post("/mail-address/rotate", s.handleRotateMailAddress)
+
+			// Personal API tokens. Behind requireSession rather than the ambient
+			// auth: a token must not be able to mint or revoke another.
+			r.Route("/tokens", func(r chi.Router) {
+				r.Use(s.requireSession)
+				r.Get("/", s.handleListAPITokens)
+				r.Post("/", s.handleCreateAPIToken)
+				r.Delete("/{tokenID}", s.handleDeleteAPIToken)
+			})
 
 			r.Route("/ai", func(r chi.Router) {
 				r.Get("/settings", s.handleGetAISettings)

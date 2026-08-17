@@ -118,6 +118,22 @@ curl -X POST https://todo.example.dk/api/v1/tasks/quick-add \
 | `GET` | `/export/projects/{id}.csv` | Todoist-compatible. |
 | `GET` | `/export/projects/{id}.ics` | A calendar file. |
 
+### API tokens
+
+| Method | Path | |
+|---|---|---|
+| `GET` `POST` | `/tokens` | List, or mint one. `name` is required; `expires_in_days` is optional, and `0` means it never expires. |
+| `DELETE` | `/tokens/{id}` | Revoked immediately. |
+
+The plaintext token comes back from `POST` and never again — only its hash is
+stored. The listing shows a `prefix`, which is enough to tell two of your own
+tokens apart.
+
+!!! warning "These three need a signed-in session"
+    A bearer token is refused here with `403`, even though it is accepted
+    everywhere else. Otherwise a leaked token would be permanent: whoever had it
+    could issue a second one, and revoking the first would change nothing.
+
 ### Everything else
 
 | Method | Path | |
