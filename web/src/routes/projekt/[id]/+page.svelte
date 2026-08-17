@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
-	import TaskRow from '$lib/components/TaskRow.svelte';
+	import TaskList from '$lib/components/TaskList.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
 	import BoardView from '$lib/components/BoardView.svelte';
 	import CalendarView from '$lib/components/CalendarView.svelte';
@@ -168,18 +168,14 @@
 			<CalendarView />
 		{:else}
 			<section>
-				{#each unsectioned as task (task.id)}
-					<TaskRow {task} />
-				{/each}
+				<TaskList tasks={unsectioned} projectId={project.id} sectionId="" {canEdit} />
 			</section>
 
 			{#each sections as section (section.id)}
 				{@const tasks = open.filter((t) => t.section_id === section.id)}
 				<section>
 					<h2>{section.name}</h2>
-					{#each tasks as task (task.id)}
-						<TaskRow {task} />
-					{/each}
+					<TaskList {tasks} projectId={project.id} sectionId={section.id} {canEdit} />
 					{#if !tasks.length}
 						<p class="empty">Tom</p>
 					{/if}
