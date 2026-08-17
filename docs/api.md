@@ -19,6 +19,16 @@ curl -H "Authorization: Bearer vrd_..." https://todo.example.dk/api/v1/tasks
 Make one under **Settings → API tokens**. It carries your permissions exactly —
 there is no separate service identity.
 
+## The machine-readable spec
+
+[`openapi.yaml`](openapi.yaml) describes the same API as an OpenAPI 3.1 document —
+for generating a client, for importing into Bruno or Insomnia, or for reading in a
+tool that renders it.
+
+It is written by hand, and a test walks the router on every build and fails if an
+endpoint is routed but not described, or described but no longer routed. So it is
+as current as this page is, which is to say: as current as CI is green.
+
 ## Errors
 
 Every failure has the same shape:

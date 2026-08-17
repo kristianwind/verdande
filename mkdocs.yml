@@ -56,6 +56,8 @@ nav:
       - Mail to task: mail.md
       - Claude (MCP): mcp.md
       - AI features: ai.md
+  # openapi.yaml is deliberately not in the nav: MkDocs copies it to the site as a
+  # file, and api.md links to it. A nav entry expects a page to render.
   - Reference:
       - API: api.md
 
