@@ -1,6 +1,7 @@
 <script>
 	/** One project: its sections, its tasks, and who it is shared with. */
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import TaskList from '$lib/components/TaskList.svelte';
@@ -65,6 +66,41 @@
 	let open = $derived(app.tasks.filter((t) => !t.completed && !t.parent_id));
 	let unsectioned = $derived(open.filter((t) => !t.section_id));
 
+	/** Renames on blur. A no-op when nothing changed, so tabbing through is free. */
+	async function rename(input) {
+		const name = input.value.trim();
+		if (!name || name === project.name) {
+			input.value = project.name;
+			return;
+		}
+		try {
+			project = await api.updateProject(project.id, { name });
+			// The sidebar reads its own copy, so it has to be told.
+			await app.refreshProjects();
+		} catch (e) {
+			input.value = project.name;
+			app.toast(humanMessage(e));
+		}
+	}
+
+	async function remove() {
+		const days = 30;
+		const confirmed = confirm(
+			`Slet "${project.name}" med alle dets opgaver?\n\n` +
+				`Det havner i papirkurven og kan hentes tilbage under ` +
+				`Indstillinger → Data og skabeloner i ${days} dage.`
+		);
+		if (!confirmed) return;
+
+		try {
+			await api.deleteProject(project.id);
+			await app.refreshProjects();
+			goto('/');
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
 	async function invite(event) {
 		event.preventDefault();
 		inviteError = '';
@@ -87,7 +123,25 @@
 <div class="view">
 	{#if project}
 		<header>
-			<h1>{project.name}</h1>
+			{#if isOwner}
+				<!-- A heading that happens to be editable, rather than a field that
+				     looks like one. Saves on blur; Escape puts the old name back. -->
+				<input
+					class="title"
+					value={project.name}
+					aria-label="Projektets navn"
+					onblur={(e) => rename(e.currentTarget)}
+					onkeydown={(e) => {
+						if (e.key === 'Enter') e.currentTarget.blur();
+						if (e.key === 'Escape') {
+							e.currentTarget.value = project.name;
+							e.currentTarget.blur();
+						}
+					}}
+				/>
+			{:else}
+				<h1>{project.name}</h1>
+			{/if}
 			<div class="views" role="group" aria-label="Visning">
 				{#each [['list', 'Liste'], ['board', 'Board'], ['calendar', 'Kalender']] as [value, label]}
 					<button
@@ -101,6 +155,14 @@
 			{#if !project.is_inbox}
 				<button class="share" onclick={() => (showShare = !showShare)}>
 					{project.shared ? `Delt · ${project.member_count}` : 'Del'}
+				</button>
+			{/if}
+
+			{#if isOwner && !project.is_inbox}
+				<button class="remove" onclick={remove} aria-label="Slet projektet">
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13h10l1-13" />
+					</svg>
 				</button>
 			{/if}
 		</header>
@@ -223,6 +285,58 @@
 		flex: 1;
 		min-width: 0;
 		overflow-wrap: anywhere;
+	}
+
+	/* Reads as the heading it replaces until you put the cursor in it. */
+	.title {
+		flex: 1;
+		min-width: 0;
+		font-size: var(--text-2xl);
+		font-weight: 560;
+		letter-spacing: -0.015em;
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: var(--radius);
+		padding: var(--s1) var(--s2);
+		margin-left: calc(var(--s2) * -1);
+		outline: none;
+	}
+
+	.title:hover {
+		border-color: var(--line);
+	}
+
+	.title:focus {
+		background: var(--surface);
+		border-color: var(--accent);
+	}
+
+	.remove {
+		flex: none;
+		width: 30px;
+		height: 30px;
+		display: grid;
+		place-items: center;
+		border-radius: var(--radius);
+		color: var(--ink-faint);
+		transition:
+			color var(--fast) var(--ease),
+			background var(--fast) var(--ease);
+	}
+
+	.remove:hover {
+		color: var(--danger);
+		background: var(--danger-sunken);
+	}
+
+	.remove svg {
+		width: 16px;
+		height: 16px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.6;
+		stroke-linecap: round;
+		stroke-linejoin: round;
 	}
 
 	.views {
