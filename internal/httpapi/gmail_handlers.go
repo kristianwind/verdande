@@ -37,13 +37,13 @@ func (s *Server) handleGmailAuthorize(w http.ResponseWriter, r *http.Request) {
 
 	pkce, err := gmail.NewPKCE()
 	if err != nil {
-		s.internal(w, "gmail pkce", err)
+		s.internal(w, r, "gmail pkce", err)
 		return
 	}
 
 	settings, err := s.db.UserSettings(r.Context(), user.ID, "gmail")
 	if err != nil {
-		s.internal(w, "gmail settings", err)
+		s.internal(w, r, "gmail settings", err)
 		return
 	}
 	settings["pkce_verifier"] = pkce.Verifier
@@ -53,7 +53,7 @@ func (s *Server) handleGmailAuthorize(w http.ResponseWriter, r *http.Request) {
 	settings["pkce_expires"] = time.Now().Add(10 * time.Minute).Unix()
 
 	if err := s.db.SetUserSettings(r.Context(), user.ID, "gmail", settings); err != nil {
-		s.internal(w, "gmail settings", err)
+		s.internal(w, r, "gmail settings", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"url": cfg.AuthURL(pkce)})
@@ -83,7 +83,7 @@ func (s *Server) handleGmailCallback(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := s.db.UserSettings(r.Context(), user.ID, "gmail")
 	if err != nil {
-		s.internal(w, "gmail settings", err)
+		s.internal(w, r, "gmail settings", err)
 		return
 	}
 	verifier, _ := settings["pkce_verifier"].(string)
@@ -138,7 +138,7 @@ func (s *Server) handleGmailCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.db.SetUserSettings(r.Context(), user.ID, "gmail", settings); err != nil {
-		s.internal(w, "save gmail tokens", err)
+		s.internal(w, r, "save gmail tokens", err)
 		return
 	}
 	s.log.Info("gmail connected", "user", user.ID, "mailbox", email)

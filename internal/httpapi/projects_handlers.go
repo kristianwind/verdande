@@ -45,7 +45,7 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 
 	projects, err := s.db.ListProjects(r.Context(), user.ID, includeArchived)
 	if err != nil {
-		s.internal(w, "list projects", err)
+		s.internal(w, r, "list projects", err)
 		return
 	}
 	out := make([]projectJSON, 0, len(projects))
@@ -59,7 +59,7 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r.Context())
 	p, err := s.db.GetProject(r.Context(), chi.URLParam(r, "projectID"), user.ID)
 	if err != nil {
-		s.storeError(w, "get project", err)
+		s.storeError(w, r, "get project", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toProjectJSON(*p))
@@ -105,7 +105,7 @@ func (s *Server) handleReorderProjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.db.ReorderProjects(r.Context(), userFrom(r.Context()).ID, req.IDs); err != nil {
-		s.internal(w, "reorder projects", err)
+		s.internal(w, r, "reorder projects", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -138,7 +138,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		p.ViewMode = *req.ViewMode
 	}
 	if err := s.db.CreateProject(r.Context(), p); err != nil {
-		s.internal(w, "create project", err)
+		s.internal(w, r, "create project", err)
 		return
 	}
 	s.activity(r, p.ID, "", "project.created", map[string]any{"name": p.Name})
@@ -174,7 +174,7 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		ViewMode: req.ViewMode, Archived: req.Archived,
 	})
 	if err != nil {
-		s.storeError(w, "update project", err)
+		s.storeError(w, r, "update project", err)
 		return
 	}
 	// Grouping is written separately because it is scoped differently: the fields
@@ -184,7 +184,7 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	if req.GroupID != nil {
 		if err := s.db.SetProjectGroup(r.Context(), projectID, *req.GroupID,
 			userFrom(r.Context()).ID); err != nil {
-			s.storeError(w, "set project group", err)
+			s.storeError(w, r, "set project group", err)
 			return
 		}
 	}
@@ -192,7 +192,7 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 
 	p, err := s.db.GetProject(r.Context(), projectID, userFrom(r.Context()).ID)
 	if err != nil {
-		s.storeError(w, "get project", err)
+		s.storeError(w, r, "get project", err)
 		return
 	}
 	s.publishToOwner(r, "project.updated", toProjectJSON(*p))
@@ -206,7 +206,7 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, CodeInboxProtected, "the Inbox cannot be deleted")
 			return
 		}
-		s.storeError(w, "delete project", err)
+		s.storeError(w, r, "delete project", err)
 		return
 	}
 	s.activity(r, projectID, "", "project.deleted", nil)
@@ -230,7 +230,7 @@ type trashedProjectJSON struct {
 func (s *Server) handleListTrashedProjects(w http.ResponseWriter, r *http.Request) {
 	trashed, err := s.db.ListTrashedProjects(r.Context(), userFrom(r.Context()).ID)
 	if err != nil {
-		s.internal(w, "list trashed projects", err)
+		s.internal(w, r, "list trashed projects", err)
 		return
 	}
 
@@ -252,7 +252,7 @@ func (s *Server) handleRestoreProject(w http.ResponseWriter, r *http.Request) {
 	// deliberately invisible to it. Ownership is what governs restoring.
 	owner, err := s.db.ProjectOwner(r.Context(), projectID)
 	if err != nil {
-		s.storeError(w, "project owner", err)
+		s.storeError(w, r, "project owner", err)
 		return
 	}
 	if owner != userFrom(r.Context()).ID {
@@ -260,7 +260,7 @@ func (s *Server) handleRestoreProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.db.RestoreProject(r.Context(), projectID); err != nil {
-		s.storeError(w, "restore project", err)
+		s.storeError(w, r, "restore project", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -306,7 +306,7 @@ type sectionJSON struct {
 func (s *Server) handleListSections(w http.ResponseWriter, r *http.Request) {
 	sections, err := s.db.ListSections(r.Context(), chi.URLParam(r, "projectID"))
 	if err != nil {
-		s.internal(w, "list sections", err)
+		s.internal(w, r, "list sections", err)
 		return
 	}
 	out := make([]sectionJSON, 0, len(sections))
@@ -336,7 +336,7 @@ func (s *Server) handleCreateSection(w http.ResponseWriter, r *http.Request) {
 		sec.SortOrder = *req.SortOrder
 	}
 	if err := s.db.CreateSection(r.Context(), sec); err != nil {
-		s.internal(w, "create section", err)
+		s.internal(w, r, "create section", err)
 		return
 	}
 	s.activity(r, sec.ProjectID, "", "section.created", map[string]any{"name": sec.Name})
@@ -350,7 +350,7 @@ func (s *Server) sectionAccess(w http.ResponseWriter, r *http.Request, min store
 	sectionID := chi.URLParam(r, "sectionID")
 	projectID, err := s.db.SectionProject(r.Context(), sectionID)
 	if err != nil {
-		s.storeError(w, "section project", err)
+		s.storeError(w, r, "section project", err)
 		return "", "", false
 	}
 	if _, err := store.RequireProjectRole(r.Context(), s.db, projectID, userFrom(r.Context()).ID, min); err != nil {
@@ -381,7 +381,7 @@ func (s *Server) handleUpdateSection(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.UpdateSection(r.Context(), sectionID, store.SectionUpdate{
 		Name: req.Name, SortOrder: req.SortOrder,
 	}); err != nil {
-		s.storeError(w, "update section", err)
+		s.storeError(w, r, "update section", err)
 		return
 	}
 	s.activity(r, projectID, "", "section.updated", nil)
@@ -394,7 +394,7 @@ func (s *Server) handleDeleteSection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.db.DeleteSection(r.Context(), sectionID); err != nil {
-		s.storeError(w, "delete section", err)
+		s.storeError(w, r, "delete section", err)
 		return
 	}
 	s.activity(r, projectID, "", "section.deleted", nil)
@@ -414,7 +414,7 @@ type memberJSON struct {
 func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
 	members, err := s.db.ListMembers(r.Context(), chi.URLParam(r, "projectID"))
 	if err != nil {
-		s.internal(w, "list members", err)
+		s.internal(w, r, "list members", err)
 		return
 	}
 	out := make([]memberJSON, 0, len(members))
@@ -463,7 +463,7 @@ func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request) {
 
 	project, err := s.db.GetProject(r.Context(), projectID, inviter.ID)
 	if err != nil {
-		s.storeError(w, "get project", err)
+		s.storeError(w, r, "get project", err)
 		return
 	}
 
@@ -475,7 +475,7 @@ func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := s.db.AddMember(r.Context(), projectID, existing.ID, role); err != nil {
-			s.internal(w, "add member", err)
+			s.internal(w, r, "add member", err)
 			return
 		}
 		s.activity(r, projectID, "", "member.added", map[string]any{"email": email, "role": string(role)})
@@ -485,7 +485,7 @@ func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request) {
 
 	token, _, err := s.db.CreateInvite(r.Context(), email, projectID, role, inviter.ID, s.cfg.InviteTTL)
 	if err != nil {
-		s.internal(w, "create invite", err)
+		s.internal(w, r, "create invite", err)
 		return
 	}
 	link := s.cfg.BaseURL + "/invite?token=" + token
@@ -531,7 +531,7 @@ func (s *Server) handleSetMemberRole(w http.ResponseWriter, r *http.Request) {
 	// unhelpful. Say the real reason instead.
 	owner, err := s.db.ProjectOwner(r.Context(), projectID)
 	if err != nil {
-		s.storeError(w, "project owner", err)
+		s.storeError(w, r, "project owner", err)
 		return
 	}
 	if userID == owner {
@@ -541,7 +541,7 @@ func (s *Server) handleSetMemberRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.db.SetMemberRole(r.Context(), projectID, userID, role); err != nil {
-		s.storeError(w, "set member role", err)
+		s.storeError(w, r, "set member role", err)
 		return
 	}
 	s.activity(r, projectID, "", "member.role_changed",
@@ -555,7 +555,7 @@ func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 
 	owner, err := s.db.ProjectOwner(r.Context(), projectID)
 	if err != nil {
-		s.storeError(w, "project owner", err)
+		s.storeError(w, r, "project owner", err)
 		return
 	}
 	if userID == owner {
@@ -564,7 +564,7 @@ func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.db.RemoveMember(r.Context(), projectID, userID); err != nil {
-		s.storeError(w, "remove member", err)
+		s.storeError(w, r, "remove member", err)
 		return
 	}
 	s.activity(r, projectID, "", "member.removed", map[string]any{"user_id": userID})
@@ -576,13 +576,13 @@ func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 // Everything a caller is not allowed to see is reported as 404 rather than 403: a
 // 403 confirms the thing exists, which is exactly what somebody probing ids wants
 // to learn.
-func (s *Server) storeError(w http.ResponseWriter, what string, err error) {
+func (s *Server) storeError(w http.ResponseWriter, r *http.Request, what string, err error) {
 	switch {
 	case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrNoAccess):
 		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
 	case errors.Is(err, store.ErrEmailInUse):
 		writeError(w, http.StatusConflict, CodeConflict, "that email address already has an account")
 	default:
-		s.internal(w, what, err)
+		s.internal(w, r, what, err)
 	}
 }

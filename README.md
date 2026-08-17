@@ -75,6 +75,8 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | Settings: account, notifications, integrations, AI, tokens, data | Done |
 | Device list: where you are signed in, and signing one out | Done, tested |
 | User administration: invite to the instance, promote, remove | Done, tested |
+| Server errors kept in the database, readable after a restart | Done, tested |
+| PWA icons: PNG for launchers, apple-touch-icon for iOS | Done, smoke-tested |
 | Invite and password-reset links that open the right page | Done, smoke-tested |
 | Drag to reorder, in both the list and the board | Done |
 | Drag a task to another project or another day | Done, smoke-tested |

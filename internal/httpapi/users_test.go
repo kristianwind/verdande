@@ -277,3 +277,70 @@ func indexAfter(s, needle string) int {
 	}
 	return 0
 }
+
+// A 500 has to leave something behind that a restart cannot take.
+//
+// The panel's watcher already reports that one happened. What it cannot report is
+// what it was: that lives in the container's log, and a Rune replaces the
+// container on every restart, so the explanation is usually gone before anybody
+// looks.
+func TestAServerErrorIsKeptWhereARestartCannotTakeIt(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	// Nothing has gone wrong yet.
+	_, empty := ts.do(t, "GET", "/api/v1/errors", nil)
+	if rows, _ := empty["errors"].([]any); len(rows) != 0 {
+		t.Fatalf("a fresh instance has errors already: %v", rows)
+	}
+
+	// Break something the handler cannot survive: the table it reads is gone, so
+	// the query fails and the handler answers 500. Dropping it is a blunt way to
+	// provoke that, and a faithful one — it is the same code path a disk error or
+	// a corrupt page would take.
+	if _, err := ts.db.ExecContext(t.Context(), `DROP TABLE project_groups`); err != nil {
+		t.Fatal(err)
+	}
+	resp, _ := ts.do(t, "GET", "/api/v1/project-groups", nil)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status %d, want 500 — the fault was not provoked", resp.StatusCode)
+	}
+
+	_, body := ts.do(t, "GET", "/api/v1/errors", nil)
+	rows, _ := body["errors"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("want one recorded error, got %v", rows)
+	}
+	row := rows[0].(map[string]any)
+	if row["what"] != "list project groups" {
+		t.Errorf("what = %v — the operation is the part a status code cannot give", row["what"])
+	}
+	if row["path"] != "/api/v1/project-groups" || row["method"] != "GET" {
+		t.Errorf("path/method = %v %v", row["method"], row["path"])
+	}
+	if row["status"] != float64(500) {
+		t.Errorf("status = %v", row["status"])
+	}
+	if row["message"] == "" {
+		t.Error("no message: the row says something broke and not what")
+	}
+	if row["user_name"] != "Kristian" {
+		t.Errorf("user_name = %v — a fault only one account hits is a different problem",
+			row["user_name"])
+	}
+	if row["request_id"] == "" {
+		t.Error("no request id, so the row cannot be tied back to the log line")
+	}
+}
+
+// The list is an administrator's: it carries paths, accounts and the server's own
+// error strings.
+func TestTheErrorLogIsAdminsOnly(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	other := ts.newUser(t, "anden@example.dk", "Anden")
+
+	if resp, _ := other.do(t, "GET", "/api/v1/errors", nil); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status %d, want 403", resp.StatusCode)
+	}
+}

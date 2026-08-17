@@ -31,7 +31,7 @@ func (s *Server) handleToday(w http.ResponseWriter, r *http.Request) {
 		Limit:     500,
 	})
 	if err != nil {
-		s.internal(w, "today", err)
+		s.internal(w, r, "today", err)
 		return
 	}
 
@@ -71,7 +71,7 @@ func (s *Server) handleUpcoming(w http.ResponseWriter, r *http.Request) {
 		Limit:     1000,
 	})
 	if err != nil {
-		s.internal(w, "upcoming", err)
+		s.internal(w, r, "upcoming", err)
 		return
 	}
 
@@ -101,7 +101,7 @@ func (s *Server) handleUpcoming(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePeople(w http.ResponseWriter, r *http.Request) {
 	people, err := s.db.ListPeople(r.Context(), userFrom(r.Context()).ID)
 	if err != nil {
-		s.internal(w, "list people", err)
+		s.internal(w, r, "list people", err)
 		return
 	}
 	out := make([]personJSON, 0, len(people))
@@ -142,7 +142,7 @@ func (s *Server) handleDelegated(w http.ResponseWriter, r *http.Request) {
 		Limit:       parseLimit(r.URL.Query().Get("limit"), 200, 500),
 	})
 	if err != nil {
-		s.internal(w, "delegated", err)
+		s.internal(w, r, "delegated", err)
 		return
 	}
 
@@ -157,7 +157,7 @@ func (s *Server) handleDelegated(w http.ResponseWriter, r *http.Request) {
 
 	people, err := s.db.PeopleByIDs(r.Context(), ids)
 	if err != nil {
-		s.internal(w, "delegated people", err)
+		s.internal(w, r, "delegated people", err)
 		return
 	}
 
@@ -209,7 +209,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		Limit:            parseLimit(r.URL.Query().Get("limit"), 40, 100),
 	})
 	if err != nil {
-		s.internal(w, "search tasks", err)
+		s.internal(w, r, "search tasks", err)
 		return
 	}
 
@@ -217,7 +217,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	// second FTS index for that would be more machinery than the problem needs.
 	projects, err := s.db.ListProjects(r.Context(), user.ID, false)
 	if err != nil {
-		s.internal(w, "search projects", err)
+		s.internal(w, r, "search projects", err)
 		return
 	}
 	matched := []projectJSON{}
@@ -239,7 +239,7 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	entries, err := s.db.ListActivity(r.Context(), chi.URLParam(r, "projectID"),
 		parseLimit(r.URL.Query().Get("limit"), 50, 200))
 	if err != nil {
-		s.internal(w, "list activity", err)
+		s.internal(w, r, "list activity", err)
 		return
 	}
 

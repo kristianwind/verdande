@@ -54,12 +54,12 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 
 	users, err := s.db.ListUsers(r.Context())
 	if err != nil {
-		s.internal(w, "list users", err)
+		s.internal(w, r, "list users", err)
 		return
 	}
 	invites, err := s.db.ListPendingInvites(r.Context())
 	if err != nil {
-		s.internal(w, "list pending invites", err)
+		s.internal(w, r, "list pending invites", err)
 		return
 	}
 
@@ -128,7 +128,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	token, _, err := s.db.CreateInvite(r.Context(), email, "", store.RoleEditor,
 		inviter.ID, s.cfg.InviteTTL)
 	if err != nil {
-		s.internal(w, "create instance invite", err)
+		s.internal(w, r, "create instance invite", err)
 		return
 	}
 	link := s.cfg.BaseURL + "/invite?token=" + token
@@ -170,7 +170,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.db.SetUserAdmin(r.Context(), userID, *req.IsAdmin); err != nil {
-		s.storeError(w, "set user admin", err)
+		s.storeError(w, r, "set user admin", err)
 		return
 	}
 	s.log.Info("admin changed", "by", me.ID, "user", userID, "is_admin", *req.IsAdmin)
@@ -197,7 +197,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.db.DeleteUser(r.Context(), userID); err != nil {
-		s.storeError(w, "delete user", err)
+		s.storeError(w, r, "delete user", err)
 		return
 	}
 	s.log.Info("user deleted", "by", me.ID, "user", userID)
@@ -206,7 +206,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteInvite(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.DeleteInvite(r.Context(), chi.URLParam(r, "inviteID")); err != nil {
-		s.storeError(w, "delete invite", err)
+		s.storeError(w, r, "delete invite", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -218,7 +218,7 @@ func (s *Server) handleDeleteInvite(w http.ResponseWriter, r *http.Request) {
 func (s *Server) refuseIfLastAdmin(w http.ResponseWriter, r *http.Request, userID, message string) error {
 	target, err := s.db.UserByID(r.Context(), userID)
 	if err != nil {
-		s.storeError(w, "get user", err)
+		s.storeError(w, r, "get user", err)
 		return err
 	}
 	if !target.IsAdmin {
@@ -226,7 +226,7 @@ func (s *Server) refuseIfLastAdmin(w http.ResponseWriter, r *http.Request, userI
 	}
 	admins, err := s.db.CountAdmins(r.Context())
 	if err != nil {
-		s.internal(w, "count admins", err)
+		s.internal(w, r, "count admins", err)
 		return err
 	}
 	if admins <= 1 {

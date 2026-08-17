@@ -27,12 +27,12 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 
 	list, err := s.db.ListNotifications(r.Context(), user.ID, 30)
 	if err != nil {
-		s.internal(w, "list notifications", err)
+		s.internal(w, r, "list notifications", err)
 		return
 	}
 	unread, err := s.db.UnreadNotificationCount(r.Context(), user.ID)
 	if err != nil {
-		s.internal(w, "count notifications", err)
+		s.internal(w, r, "count notifications", err)
 		return
 	}
 
@@ -50,7 +50,7 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleMarkNotificationsRead(w http.ResponseWriter, r *http.Request) {
 	err := s.db.MarkNotificationsRead(r.Context(), userFrom(r.Context()).ID, chi.URLParam(r, "notificationID"))
 	if err != nil {
-		s.internal(w, "mark notifications read", err)
+		s.internal(w, r, "mark notifications read", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -148,7 +148,7 @@ type pushSubscriptionRequest struct {
 func (s *Server) handlePushKey(w http.ResponseWriter, r *http.Request) {
 	public, _, err := s.vapidKeys(r.Context())
 	if err != nil {
-		s.internal(w, "vapid keys", err)
+		s.internal(w, r, "vapid keys", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"public_key": public})
@@ -172,7 +172,7 @@ func (s *Server) handleSubscribePush(w http.ResponseWriter, r *http.Request) {
 		UserAgent: r.UserAgent(),
 	})
 	if err != nil {
-		s.internal(w, "save push subscription", err)
+		s.internal(w, r, "save push subscription", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -184,7 +184,7 @@ func (s *Server) handleUnsubscribePush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.db.DeletePushSubscription(r.Context(), req.Endpoint); err != nil {
-		s.internal(w, "delete push subscription", err)
+		s.internal(w, r, "delete push subscription", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

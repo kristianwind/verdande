@@ -305,6 +305,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			// delete somebody else's.
 			r.Group(func(r chi.Router) {
 				r.Use(s.requireSession, s.requireAdmin)
+				r.Get("/errors", s.handleListErrors)
 				r.Get("/users", s.handleListUsers)
 				r.Post("/users", s.handleCreateUser)
 				r.Patch("/users/{userID}", s.handleUpdateUser)

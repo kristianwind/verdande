@@ -36,7 +36,7 @@ type createdTokenJSON struct {
 func (s *Server) handleListAPITokens(w http.ResponseWriter, r *http.Request) {
 	tokens, err := s.db.ListAPITokens(r.Context(), userFrom(r.Context()).ID)
 	if err != nil {
-		s.internal(w, "list api tokens", err)
+		s.internal(w, r, "list api tokens", err)
 		return
 	}
 
@@ -96,7 +96,7 @@ func (s *Server) handleCreateAPIToken(w http.ResponseWriter, r *http.Request) {
 
 	plaintext, token, err := s.db.CreateAPIToken(r.Context(), userFrom(r.Context()).ID, name, expires)
 	if err != nil {
-		s.internal(w, "create api token", err)
+		s.internal(w, r, "create api token", err)
 		return
 	}
 
@@ -117,7 +117,7 @@ func (s *Server) handleCreateAPIToken(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteAPIToken(w http.ResponseWriter, r *http.Request) {
 	err := s.db.DeleteAPIToken(r.Context(), userFrom(r.Context()).ID, chi.URLParam(r, "tokenID"))
 	if err != nil {
-		s.storeError(w, "delete api token", err)
+		s.storeError(w, r, "delete api token", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

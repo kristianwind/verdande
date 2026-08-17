@@ -85,7 +85,7 @@ func (s *Server) handleCalDAVHome(w http.ResponseWriter, r *http.Request) {
 
 	projects, err := s.db.ListProjects(r.Context(), user.ID, false)
 	if err != nil {
-		s.internal(w, "caldav home", err)
+		s.internal(w, r, "caldav home", err)
 		return
 	}
 
@@ -131,7 +131,7 @@ func (s *Server) handleCalDAVCalendar(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Depth") != "0" {
 		tasks, err := s.caldavTasks(r, user, projectID)
 		if err != nil {
-			s.internal(w, "caldav tasks", err)
+			s.internal(w, r, "caldav tasks", err)
 			return
 		}
 		for _, t := range tasks {
@@ -157,7 +157,7 @@ func (s *Server) handleCalDAVReport(w http.ResponseWriter, r *http.Request) {
 
 	tasks, err := s.caldavTasks(r, user, projectID)
 	if err != nil {
-		s.internal(w, "caldav report", err)
+		s.internal(w, r, "caldav report", err)
 		return
 	}
 	byID := map[string]store.Task{}
@@ -240,7 +240,7 @@ func (s *Server) handleCalDAVPut(w http.ResponseWriter, r *http.Request) {
 		update.DueDatetime = parsed.DueDatetime
 
 		if err := s.db.UpdateTask(r.Context(), taskID, user.ID, update); err != nil {
-			s.internal(w, "caldav update", err)
+			s.internal(w, r, "caldav update", err)
 			return
 		}
 		if parsed.Completed && !existing.Completed() {
@@ -275,7 +275,7 @@ func (s *Server) handleCalDAVPut(w http.ResponseWriter, r *http.Request) {
 		task.Content = "(uden titel)"
 	}
 	if err := s.db.CreateTask(r.Context(), task, nil); err != nil {
-		s.internal(w, "caldav create", err)
+		s.internal(w, r, "caldav create", err)
 		return
 	}
 	s.publish(projectID, "task.created", toTaskJSON(*task))
@@ -294,7 +294,7 @@ func (s *Server) handleCalDAVDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.db.DeleteTask(r.Context(), taskID); err != nil {
-		s.internal(w, "caldav delete", err)
+		s.internal(w, r, "caldav delete", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

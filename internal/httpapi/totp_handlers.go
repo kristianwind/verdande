@@ -29,12 +29,12 @@ func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
 
 	secret, uri, err := auth.NewTOTPSecret(s.issuer(), user.Email)
 	if err != nil {
-		s.internal(w, "generate totp secret", err)
+		s.internal(w, r, "generate totp secret", err)
 		return
 	}
 	// Stored but not enabled: confirm decides that.
 	if err := s.db.SetTOTPSecret(r.Context(), user.ID, secret, false); err != nil {
-		s.internal(w, "store totp secret", err)
+		s.internal(w, r, "store totp secret", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, totpSetupResponse{Secret: secret, URI: uri})
@@ -63,15 +63,15 @@ func (s *Server) handleTOTPConfirm(w http.ResponseWriter, r *http.Request) {
 
 	codes, hashes, err := auth.NewRecoveryCodes()
 	if err != nil {
-		s.internal(w, "generate recovery codes", err)
+		s.internal(w, r, "generate recovery codes", err)
 		return
 	}
 	if err := s.db.ReplaceRecoveryCodes(r.Context(), user.ID, hashes); err != nil {
-		s.internal(w, "store recovery codes", err)
+		s.internal(w, r, "store recovery codes", err)
 		return
 	}
 	if err := s.db.SetTOTPSecret(r.Context(), user.ID, user.TOTPSecret, true); err != nil {
-		s.internal(w, "enable totp", err)
+		s.internal(w, r, "enable totp", err)
 		return
 	}
 
@@ -98,7 +98,7 @@ func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.db.SetTOTPSecret(r.Context(), user.ID, "", false); err != nil {
-		s.internal(w, "disable totp", err)
+		s.internal(w, r, "disable totp", err)
 		return
 	}
 	if err := s.db.ReplaceRecoveryCodes(r.Context(), user.ID, nil); err != nil {
@@ -127,11 +127,11 @@ func (s *Server) handleRecoveryCodesRegenerate(w http.ResponseWriter, r *http.Re
 
 	codes, hashes, err := auth.NewRecoveryCodes()
 	if err != nil {
-		s.internal(w, "generate recovery codes", err)
+		s.internal(w, r, "generate recovery codes", err)
 		return
 	}
 	if err := s.db.ReplaceRecoveryCodes(r.Context(), user.ID, hashes); err != nil {
-		s.internal(w, "store recovery codes", err)
+		s.internal(w, r, "store recovery codes", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, totpConfirmResponse{RecoveryCodes: codes})
@@ -140,7 +140,7 @@ func (s *Server) handleRecoveryCodesRegenerate(w http.ResponseWriter, r *http.Re
 func (s *Server) handleRecoveryCodesCount(w http.ResponseWriter, r *http.Request) {
 	n, err := s.db.CountRecoveryCodes(r.Context(), userFrom(r.Context()).ID)
 	if err != nil {
-		s.internal(w, "count recovery codes", err)
+		s.internal(w, r, "count recovery codes", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"remaining": n})

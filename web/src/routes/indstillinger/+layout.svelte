@@ -25,7 +25,12 @@
 		{ href: '/indstillinger/integrationer', label: 'Integrationer' },
 		{ href: '/indstillinger/ai', label: 'AI' },
 		{ href: '/indstillinger/tokens', label: 'API-tokens' },
-		...(app.user?.is_admin ? [{ href: '/indstillinger/brugere', label: 'Brugere' }] : []),
+		...(app.user?.is_admin
+			? [
+					{ href: '/indstillinger/brugere', label: 'Brugere' },
+					{ href: '/indstillinger/fejl', label: 'Fejl' }
+				]
+			: []),
 		{ href: '/indstillinger/data', label: 'Data og skabeloner' }
 	]);
 

@@ -178,6 +178,7 @@ export const api = {
 	setUserAdmin: (id, isAdmin) => patch(`/users/${id}`, { is_admin: isAdmin }),
 	deleteUser: (id) => del(`/users/${id}`),
 	revokeInvite: (id) => del(`/invites/${id}`),
+	listErrors: () => get('/errors'),
 
 	recoveryCodes: () => get('/auth/recovery-codes'),
 	regenerateRecoveryCodes: (password) => post('/auth/recovery-codes', { password }),

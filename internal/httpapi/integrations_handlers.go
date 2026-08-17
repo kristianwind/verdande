@@ -37,7 +37,7 @@ func (s *Server) handleGetMailAddress(w http.ResponseWriter, r *http.Request) {
 
 	token, err := s.db.EnsureMailToken(r.Context(), user.ID)
 	if err != nil {
-		s.internal(w, "mail token", err)
+		s.internal(w, r, "mail token", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, mailAddressResponse{
@@ -49,11 +49,11 @@ func (s *Server) handleGetMailAddress(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRotateMailAddress(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.NewToken()
 	if err != nil {
-		s.internal(w, "generate mail token", err)
+		s.internal(w, r, "generate mail token", err)
 		return
 	}
 	if err := s.db.SetMailToken(r.Context(), userFrom(r.Context()).ID, token); err != nil {
-		s.internal(w, "set mail token", err)
+		s.internal(w, r, "set mail token", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, mailAddressResponse{
@@ -134,7 +134,7 @@ func (s *Server) handleInboundMail(w http.ResponseWriter, r *http.Request) {
 	}
 	if projectID == "" {
 		if projectID, err = s.db.InboxID(r.Context(), user.ID); err != nil {
-			s.internal(w, "inbox", err)
+			s.internal(w, r, "inbox", err)
 			return
 		}
 	}
@@ -145,7 +145,7 @@ func (s *Server) handleInboundMail(w http.ResponseWriter, r *http.Request) {
 		RecurrenceRule: parsed.Recurrence, CreatedBy: user.ID,
 	}
 	if err := s.db.CreateTask(r.Context(), task, parsed.Labels); err != nil {
-		s.internal(w, "create task from mail", err)
+		s.internal(w, r, "create task from mail", err)
 		return
 	}
 
@@ -187,7 +187,7 @@ type aiSettings struct {
 func (s *Server) handleGetAISettings(w http.ResponseWriter, r *http.Request) {
 	cfg, err := s.aiConfig(r, userFrom(r.Context()).ID)
 	if err != nil {
-		s.internal(w, "ai settings", err)
+		s.internal(w, r, "ai settings", err)
 		return
 	}
 	// The key is never sent back. A settings page that repopulates a password
@@ -216,7 +216,7 @@ func (s *Server) handleSetAISettings(w http.ResponseWriter, r *http.Request) {
 
 	existing, err := s.aiConfig(r, user.ID)
 	if err != nil {
-		s.internal(w, "ai settings", err)
+		s.internal(w, r, "ai settings", err)
 		return
 	}
 	// An empty key means "leave it alone", not "delete it" — otherwise saving a
@@ -231,7 +231,7 @@ func (s *Server) handleSetAISettings(w http.ResponseWriter, r *http.Request) {
 		"model": req.Model, "api_key": key,
 	}
 	if err := s.db.SetUserSettings(r.Context(), user.ID, "ai", settings); err != nil {
-		s.internal(w, "save ai settings", err)
+		s.internal(w, r, "save ai settings", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -266,7 +266,7 @@ func (s *Server) handleAISplit(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, err := s.aiConfig(r, user.ID)
 	if err != nil {
-		s.internal(w, "ai settings", err)
+		s.internal(w, r, "ai settings", err)
 		return
 	}
 	if !cfg.Configured() {
@@ -278,7 +278,7 @@ func (s *Server) handleAISplit(w http.ResponseWriter, r *http.Request) {
 
 	task, err := s.db.GetTask(r.Context(), taskID, user.ID)
 	if err != nil {
-		s.storeError(w, "get task", err)
+		s.storeError(w, r, "get task", err)
 		return
 	}
 
@@ -299,7 +299,7 @@ func (s *Server) handleAISplit(w http.ResponseWriter, r *http.Request) {
 			Priority: task.Priority, CreatedBy: user.ID,
 		}
 		if err := s.db.CreateTask(r.Context(), child, nil); err != nil {
-			s.internal(w, "create subtask", err)
+			s.internal(w, r, "create subtask", err)
 			return
 		}
 		created = append(created, toTaskJSON(*child))
@@ -315,7 +315,7 @@ func (s *Server) handleAISummary(w http.ResponseWriter, r *http.Request) {
 
 	cfg, err := s.aiConfig(r, user.ID)
 	if err != nil {
-		s.internal(w, "ai settings", err)
+		s.internal(w, r, "ai settings", err)
 		return
 	}
 	if !cfg.Configured() {
@@ -326,7 +326,7 @@ func (s *Server) handleAISummary(w http.ResponseWriter, r *http.Request) {
 
 	tasks, err := s.db.ListTasks(r.Context(), user.ID, store.TaskFilter{Limit: 100})
 	if err != nil {
-		s.internal(w, "list tasks", err)
+		s.internal(w, r, "list tasks", err)
 		return
 	}
 	if len(tasks) == 0 {
@@ -372,7 +372,7 @@ type gmailSettings struct {
 func (s *Server) handleGetGmail(w http.ResponseWriter, r *http.Request) {
 	values, err := s.db.UserSettings(r.Context(), userFrom(r.Context()).ID, "gmail")
 	if err != nil {
-		s.internal(w, "gmail settings", err)
+		s.internal(w, r, "gmail settings", err)
 		return
 	}
 	str := func(key string) string {
@@ -396,14 +396,14 @@ func (s *Server) handleSetGmail(w http.ResponseWriter, r *http.Request) {
 
 	values, err := s.db.UserSettings(r.Context(), user.ID, "gmail")
 	if err != nil {
-		s.internal(w, "gmail settings", err)
+		s.internal(w, r, "gmail settings", err)
 		return
 	}
 	values["trigger"] = req.Trigger
 	values["label"] = req.Label
 
 	if err := s.db.SetUserSettings(r.Context(), user.ID, "gmail", values); err != nil {
-		s.internal(w, "save gmail settings", err)
+		s.internal(w, r, "save gmail settings", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -412,7 +412,7 @@ func (s *Server) handleSetGmail(w http.ResponseWriter, r *http.Request) {
 // handleDisconnectGmail forgets the connection, tokens and all.
 func (s *Server) handleDisconnectGmail(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.SetUserSettings(r.Context(), userFrom(r.Context()).ID, "gmail", map[string]any{}); err != nil {
-		s.internal(w, "disconnect gmail", err)
+		s.internal(w, r, "disconnect gmail", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

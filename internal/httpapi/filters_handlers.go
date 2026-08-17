@@ -27,7 +27,7 @@ func toFilterJSON(f store.Filter) filterJSON {
 func (s *Server) handleListFilters(w http.ResponseWriter, r *http.Request) {
 	filters, err := s.db.ListFilters(r.Context(), userFrom(r.Context()).ID)
 	if err != nil {
-		s.internal(w, "list filters", err)
+		s.internal(w, r, "list filters", err)
 		return
 	}
 	out := make([]filterJSON, 0, len(filters))
@@ -74,7 +74,7 @@ func (s *Server) handleCreateFilter(w http.ResponseWriter, r *http.Request) {
 		f.SortOrder = *req.SortOrder
 	}
 	if err := s.db.CreateFilter(r.Context(), f); err != nil {
-		s.internal(w, "create filter", err)
+		s.internal(w, r, "create filter", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toFilterJSON(*f))
@@ -108,7 +108,7 @@ func (s *Server) handleUpdateFilter(w http.ResponseWriter, r *http.Request) {
 		Name: req.Name, Query: req.Query, Color: req.Color, SortOrder: req.SortOrder,
 	})
 	if err != nil {
-		s.storeError(w, "update filter", err)
+		s.storeError(w, r, "update filter", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -117,7 +117,7 @@ func (s *Server) handleUpdateFilter(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteFilter(w http.ResponseWriter, r *http.Request) {
 	err := s.db.DeleteFilter(r.Context(), userFrom(r.Context()).ID, chi.URLParam(r, "filterID"))
 	if err != nil {
-		s.storeError(w, "delete filter", err)
+		s.storeError(w, r, "delete filter", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -129,7 +129,7 @@ func (s *Server) handleRunFilter(w http.ResponseWriter, r *http.Request) {
 
 	f, err := s.db.GetFilter(r.Context(), user.ID, chi.URLParam(r, "filterID"))
 	if err != nil {
-		s.storeError(w, "get filter", err)
+		s.storeError(w, r, "get filter", err)
 		return
 	}
 	s.runQuery(w, r, f.Query)
@@ -167,7 +167,7 @@ func (s *Server) runQuery(w http.ResponseWriter, r *http.Request, query string) 
 		Limit: parseLimit(r.URL.Query().Get("limit"), 200, 500),
 	})
 	if err != nil {
-		s.internal(w, "run filter", err)
+		s.internal(w, r, "run filter", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tasks": toTaskList(tasks)})
@@ -210,7 +210,7 @@ type labelJSON struct {
 func (s *Server) handleListLabels(w http.ResponseWriter, r *http.Request) {
 	labels, err := s.db.ListLabels(r.Context(), userFrom(r.Context()).ID)
 	if err != nil {
-		s.internal(w, "list labels", err)
+		s.internal(w, r, "list labels", err)
 		return
 	}
 	out := make([]labelJSON, 0, len(labels))
@@ -242,7 +242,7 @@ func (s *Server) handleCreateLabel(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, CodeConflict, "you already have a label with that name")
 			return
 		}
-		s.internal(w, "create label", err)
+		s.internal(w, r, "create label", err)
 		return
 	}
 	s.publishToOwner(r, "label.changed", labelJSON{l.ID, l.Name, l.Color, l.SortOrder, 0})
@@ -261,7 +261,7 @@ func (s *Server) handleUpdateLabel(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, CodeConflict, "you already have a label with that name")
 			return
 		}
-		s.storeError(w, "update label", err)
+		s.storeError(w, r, "update label", err)
 		return
 	}
 	s.publishToOwner(r, "label.changed", nil)
@@ -271,7 +271,7 @@ func (s *Server) handleUpdateLabel(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteLabel(w http.ResponseWriter, r *http.Request) {
 	err := s.db.DeleteLabel(r.Context(), userFrom(r.Context()).ID, chi.URLParam(r, "labelID"))
 	if err != nil {
-		s.storeError(w, "delete label", err)
+		s.storeError(w, r, "delete label", err)
 		return
 	}
 	s.publishToOwner(r, "label.changed", nil)

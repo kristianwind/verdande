@@ -69,7 +69,7 @@ func (s *Server) handleImportTodoist(w http.ResponseWriter, r *http.Request) {
 	project := todoist.FromRows(rows, name)
 	result, err := s.importProject(r, user, project)
 	if err != nil {
-		s.internal(w, "import project", err)
+		s.internal(w, r, "import project", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, result)
@@ -240,7 +240,7 @@ func (s *Server) handleImportCSV(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.importProject(r, user, project)
 	if err != nil {
-		s.internal(w, "import csv", err)
+		s.internal(w, r, "import csv", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, result)
@@ -255,12 +255,12 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 
 	project, err := s.db.GetProject(r.Context(), projectID, user.ID)
 	if err != nil {
-		s.storeError(w, "get project", err)
+		s.storeError(w, r, "get project", err)
 		return
 	}
 	exported, err := s.buildExport(r, user, project)
 	if err != nil {
-		s.internal(w, "export project", err)
+		s.internal(w, r, "export project", err)
 		return
 	}
 
@@ -346,7 +346,7 @@ func (s *Server) handleExportAccount(w http.ResponseWriter, r *http.Request) {
 
 	projects, err := s.db.ListProjects(ctx, user.ID, true)
 	if err != nil {
-		s.internal(w, "export projects", err)
+		s.internal(w, r, "export projects", err)
 		return
 	}
 
@@ -390,7 +390,7 @@ func (s *Server) handleExportAccount(w http.ResponseWriter, r *http.Request) {
 			ProjectIDs: []string{p.ID}, IncludeCompleted: true, Limit: 5000,
 		})
 		if err != nil {
-			s.internal(w, "export tasks", err)
+			s.internal(w, r, "export tasks", err)
 			return
 		}
 		for _, t := range tasks {
@@ -445,14 +445,14 @@ func (s *Server) handleExportProjectICS(w http.ResponseWriter, r *http.Request) 
 
 	project, err := s.db.GetProject(r.Context(), projectID, user.ID)
 	if err != nil {
-		s.storeError(w, "get project", err)
+		s.storeError(w, r, "get project", err)
 		return
 	}
 	tasks, err := s.db.ListTasks(r.Context(), user.ID, store.TaskFilter{
 		ProjectIDs: []string{projectID}, IncludeCompleted: true, Limit: 5000,
 	})
 	if err != nil {
-		s.internal(w, "export ics", err)
+		s.internal(w, r, "export ics", err)
 		return
 	}
 

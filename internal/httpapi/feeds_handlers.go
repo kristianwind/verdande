@@ -36,13 +36,13 @@ func (s *Server) handleICSFeed(w http.ResponseWriter, r *http.Request) {
 		Limit:            2000,
 	})
 	if err != nil {
-		s.internal(w, "ics feed", err)
+		s.internal(w, r, "ics feed", err)
 		return
 	}
 
 	projects, err := s.db.ListProjects(r.Context(), user.ID, true)
 	if err != nil {
-		s.internal(w, "ics feed projects", err)
+		s.internal(w, r, "ics feed projects", err)
 		return
 	}
 	names := map[string]string{}
@@ -89,7 +89,7 @@ func (s *Server) handleGetFeed(w http.ResponseWriter, r *http.Request) {
 
 	token, err := s.db.EnsureICSToken(r.Context(), user.ID)
 	if err != nil {
-		s.internal(w, "ics token", err)
+		s.internal(w, r, "ics token", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, feedResponse{URL: s.cfg.BaseURL + "/ics/" + token + ".ics"})
@@ -103,11 +103,11 @@ func (s *Server) handleRotateFeed(w http.ResponseWriter, r *http.Request) {
 
 	token, err := auth.NewToken()
 	if err != nil {
-		s.internal(w, "generate feed token", err)
+		s.internal(w, r, "generate feed token", err)
 		return
 	}
 	if err := s.db.SetICSToken(r.Context(), user.ID, token); err != nil {
-		s.internal(w, "set feed token", err)
+		s.internal(w, r, "set feed token", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, feedResponse{URL: s.cfg.BaseURL + "/ics/" + token + ".ics"})
@@ -151,7 +151,7 @@ func (s *Server) handleListReminders(w http.ResponseWriter, r *http.Request) {
 
 	reminders, err := s.db.ListReminders(r.Context(), taskID)
 	if err != nil {
-		s.internal(w, "list reminders", err)
+		s.internal(w, r, "list reminders", err)
 		return
 	}
 	out := make([]reminderJSON, 0, len(reminders))
@@ -197,7 +197,7 @@ func (s *Server) handleCreateReminder(w http.ResponseWriter, r *http.Request) {
 
 	rem, err := s.db.CreateReminder(r.Context(), taskID, user.ID, at, req.OffsetMin)
 	if err != nil {
-		s.internal(w, "create reminder", err)
+		s.internal(w, r, "create reminder", err)
 		return
 	}
 
@@ -211,7 +211,7 @@ func (s *Server) handleCreateReminder(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteReminder(w http.ResponseWriter, r *http.Request) {
 	err := s.db.DeleteReminder(r.Context(), chi.URLParam(r, "reminderID"), userFrom(r.Context()).ID)
 	if err != nil {
-		s.storeError(w, "delete reminder", err)
+		s.storeError(w, r, "delete reminder", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -238,7 +238,7 @@ func toTemplateJSON(t store.Template) templateJSON {
 func (s *Server) handleListTemplates(w http.ResponseWriter, r *http.Request) {
 	templates, err := s.db.ListTemplates(r.Context(), userFrom(r.Context()).ID)
 	if err != nil {
-		s.internal(w, "list templates", err)
+		s.internal(w, r, "list templates", err)
 		return
 	}
 	out := make([]templateJSON, 0, len(templates))
@@ -273,7 +273,7 @@ func (s *Server) handleSaveTemplate(w http.ResponseWriter, r *http.Request) {
 	tpl, err := s.db.SaveProjectAsTemplate(r.Context(), req.ProjectID, user.ID,
 		strings.TrimSpace(req.Name), strings.TrimSpace(req.Description))
 	if err != nil {
-		s.storeError(w, "save template", err)
+		s.storeError(w, r, "save template", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toTemplateJSON(*tpl))
@@ -295,7 +295,7 @@ func (s *Server) handleUseTemplate(w http.ResponseWriter, r *http.Request) {
 
 	tpl, err := s.db.GetTemplate(r.Context(), user.ID, chi.URLParam(r, "templateID"))
 	if err != nil {
-		s.storeError(w, "get template", err)
+		s.storeError(w, r, "get template", err)
 		return
 	}
 
@@ -311,7 +311,7 @@ func (s *Server) handleUseTemplate(w http.ResponseWriter, r *http.Request) {
 
 	project, err := s.db.CreateProjectFromTemplate(r.Context(), tpl, user.ID, strings.TrimSpace(req.Name), start)
 	if err != nil {
-		s.internal(w, "create from template", err)
+		s.internal(w, r, "create from template", err)
 		return
 	}
 	s.activity(r, project.ID, "", "project.created", map[string]any{
@@ -323,7 +323,7 @@ func (s *Server) handleUseTemplate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
 	err := s.db.DeleteTemplate(r.Context(), userFrom(r.Context()).ID, chi.URLParam(r, "templateID"))
 	if err != nil {
-		s.storeError(w, "delete template", err)
+		s.storeError(w, r, "delete template", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

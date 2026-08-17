@@ -856,6 +856,60 @@ paths:
         "204": { description: Deleted. }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/errors:
+    get:
+      tags: [auth]
+      summary: What has gone wrong lately. Administrators only.
+      description: |
+        Every 500 the API has answered, newest first, with what the handler was
+        attempting and the error it hit.
+
+        These are written to the database rather than only to the log because the
+        log does not survive. On a Rune the log belongs to the container, and the
+        container is replaced on every restart — so a panel watcher reports "HTTP
+        5xx, twice, at 11:49" long after the line explaining it has gone, which
+        tells an operator that something broke and gives them no way to find out
+        what.
+
+        Kept for thirty days by the nightly sweep: long enough to answer "what
+        happened last week", short enough that a fault loop cannot fill the volume
+        the tasks live on.
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        at: { type: string, format: date-time }
+                        method: { type: string }
+                        path: { type: string }
+                        status: { type: integer }
+                        what:
+                          type: string
+                          description: What the handler was attempting, in its own words.
+                          example: list projects
+                        message: { type: string }
+                        user_name:
+                          type: string
+                          description: |
+                            Who was asking, when there was somebody. A fault only
+                            one account hits is a different problem from one
+                            everybody hits.
+                        request_id:
+                          type: string
+                          description: Ties the row back to the log line, for whoever still has it.
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /api/v1/users:
     get:
       tags: [auth]

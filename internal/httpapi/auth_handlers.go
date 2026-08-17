@@ -8,6 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/go-chi/chi/v5/middleware"
+
 	"github.com/kristianwind/verdande/internal/auth"
 	"github.com/kristianwind/verdande/internal/store"
 )
@@ -88,7 +90,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	token, _, err := s.db.CreateSession(r.Context(), user.ID, r.UserAgent(), clientIP(r), ttl, user.TOTPEnabled)
 	if err != nil {
-		s.internal(w, "create session", err)
+		s.internal(w, r, "create session", err)
 		return
 	}
 	s.setSessionCookie(w, token, ttl)
@@ -130,7 +132,7 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.db.PromoteSession(r.Context(), session.ID, s.cfg.SessionTTL); err != nil {
-		s.internal(w, "promote session", err)
+		s.internal(w, r, "promote session", err)
 		return
 	}
 	// The cookie is reissued so its lifetime matches the session's new one.
@@ -210,13 +212,13 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.db.UpdateProfile(r.Context(), user.ID, name, timezone, locale); err != nil {
-		s.storeError(w, "update profile", err)
+		s.storeError(w, r, "update profile", err)
 		return
 	}
 
 	updated, err := s.db.UserByID(r.Context(), user.ID)
 	if err != nil {
-		s.internal(w, "reload user", err)
+		s.internal(w, r, "reload user", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toUserJSON(updated))
@@ -263,7 +265,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
-		s.internal(w, "hash password", err)
+		s.internal(w, r, "hash password", err)
 		return
 	}
 
@@ -277,14 +279,14 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 				"an account already exists for that email address")
 			return
 		}
-		s.internal(w, "create user", err)
+		s.internal(w, r, "create user", err)
 		return
 	}
 
 	// Accepting the invite is what adds the membership and burns the token, in one
 	// transaction: a signup that half-succeeded would leave a usable invite behind.
 	if err := s.db.AcceptInvite(r.Context(), invite.ID, user.ID); err != nil {
-		s.internal(w, "accept invite", err)
+		s.internal(w, r, "accept invite", err)
 		return
 	}
 
@@ -328,7 +330,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
-		s.internal(w, "hash password", err)
+		s.internal(w, r, "hash password", err)
 		return
 	}
 
@@ -341,7 +343,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, CodeConflict, "this instance is already set up")
 			return
 		}
-		s.internal(w, "create first admin", err)
+		s.internal(w, r, "create first admin", err)
 		return
 	}
 
@@ -355,7 +357,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSetupState(w http.ResponseWriter, r *http.Request) {
 	n, err := s.db.UserCount(r.Context())
 	if err != nil {
-		s.internal(w, "count users", err)
+		s.internal(w, r, "count users", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"needs_setup": n == 0})
@@ -364,7 +366,7 @@ func (s *Server) handleSetupState(w http.ResponseWriter, r *http.Request) {
 func (s *Server) startSession(w http.ResponseWriter, r *http.Request, user *store.User) {
 	token, _, err := s.db.CreateSession(r.Context(), user.ID, r.UserAgent(), clientIP(r), s.cfg.SessionTTL, false)
 	if err != nil {
-		s.internal(w, "create session", err)
+		s.internal(w, r, "create session", err)
 		return
 	}
 	s.setSessionCookie(w, token, s.cfg.SessionTTL)
@@ -393,7 +395,7 @@ func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		token, err := s.db.CreatePasswordReset(r.Context(), user.ID, s.cfg.ResetTTL)
 		if err != nil {
-			s.internal(w, "create password reset", err)
+			s.internal(w, r, "create password reset", err)
 			return
 		}
 		link := s.cfg.BaseURL + "/reset?token=" + token
@@ -431,13 +433,13 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
-		s.internal(w, "hash password", err)
+		s.internal(w, r, "hash password", err)
 		return
 	}
 	// Every session ends: a password reset is what somebody does when they think
 	// another person has been in their account.
 	if err := s.db.UpdatePasswordHash(r.Context(), userID, hash, ""); err != nil {
-		s.internal(w, "update password", err)
+		s.internal(w, r, "update password", err)
 		return
 	}
 
@@ -469,7 +471,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
-		s.internal(w, "hash password", err)
+		s.internal(w, r, "hash password", err)
 		return
 	}
 	keep := ""
@@ -477,7 +479,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		keep = session.ID
 	}
 	if err := s.db.UpdatePasswordHash(r.Context(), user.ID, hash, keep); err != nil {
-		s.internal(w, "update password", err)
+		s.internal(w, r, "update password", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -520,7 +522,27 @@ func inboxName(locale string) string {
 // internal logs the real error and tells the client nothing about it. The detail
 // belongs in the log, where the operator can see it; in the response it would be a
 // description of the server's internals handed to whoever asked.
-func (s *Server) internal(w http.ResponseWriter, what string, err error) {
+//
+// It is also written to the database. On a Rune the log is the container's, and
+// every restart begins a new one — so the panel reports "HTTP 5xx, twice, at
+// 11:49" long after the line explaining it has gone, which tells an operator that
+// something broke and gives them no way to find out what. The row outlives the
+// container; Indstillinger → Fejl is where it is read.
+func (s *Server) internal(w http.ResponseWriter, r *http.Request, what string, err error) {
 	s.log.Error(what, "err", err)
+
+	userID := ""
+	if u := userFrom(r.Context()); u != nil {
+		userID = u.ID
+	}
+	// Best effort, and deliberately not checked: this is the path that is already
+	// reporting a failure, and a diagnostic that can fail the request would turn
+	// one broken screen into two.
+	s.db.RecordError(r.Context(), store.ServerError{
+		Method: r.Method, Path: r.URL.Path, Status: http.StatusInternalServerError,
+		What: what, Message: err.Error(), UserID: userID,
+		RequestID: middleware.GetReqID(r.Context()),
+	})
+
 	writeError(w, http.StatusInternalServerError, CodeInternal, "something went wrong")
 }

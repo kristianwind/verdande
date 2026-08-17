@@ -153,9 +153,10 @@ test('hver fane under indstillinger renderer', async ({ page }) => {
 		'Integrationer',
 		'AI',
 		'API-tokens',
-		// Only an administrator sees this one, and the account these tests run as
+		// Only an administrator sees these two, and the account these tests run as
 		// is the first account, which is one.
 		'Brugere',
+		'Fejl',
 		'Data og skabeloner'
 	]) {
 		await tabs.getByRole('link', { name: label, exact: true }).click();

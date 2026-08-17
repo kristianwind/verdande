@@ -83,7 +83,7 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 			// as everybody being logged out at once — the frontend clears its state
 			// and shows the sign-in screen — and nothing in the logs says why.
 			if !errors.Is(err, errNoCredentials) && !errors.Is(err, store.ErrNotFound) {
-				s.internal(w, "authenticate", err)
+				s.internal(w, r, "authenticate", err)
 				return
 			}
 			writeError(w, http.StatusUnauthorized, CodeUnauthorized, "not signed in")

@@ -154,7 +154,7 @@ func (s *Server) handleMCPWithKey(w http.ResponseWriter, r *http.Request) {
 	user, err := s.db.UserByAPIToken(r.Context(), key)
 	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
-			s.internal(w, "mcp key", err)
+			s.internal(w, r, "mcp key", err)
 			return
 		}
 		writeError(w, http.StatusUnauthorized, CodeUnauthorized, "that key is not valid")

@@ -99,7 +99,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 
 	tasks, err := s.db.ListTasks(r.Context(), user.ID, f)
 	if err != nil {
-		s.internal(w, "list tasks", err)
+		s.internal(w, r, "list tasks", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tasks": toTaskList(tasks)})
@@ -116,7 +116,7 @@ func toTaskList(tasks []store.Task) []taskJSON {
 func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {
 	t, err := s.db.GetTask(r.Context(), chi.URLParam(r, "taskID"), userFrom(r.Context()).ID)
 	if err != nil {
-		s.storeError(w, "get task", err)
+		s.storeError(w, r, "get task", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toTaskJSON(*t))
@@ -162,7 +162,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	if projectID == "" {
 		var err error
 		if projectID, err = s.db.InboxID(r.Context(), user.ID); err != nil {
-			s.internal(w, "inbox", err)
+			s.internal(w, r, "inbox", err)
 			return
 		}
 	}
@@ -226,7 +226,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.db.CreateTask(r.Context(), t, req.Labels); err != nil {
-		s.internal(w, "create task", err)
+		s.internal(w, r, "create task", err)
 		return
 	}
 	// The store wrote the labels; the struct it was handed does not know that, and
@@ -302,13 +302,13 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.db.UpdateTask(r.Context(), taskID, user.ID, u); err != nil {
-		s.storeError(w, "update task", err)
+		s.storeError(w, r, "update task", err)
 		return
 	}
 
 	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
 	if err != nil {
-		s.storeError(w, "get task", err)
+		s.storeError(w, r, "get task", err)
 		return
 	}
 	s.activity(r, t.ProjectID, t.ID, "task.updated", nil)
@@ -327,13 +327,13 @@ func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.db.CompleteTask(r.Context(), taskID, user.ID)
 	if err != nil {
-		s.storeError(w, "complete task", err)
+		s.storeError(w, r, "complete task", err)
 		return
 	}
 
 	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
 	if err != nil {
-		s.storeError(w, "get task", err)
+		s.storeError(w, r, "get task", err)
 		return
 	}
 
@@ -369,13 +369,13 @@ func (s *Server) handleReopenTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.db.ReopenTask(r.Context(), taskID); err != nil {
-		s.storeError(w, "reopen task", err)
+		s.storeError(w, r, "reopen task", err)
 		return
 	}
 
 	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
 	if err != nil {
-		s.storeError(w, "get task", err)
+		s.storeError(w, r, "get task", err)
 		return
 	}
 	s.activity(r, t.ProjectID, t.ID, "task.reopened", nil)
@@ -394,11 +394,11 @@ func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
 	if err != nil {
-		s.storeError(w, "get task", err)
+		s.storeError(w, r, "get task", err)
 		return
 	}
 	if err := s.db.DeleteTask(r.Context(), taskID); err != nil {
-		s.storeError(w, "delete task", err)
+		s.storeError(w, r, "delete task", err)
 		return
 	}
 	s.activity(r, t.ProjectID, "", "task.deleted", map[string]any{"content": t.Content})
@@ -427,7 +427,7 @@ func (s *Server) handleMoveTask(w http.ResponseWriter, r *http.Request) {
 
 	current, err := s.db.GetTask(r.Context(), taskID, user.ID)
 	if err != nil {
-		s.storeError(w, "get task", err)
+		s.storeError(w, r, "get task", err)
 		return
 	}
 	role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
@@ -449,12 +449,12 @@ func (s *Server) handleMoveTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := s.db.MoveTask(r.Context(), taskID, projectID, req.SectionID, req.AfterID, req.BeforeID); err != nil {
-		s.storeError(w, "move task", err)
+		s.storeError(w, r, "move task", err)
 		return
 	}
 	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
 	if err != nil {
-		s.storeError(w, "get task", err)
+		s.storeError(w, r, "get task", err)
 		return
 	}
 	s.publish(t.ProjectID, "task.moved", toTaskJSON(*t))
@@ -502,7 +502,7 @@ func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
 	if projectID == "" {
 		var err error
 		if projectID, err = s.db.InboxID(r.Context(), user.ID); err != nil {
-			s.internal(w, "inbox", err)
+			s.internal(w, r, "inbox", err)
 			return
 		}
 	}
@@ -523,7 +523,7 @@ func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.db.CreateTask(r.Context(), t, parsed.Labels); err != nil {
-		s.internal(w, "create task", err)
+		s.internal(w, r, "create task", err)
 		return
 	}
 	t.Labels = parsed.Labels

@@ -41,7 +41,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 
 	sessions, err := s.db.ListSessions(r.Context(), user.ID)
 	if err != nil {
-		s.internal(w, "list sessions", err)
+		s.internal(w, r, "list sessions", err)
 		return
 	}
 
@@ -69,7 +69,7 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionID")
 
 	if err := s.db.DeleteUserSession(r.Context(), sessionID, user.ID); err != nil {
-		s.storeError(w, "delete session", err)
+		s.storeError(w, r, "delete session", err)
 		return
 	}
 	if current := sessionFrom(r.Context()); current != nil && current.ID == sessionID {

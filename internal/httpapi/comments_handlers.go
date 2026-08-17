@@ -68,7 +68,7 @@ func (s *Server) handleListComments(w http.ResponseWriter, r *http.Request) {
 
 	comments, err := s.db.ListComments(r.Context(), taskID)
 	if err != nil {
-		s.internal(w, "list comments", err)
+		s.internal(w, r, "list comments", err)
 		return
 	}
 	out := make([]commentJSON, 0, len(comments))
@@ -78,7 +78,7 @@ func (s *Server) handleListComments(w http.ResponseWriter, r *http.Request) {
 
 	files, err := s.db.ListTaskAttachments(r.Context(), taskID)
 	if err != nil {
-		s.internal(w, "list attachments", err)
+		s.internal(w, r, "list attachments", err)
 		return
 	}
 	direct := make([]attachmentJSON, 0, len(files))
@@ -119,7 +119,7 @@ func (s *Server) handleCreateComment(w http.ResponseWriter, r *http.Request) {
 
 	comment, err := s.db.CreateComment(r.Context(), taskID, user.ID, body)
 	if err != nil {
-		s.internal(w, "create comment", err)
+		s.internal(w, r, "create comment", err)
 		return
 	}
 	comment.UserName, comment.UserColor = user.Name, user.AvatarColor
@@ -149,7 +149,7 @@ func (s *Server) handleUpdateComment(w http.ResponseWriter, r *http.Request) {
 
 	err := s.db.UpdateComment(r.Context(), chi.URLParam(r, "commentID"), userFrom(r.Context()).ID, body)
 	if err != nil {
-		s.storeError(w, "update comment", err)
+		s.storeError(w, r, "update comment", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -161,7 +161,7 @@ func (s *Server) handleDeleteComment(w http.ResponseWriter, r *http.Request) {
 
 	taskID, err := s.db.CommentTask(r.Context(), commentID)
 	if err != nil {
-		s.storeError(w, "comment task", err)
+		s.storeError(w, r, "comment task", err)
 		return
 	}
 	role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
@@ -171,7 +171,7 @@ func (s *Server) handleDeleteComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.db.DeleteComment(r.Context(), commentID, user.ID, role.CanManage()); err != nil {
-		s.storeError(w, "delete comment", err)
+		s.storeError(w, r, "delete comment", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -219,7 +219,7 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request) 
 
 	stored, size, err := s.storeUpload(file)
 	if err != nil {
-		s.internal(w, "store upload", err)
+		s.internal(w, r, "store upload", err)
 		return
 	}
 
@@ -240,7 +240,7 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request) 
 
 	if err := s.db.CreateAttachment(r.Context(), a); err != nil {
 		os.Remove(filepath.Join(s.cfg.FilesDir(), stored))
-		s.internal(w, "record attachment", err)
+		s.internal(w, r, "record attachment", err)
 		return
 	}
 
@@ -306,7 +306,7 @@ func (s *Server) handleDownloadAttachment(w http.ResponseWriter, r *http.Request
 
 	taskID, err := s.db.AttachmentTask(r.Context(), attachmentID)
 	if err != nil {
-		s.storeError(w, "attachment task", err)
+		s.storeError(w, r, "attachment task", err)
 		return
 	}
 	if _, err := store.TaskRole(r.Context(), s.db, taskID, user.ID); err != nil {
@@ -316,7 +316,7 @@ func (s *Server) handleDownloadAttachment(w http.ResponseWriter, r *http.Request
 
 	a, err := s.db.GetAttachment(r.Context(), attachmentID)
 	if err != nil {
-		s.storeError(w, "get attachment", err)
+		s.storeError(w, r, "get attachment", err)
 		return
 	}
 
@@ -358,7 +358,7 @@ func (s *Server) handleDeleteAttachment(w http.ResponseWriter, r *http.Request) 
 
 	taskID, err := s.db.AttachmentTask(r.Context(), attachmentID)
 	if err != nil {
-		s.storeError(w, "attachment task", err)
+		s.storeError(w, r, "attachment task", err)
 		return
 	}
 	role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
@@ -369,7 +369,7 @@ func (s *Server) handleDeleteAttachment(w http.ResponseWriter, r *http.Request) 
 
 	path, err := s.db.DeleteAttachment(r.Context(), attachmentID)
 	if err != nil {
-		s.storeError(w, "delete attachment", err)
+		s.storeError(w, r, "delete attachment", err)
 		return
 	}
 

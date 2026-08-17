@@ -55,6 +55,7 @@ func (r *Runner) Start(ctx context.Context) {
 	r.every(ctx, "backup", time.Hour, r.nightlyBackup)
 	r.every(ctx, "trash", time.Hour, r.emptyTrash)
 	r.every(ctx, "sessions", 6*time.Hour, r.purgeSessions)
+	r.every(ctx, "errors", 12*time.Hour, r.purgeErrors)
 	// Ten minutes is a compromise: Gmail's push notifications would be instant but
 	// need a public webhook and a Cloud Pub/Sub topic, which is a lot of Google
 	// account for a to-do app. Ten minutes is fast enough for something somebody
@@ -261,6 +262,20 @@ func (r *Runner) emptyTrash(ctx context.Context) error {
 	}
 	if n > 0 {
 		r.log.Info("trash emptied", "rows", n)
+	}
+	return nil
+}
+
+// purgeErrors keeps the diagnostic bounded. Thirty days is long enough to answer
+// "what happened last week" and short enough that a fault loop cannot fill the
+// volume the tasks live on.
+func (r *Runner) purgeErrors(ctx context.Context) error {
+	n, err := r.db.PurgeOldErrors(ctx, 30*24*time.Hour)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		r.log.Debug("old error rows removed", "count", n)
 	}
 	return nil
 }
