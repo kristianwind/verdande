@@ -429,3 +429,134 @@ func TestImpossibleDatesAreNotSilentlyMoved(t *testing.T) {
 		})
 	}
 }
+
+// --- recurrence ---------------------------------------------------------------
+
+func TestParseRecurrence(t *testing.T) {
+	now := ref(t) // Tuesday 10 March 2026
+
+	cases := []struct {
+		in      string
+		content string
+		rule    string
+		wantDue string
+	}{
+		{"vand planterne hver mandag", "vand planterne", "FREQ=WEEKLY;BYDAY=MO", "2026-03-16"},
+		{"tag skraldet ud hver tirsdag", "tag skraldet ud", "FREQ=WEEKLY;BYDAY=TU", "2026-03-17"},
+		{"løb hver dag", "løb", "FREQ=DAILY", "2026-03-11"},
+		{"status hver 2. uge", "status", "FREQ=WEEKLY;INTERVAL=2", "2026-03-24"},
+		{"betal husleje den 1. i måneden", "betal husleje", "FREQ=MONTHLY;BYMONTHDAY=1", "2026-04-01"},
+		{"standup hverdage", "standup", "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", "2026-03-11"},
+		{"review every 2 weeks", "review", "FREQ=WEEKLY;INTERVAL=2", "2026-03-24"},
+		{"backup weekly", "backup", "FREQ=WEEKLY", "2026-03-17"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			got := Parse(tc.in, now, "da")
+			if got.Recurrence != tc.rule {
+				t.Errorf("Recurrence = %q, want %q", got.Recurrence, tc.rule)
+			}
+			if got.Content != tc.content {
+				t.Errorf("Content = %q, want %q", got.Content, tc.content)
+			}
+			if got.DueDate != tc.wantDue {
+				t.Errorf("DueDate = %q, want %q", got.DueDate, tc.wantDue)
+			}
+		})
+	}
+}
+
+// "hver mandag" contains a weekday. If the date parser ran first it would claim
+// Monday as a one-off date and leave "hver" stranded in the title.
+func TestRecurrenceBeatsAPlainWeekday(t *testing.T) {
+	now := ref(t)
+
+	repeating := Parse("møde hver fredag", now, "da")
+	if repeating.Recurrence != "FREQ=WEEKLY;BYDAY=FR" {
+		t.Errorf("Recurrence = %q", repeating.Recurrence)
+	}
+	if repeating.Content != "møde" {
+		t.Errorf("Content = %q, want %q", repeating.Content, "møde")
+	}
+
+	// And a plain weekday is still a one-off.
+	once := Parse("møde fredag", now, "da")
+	if once.Recurrence != "" {
+		t.Errorf("a one-off got a recurrence rule: %q", once.Recurrence)
+	}
+	if once.DueDate != "2026-03-13" {
+		t.Errorf("DueDate = %q, want 2026-03-13", once.DueDate)
+	}
+}
+
+// The repetition phrase sits in a line with everything else in it.
+func TestRecurrenceAlongsideEverythingElse(t *testing.T) {
+	got := Parse("send rapport hver mandag kl 9 p1 #Arbejde @fast", ref(t), "da")
+
+	if got.Recurrence != "FREQ=WEEKLY;BYDAY=MO" {
+		t.Errorf("Recurrence = %q", got.Recurrence)
+	}
+	if got.Content != "send rapport" {
+		t.Errorf("Content = %q, want %q", got.Content, "send rapport")
+	}
+	if got.DueTime != "09:00" {
+		t.Errorf("DueTime = %q, want 09:00", got.DueTime)
+	}
+	if got.Priority != 1 {
+		t.Errorf("Priority = %d, want 1", got.Priority)
+	}
+	if got.Project != "Arbejde" {
+		t.Errorf("Project = %q, want Arbejde", got.Project)
+	}
+	if len(got.Labels) != 1 || got.Labels[0] != "fast" {
+		t.Errorf("Labels = %v", got.Labels)
+	}
+	// An explicit clock time with a repetition still anchors on the next occurrence.
+	if got.DueDate != "2026-03-16" {
+		t.Errorf("DueDate = %q, want 2026-03-16", got.DueDate)
+	}
+}
+
+// An explicit date wins over the rule's own first occurrence: "hver mandag fra på
+// fredag" is unusual, but "hver måned den 20/3" is somebody stating a start.
+func TestExplicitDateAnchorsTheSeries(t *testing.T) {
+	got := Parse("aflæs måler hver måned 20/3", ref(t), "da")
+
+	if got.Recurrence != "FREQ=MONTHLY" {
+		t.Errorf("Recurrence = %q", got.Recurrence)
+	}
+	if got.DueDate != "2026-03-20" {
+		t.Errorf("DueDate = %q, want the stated date 2026-03-20", got.DueDate)
+	}
+}
+
+func TestRecurrenceTextIsHumanReadable(t *testing.T) {
+	got := Parse("vand planterne hver mandag", ref(t), "da")
+	if got.RecurrenceText == "" {
+		t.Fatal("no readable description was produced")
+	}
+	if got.RecurrenceText == got.Recurrence {
+		t.Errorf("the description is just the raw rule: %q", got.RecurrenceText)
+	}
+}
+
+// A repetition must be reported as a span so the input box can highlight it.
+func TestRecurrenceIsHighlighted(t *testing.T) {
+	in := "vand planterne hver mandag"
+	got := Parse(in, ref(t), "da")
+
+	var found bool
+	for _, s := range got.Spans {
+		if s.Kind != KindRepeat {
+			continue
+		}
+		found = true
+		if text := in[s.Start:s.End]; text != "hver mandag" {
+			t.Errorf("the repeat span covers %q, want %q", text, "hver mandag")
+		}
+	}
+	if !found {
+		t.Error("no span of kind repeat")
+	}
+}

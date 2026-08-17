@@ -651,3 +651,191 @@ func TestActivityRecordsWhatHappened(t *testing.T) {
 		}
 	}
 }
+
+// --- recurring tasks ------------------------------------------------------------
+
+// Ticking off a repeating task does not finish it — it moves to the next occurrence.
+// That is the whole behaviour, and it is the one that would be most annoying to get
+// wrong: a weekly chore that disappears is a weekly chore you stop doing.
+func TestCompletingARecurringTaskAdvancesIt(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, task := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "vand planterne hver mandag",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, task)
+	}
+	id := task["id"].(string)
+	firstDue, _ := task["due_date"].(string)
+
+	if task["recurrence_rule"] != "FREQ=WEEKLY;BYDAY=MO" {
+		t.Fatalf("recurrence_rule = %v", task["recurrence_rule"])
+	}
+	if firstDue == "" {
+		t.Fatal("a repeating task was created with no date to repeat from")
+	}
+
+	resp, done := ts.do(t, "POST", "/api/v1/tasks/"+id+"/complete", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("complete: %d %v", resp.StatusCode, done)
+	}
+
+	if done["recurred"] != true {
+		t.Errorf("recurred = %v, want true", done["recurred"])
+	}
+	if done["completed"] != false {
+		t.Error("a repeating task was closed instead of advanced")
+	}
+
+	nextDue, _ := done["due_date"].(string)
+	if nextDue <= firstDue {
+		t.Errorf("due_date went from %q to %q — it did not move forward", firstDue, nextDue)
+	}
+	// Weekly, so exactly seven days on.
+	first, _ := time.Parse("2006-01-02", firstDue)
+	next, _ := time.Parse("2006-01-02", nextDue)
+	if days := int(next.Sub(first).Hours() / 24); days != 7 {
+		t.Errorf("the task moved %d days, want 7", days)
+	}
+
+	// And it is still in the open list, not the completed one.
+	_, list := ts.do(t, "GET", "/api/v1/tasks", nil)
+	tasks, _ := list["tasks"].([]any)
+	if len(tasks) != 1 {
+		t.Fatalf("the open list has %d tasks, want the repeating one", len(tasks))
+	}
+}
+
+// The task keeps its identity across occurrences, so its sub-tasks and comments
+// stay attached — a "weekly review" is one thing that recurs, not fifty-two things.
+func TestARecurringTaskKeepsItsIdentity(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, task := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "ugentlig gennemgang hver fredag",
+	})
+	id := task["id"].(string)
+
+	_, child := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "læs noter", "parent_id": id,
+	})
+	childID := child["id"].(string)
+
+	ts.do(t, "POST", "/api/v1/tasks/"+id+"/complete", nil)
+
+	resp, after := ts.do(t, "GET", "/api/v1/tasks/"+id, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("the task disappeared: %d", resp.StatusCode)
+	}
+	if after["id"] != id {
+		t.Error("the id changed across an occurrence")
+	}
+	resp, _ = ts.do(t, "GET", "/api/v1/tasks/"+childID, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Error("the sub-task was lost when its parent recurred")
+	}
+}
+
+// A task due at a particular hour keeps that hour when it moves.
+func TestRecurrenceKeepsTheClockTime(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, task := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "standup hverdage kl 9",
+	})
+	id := task["id"].(string)
+	before, _ := task["due_datetime"].(string)
+	if before == "" {
+		t.Fatal("no due_datetime was set")
+	}
+
+	_, done := ts.do(t, "POST", "/api/v1/tasks/"+id+"/complete", nil)
+	after, _ := done["due_datetime"].(string)
+	if after == "" {
+		t.Fatal("the clock time was dropped when the task recurred")
+	}
+
+	parseHM := func(s string) string {
+		v, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			t.Fatalf("parse %q: %v", s, err)
+		}
+		return v.Format("15:04")
+	}
+	if parseHM(before) != parseHM(after) {
+		t.Errorf("the time changed from %s to %s", parseHM(before), parseHM(after))
+	}
+}
+
+// A completion is still recorded, even though nothing was closed. "What did I get
+// done this week" has to include the chores that repeat.
+func TestRecurringCompletionIsRecorded(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Hjem"})
+	projectID := project["id"].(string)
+
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "tøm opvaskemaskinen", "project_id": projectID,
+		"due_date": userDate(t, 0), "recurrence_rule": "FREQ=DAILY",
+	})
+	ts.do(t, "POST", "/api/v1/tasks/"+task["id"].(string)+"/complete", nil)
+
+	_, body := ts.do(t, "GET", "/api/v1/projects/"+projectID+"/activity", nil)
+	entries, _ := body["activity"].([]any)
+
+	var found bool
+	for _, e := range entries {
+		entry := e.(map[string]any)
+		if entry["event"] != "task.completed" {
+			continue
+		}
+		found = true
+		payload, _ := entry["payload"].(map[string]any)
+		if payload["recurred"] != true {
+			t.Errorf("the completion was not marked as a recurrence: %v", payload)
+		}
+	}
+	if !found {
+		t.Error("no completion was recorded for a repeating task")
+	}
+}
+
+// A rule the RRULE library cannot read must be refused when the task is created,
+// not discovered when somebody ticks it off and it will not move.
+func TestInvalidRecurrenceIsRefused(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "noget", "recurrence_rule": "FREQ=FORTNIGHTLY",
+	})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422", resp.StatusCode)
+	}
+	fields, _ := body["fields"].(map[string]any)
+	if fields["recurrence_rule"] == nil {
+		t.Errorf("the error does not name the field: %v", body)
+	}
+}
+
+// A non-repeating task must still complete normally.
+func TestCompletingAPlainTaskStillCloses(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{"content": "engangsopgave"})
+	_, done := ts.do(t, "POST", "/api/v1/tasks/"+task["id"].(string)+"/complete", nil)
+
+	if done["completed"] != true {
+		t.Error("a plain task was not completed")
+	}
+	if done["recurred"] == true {
+		t.Error("a plain task reported as recurring")
+	}
+}

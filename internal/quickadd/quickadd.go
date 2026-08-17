@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/kristianwind/verdande/internal/recurrence"
 )
 
 // Kind names what a Span was recognised as.
@@ -33,6 +35,7 @@ const (
 	KindPriority Kind = "priority"
 	KindProject  Kind = "project"
 	KindLabel    Kind = "label"
+	KindRepeat   Kind = "repeat"
 )
 
 // Span is a byte range of the input that was consumed, and what it was read as.
@@ -58,7 +61,11 @@ type Result struct {
 	// DueTime is "HH:MM" in 24-hour form, set only when a clock time was written.
 	// A time with no date means today, and Parse fills the date in.
 	DueTime string `json:"due_time,omitempty"`
-	Spans   []Span `json:"spans,omitempty"`
+	// Recurrence is an RFC 5545 RRULE, empty when the task does not repeat.
+	Recurrence string `json:"recurrence_rule,omitempty"`
+	// RecurrenceText is that rule written back out in Danish, for the preview.
+	RecurrenceText string `json:"recurrence_text,omitempty"`
+	Spans          []Span `json:"spans,omitempty"`
 }
 
 // Parse reads input as of the moment `now`, which is also the timezone dates are
@@ -83,6 +90,13 @@ func Parse(input string, now time.Time, locale string) Result {
 	// mask keeps byte offsets intact, so spans still point into the original input.
 	masked := mask(input, spans)
 
+	// Recurrence before the date parser, and this order is load-bearing: "hver
+	// mandag" contains a weekday, and a date parser reading it first would claim
+	// Monday as a one-off due date and leave "hver" stranded in the title.
+	res.Recurrence, spans = extractRecurrence(masked, spans)
+	res.RecurrenceText = recurrence.Describe(res.Recurrence)
+	masked = mask(masked, spans)
+
 	// Time before date, so "kl 15.30" is claimed as a clock time before the date
 	// parser can offer to read "15.3" as the 15th of March.
 	hour, minute, hasTime, spans := extractTime(masked, spans, locale)
@@ -91,6 +105,18 @@ func Parse(input string, now time.Time, locale string) Result {
 	switch {
 	case hasDate:
 		res.DueDate = date.Format("2006-01-02")
+	case res.Recurrence != "":
+		// A repeating task needs somewhere to repeat from. "vand planterne hver
+		// mandag" typed on a Tuesday means starting the coming Monday, which is
+		// what advancing from today produces.
+		//
+		// This is checked before the time-only case below, and that ordering
+		// matters: in "hver mandag kl 9" the rule decides the day and the clock
+		// decides only the hour. Letting the time case win would schedule it for
+		// tomorrow morning, because nine o'clock has already gone.
+		if next, err := recurrence.Next(res.Recurrence, now); err == nil {
+			res.DueDate = next.Format("2006-01-02")
+		}
 	case hasTime:
 		// A time on its own means today — unless that moment has already passed,
 		// in which case the person means tomorrow. "kl 8" typed at nine in the
@@ -583,4 +609,41 @@ func pad2(n int) string {
 		return "0" + strconv.Itoa(n)
 	}
 	return strconv.Itoa(n)
+}
+
+// --- recurrence ---------------------------------------------------------------
+
+// reRepeat finds the repetition phrase inside a longer line. The phrase itself is
+// handed to the recurrence package, which decides whether it really is one — so a
+// weekday that merely follows the word "hver" is not enough on its own.
+//
+// The trailing group is bounded rather than greedy: without a limit, "hver mandag
+// kl 10 p1" would hand the whole tail to the recurrence parser, which would refuse
+// all of it and leave the task not repeating at all.
+var reRepeat = regexp.MustCompile(
+	`(?i)(?:^|\s)((?:hver|hvert|every|each)\s+(?:\d+\.?\s+)?[\p{L}]+(?:\s*(?:,|\bog\b|\band\b)\s*[\p{L}]+)*` +
+		`|hverdage|ugedage|weekdays?|dagligt|daily|ugentligt|weekly|månedligt|maanedligt|monthly|årligt|aarligt|yearly|annually` +
+		`|den\s+\d{1,2}\.?\s+i\s+måneden|den\s+\d{1,2}\.?\s+i\s+maaneden)(?:\s|$)`)
+
+func extractRecurrence(input string, spans []Span) (string, []Span) {
+	for _, m := range reRepeat.FindAllStringSubmatchIndex(input, -1) {
+		phrase := input[m[2]:m[3]]
+
+		// The longest match may carry words that are not part of the repetition —
+		// "hver mandag kl" — so trailing words are dropped one at a time until
+		// what is left parses, or nothing is.
+		start, end := m[2], m[3]
+		for {
+			if rule := recurrence.Parse(phrase); rule != "" {
+				return rule, append(spans, Span{Start: start, End: end, Kind: KindRepeat})
+			}
+			cut := strings.LastIndexAny(strings.TrimRight(phrase, " "), " ")
+			if cut <= 0 {
+				break
+			}
+			phrase = phrase[:cut]
+			end = start + cut
+		}
+	}
+	return "", spans
 }

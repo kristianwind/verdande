@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/kristianwind/verdande/internal/quickadd"
+	"github.com/kristianwind/verdande/internal/recurrence"
 	"github.com/kristianwind/verdande/internal/store"
 )
 
@@ -24,6 +25,7 @@ type taskJSON struct {
 	DueDatetime string   `json:"due_datetime,omitempty"`
 	DurationMin *int     `json:"duration_min,omitempty"`
 	Recurrence  string   `json:"recurrence_rule,omitempty"`
+	RepeatText  string   `json:"recurrence_text,omitempty"`
 	AssigneeID  string   `json:"assignee_id,omitempty"`
 	Labels      []string `json:"labels"`
 	Completed   bool     `json:"completed"`
@@ -39,6 +41,7 @@ func toTaskJSON(t store.Task) taskJSON {
 		ID: t.ID, ProjectID: t.ProjectID, SectionID: t.SectionID, ParentID: t.ParentID,
 		Content: t.Content, Description: t.Description, Priority: t.Priority,
 		DueDate: t.DueDate, DurationMin: t.DurationMin, Recurrence: t.RecurrenceRule,
+		RepeatText: recurrence.Describe(t.RecurrenceRule),
 		AssigneeID: t.AssigneeID, Completed: t.Completed(), CreatedBy: t.CreatedBy,
 		SortOrder: t.SortOrder,
 		CreatedAt: t.CreatedAt.Format(time.RFC3339),
@@ -185,6 +188,13 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		t.AssigneeID = *req.AssigneeID
 	}
 	if req.Recurrence != nil {
+		// Refused here rather than discovered when somebody ticks the task off and
+		// it cannot be advanced — at which point the failure is a mystery and the
+		// task is stuck.
+		if !recurrence.Valid(*req.Recurrence) {
+			writeFieldErrors(w, map[string]string{"recurrence_rule": "is not a valid RRULE"})
+			return
+		}
 		t.RecurrenceRule = *req.Recurrence
 	}
 	if req.DurationMin != nil {
@@ -257,6 +267,10 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		writeFieldErrors(w, map[string]string{"priority": "must be 1, 2, 3 or 4"})
 		return
 	}
+	if req.Recurrence != nil && !recurrence.Valid(*req.Recurrence) {
+		writeFieldErrors(w, map[string]string{"recurrence_rule": "is not a valid RRULE"})
+		return
+	}
 	// Sending due_date at all means the due date is being set — including to
 	// nothing, which is how a date is cleared.
 	if req.DueDate != nil {
@@ -299,7 +313,8 @@ func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
 		return
 	}
-	if err := s.db.CompleteTask(r.Context(), taskID, user.ID); err != nil {
+	result, err := s.db.CompleteTask(r.Context(), taskID, user.ID)
+	if err != nil {
 		s.storeError(w, "complete task", err)
 		return
 	}
@@ -309,9 +324,27 @@ func (s *Server) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, "get task", err)
 		return
 	}
-	s.activity(r, t.ProjectID, t.ID, "task.completed", map[string]any{"content": t.Content})
-	s.publish(t.ProjectID, "task.completed", toTaskJSON(*t))
-	writeJSON(w, http.StatusOK, toTaskJSON(*t))
+
+	// A repeating task that moved forward is still recorded as a completion: "what
+	// did I get done this week" has to include the chores that repeat.
+	s.activity(r, t.ProjectID, t.ID, "task.completed", map[string]any{
+		"content":  t.Content,
+		"recurred": result.Recurred,
+		"next_due": result.NextDue,
+	})
+
+	payload := taskWithRecurrence{taskJSON: toTaskJSON(*t), Recurred: result.Recurred, NextDue: result.NextDue}
+	s.publish(t.ProjectID, "task.completed", payload)
+	writeJSON(w, http.StatusOK, payload)
+}
+
+// taskWithRecurrence is the completion response. The two extra fields are what let
+// the interface say "flyttet til mandag" instead of animating a row away that is
+// about to come straight back.
+type taskWithRecurrence struct {
+	taskJSON
+	Recurred bool   `json:"recurred"`
+	NextDue  string `json:"next_due,omitempty"`
 }
 
 func (s *Server) handleReopenTask(w http.ResponseWriter, r *http.Request) {
@@ -461,7 +494,7 @@ func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
 
 	t := &store.Task{
 		ProjectID: projectID, Content: parsed.Content, Priority: parsed.Priority,
-		CreatedBy: user.ID, DueDate: parsed.DueDate,
+		CreatedBy: user.ID, DueDate: parsed.DueDate, RecurrenceRule: parsed.Recurrence,
 	}
 	if parsed.DueDate != "" {
 		_, when, err := resolveDue(parsed.DueDate, parsed.DueTime, user.Timezone)

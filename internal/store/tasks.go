@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
+
+	"github.com/kristianwind/verdande/internal/recurrence"
 )
 
 type Task struct {
@@ -494,15 +497,40 @@ func setTaskLabels(ctx context.Context, tx *sql.Tx, taskID, userID string, names
 	return nil
 }
 
+// CompleteResult says what completing a task actually did.
+//
+// A recurring task is not finished by being ticked off — it moves to its next
+// occurrence. The caller needs to know which happened so it can tell the person,
+// and so the activity log records a completion rather than an edit.
+type CompleteResult struct {
+	// Recurred is true when the task advanced instead of closing.
+	Recurred bool
+	// NextDue is the new due date, set only when Recurred.
+	NextDue string
+}
+
 // CompleteTask marks a task done, along with everything under it.
 //
 // Sub-tasks are completed with their parent because the parent standing complete
 // over unfinished children is a state the UI would then have to explain. Reopening
 // does not undo that: which children were deliberately still open is not recorded,
 // and guessing would be worse than leaving them done.
-func (db *DB) CompleteTask(ctx context.Context, taskID, userID string) error {
+//
+// A task with a recurrence rule takes a different path entirely — see recurTask.
+func (db *DB) CompleteTask(ctx context.Context, taskID, userID string) (CompleteResult, error) {
+	// The recurring case is decided before the transaction that closes the task,
+	// because the two are mutually exclusive: a repeating chore that has been done
+	// this week is not finished, it is due again next week.
+	rule, dueDate, err := db.recurrenceOf(ctx, taskID)
+	if err != nil {
+		return CompleteResult{}, err
+	}
+	if rule != "" {
+		return db.recurTask(ctx, taskID, userID, rule, dueDate)
+	}
+
 	now := time.Now().Unix()
-	return db.Tx(ctx, func(tx *sql.Tx) error {
+	err = db.Tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx,
 			`UPDATE tasks SET completed_at = ?, completed_by = ?, updated_at = ?
 			 WHERE id = ? AND deleted_at IS NULL AND completed_at IS NULL`,
@@ -526,6 +554,94 @@ func (db *DB) CompleteTask(ctx context.Context, taskID, userID string) error {
 			taskID, now, userID, now)
 		return err
 	})
+	return CompleteResult{}, err
+}
+
+func (db *DB) recurrenceOf(ctx context.Context, taskID string) (rule, dueDate string, err error) {
+	var r, d sql.NullString
+	err = db.QueryRowContext(ctx,
+		`SELECT recurrence_rule, due_date FROM tasks
+		 WHERE id = ? AND deleted_at IS NULL AND completed_at IS NULL`, taskID).Scan(&r, &d)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", ErrNotFound
+	}
+	if err != nil {
+		return "", "", err
+	}
+	return r.String, d.String, nil
+}
+
+// recurTask advances a repeating task to its next occurrence.
+//
+// The row is kept and its date moved, rather than closing this one and inserting a
+// successor. That keeps the task's id stable, so its sub-tasks, comments and
+// attachments stay attached — which is what somebody means by "my weekly review",
+// a thing that persists, rather than fifty-two separate tasks.
+//
+// A completion is still written to the activity log, because "what did I get done
+// this week" has to include the chores that repeat.
+func (db *DB) recurTask(ctx context.Context, taskID, userID, rule, dueDate string) (CompleteResult, error) {
+	// The anchor is the task's own due date. A repeating task with no date has
+	// nothing to advance from, so today stands in — which is also what somebody
+	// adding "hver mandag" with no start date means.
+	anchor := time.Now().UTC()
+	if dueDate != "" {
+		if parsed, err := time.Parse("2006-01-02", dueDate); err == nil {
+			anchor = parsed
+		}
+	}
+
+	next, err := recurrence.Next(rule, anchor)
+	if err != nil {
+		// A finite series that has run out really is finished. Close it, so the
+		// task does not sit there for ever refusing to be completed.
+		if errors.Is(err, recurrence.ErrSeriesEnded) {
+			if _, cerr := db.clearRecurrence(ctx, taskID); cerr != nil {
+				return CompleteResult{}, cerr
+			}
+			return db.CompleteTask(ctx, taskID, userID)
+		}
+		return CompleteResult{}, fmt.Errorf("advance recurrence %q: %w", rule, err)
+	}
+
+	nextDue := next.Format("2006-01-02")
+	now := time.Now().Unix()
+
+	err = db.Tx(ctx, func(tx *sql.Tx) error {
+		// due_datetime is recomputed from the new day, keeping the clock time: a
+		// task due every Monday at 10:00 stays due at 10:00.
+		res, err := tx.ExecContext(ctx, `
+			UPDATE tasks
+			SET due_date = ?,
+			    due_datetime = CASE
+			        WHEN due_datetime IS NULL THEN NULL
+			        ELSE due_datetime + (julianday(?) - julianday(due_date)) * 86400
+			    END,
+			    updated_at = ?
+			WHERE id = ? AND deleted_at IS NULL AND completed_at IS NULL`,
+			nextDue, nextDue, now, taskID)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return CompleteResult{}, err
+	}
+	return CompleteResult{Recurred: true, NextDue: nextDue}, nil
+}
+
+func (db *DB) clearRecurrence(ctx context.Context, taskID string) (int64, error) {
+	res, err := db.ExecContext(ctx,
+		`UPDATE tasks SET recurrence_rule = NULL, updated_at = ? WHERE id = ?`,
+		time.Now().Unix(), taskID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func (db *DB) ReopenTask(ctx context.Context, taskID string) error {
