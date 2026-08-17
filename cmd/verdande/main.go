@@ -77,7 +77,11 @@ func run() error {
 
 	errc := make(chan error, 1)
 	go func() {
-		log.Info("listening", "addr", cfg.Addr)
+		// The version is repeated here rather than only on the "starting" line
+		// above: this is the line the Rune's done_regex matches, so it is the one
+		// sitting at the bottom of the panel console after a deploy — which is
+		// exactly when somebody wants to know what actually started.
+		log.Info("listening", "addr", cfg.Addr, "version", version)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errc <- err
 		}

@@ -1718,7 +1718,15 @@ paths:
         broken volume reports unhealthy instead of pretending to work.
       security: []
       responses:
-        "200": { description: Healthy. }
+        "200":
+          description: Healthy. Carries the running version — the one thing you can ask without a session.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: ok }
+                  version: { type: string, example: v0.3.1 }
         "503": { description: Unhealthy. }
 
   /ics/{token}:

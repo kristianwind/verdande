@@ -6,7 +6,9 @@ on:
     tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
 
 permissions:
-  contents: read
+  # write rather than read: the job creates the GitHub Release the update notice
+  # reads. packages: write is for pushing the image.
+  contents: write
   packages: write
 
 jobs:
@@ -50,3 +52,15 @@ jobs:
             VERSION=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # A tag is not a release. The in-app update notice reads GitHub's
+      # releases/latest, which answers 404 for a repository that only has tags —
+      # so without this step the check can never find anything, however correctly
+      # it is switched on.
+      #
+      # Created after the image, so a release never announces a version that
+      # failed to build.
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          make_latest: true
