@@ -45,6 +45,19 @@ jobs:
       - name: Build
         run: CGO_ENABLED=0 go build ./...
 
+  spec:
+    name: OpenAPI is valid
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Structural validity only. That the spec matches the *router* is checked by
+      # a Go test, which is the half that actually goes stale.
+      - run: npx --yes @redocly/cli@latest lint docs/openapi.yaml
+
   e2e:
     name: End-to-end
     runs-on: ubuntu-latest
