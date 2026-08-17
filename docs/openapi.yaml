@@ -785,6 +785,42 @@ paths:
         "204": { description: Deleted. }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/trash/projects:
+    get:
+      tags: [projects]
+      summary: Projects you have deleted and can still bring back.
+      description: |
+        Only your own. Restoring has been possible since the trash existed, but
+        the endpoint takes an id — and the id is what you no longer have once the
+        project has gone from the interface.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/Project"
+                        - type: object
+                          properties:
+                            deleted_at: { type: string, format: date-time }
+                            purge_after:
+                              type: string
+                              format: date-time
+                              description: |
+                                When it stops being recoverable. Sent rather than
+                                left for the client to work out, because the
+                                retention window is the server's and a second
+                                copy of it will one day disagree.
+                            task_count:
+                              type: integer
+                              description: Tasks that went with it, and would come back with it.
+
   /api/v1/trash/projects/{projectID}/restore:
     parameters:
       - { name: projectID, in: path, required: true, schema: { type: string } }

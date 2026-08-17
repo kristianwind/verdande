@@ -176,6 +176,7 @@ export const api = {
 	createProject: (data) => post('/projects', data),
 	updateProject: (id, data) => patch(`/projects/${id}`, data),
 	deleteProject: (id) => del(`/projects/${id}`),
+	listTrashedProjects: () => get('/trash/projects'),
 	restoreProject: (id) => post(`/trash/projects/${id}/restore`),
 
 	listSections: (projectId) => get(`/projects/${projectId}/sections`),

@@ -234,6 +234,55 @@ func (db *DB) DeleteProject(ctx context.Context, projectID string) error {
 	})
 }
 
+// TrashedProject is a deleted project, with when it went and when it goes for good.
+type TrashedProject struct {
+	Project
+	DeletedAt time.Time
+	TaskCount int
+}
+
+// ListTrashedProjects returns what the caller owns and has deleted.
+//
+// Restoring has been possible since the trash existed, but only if you already
+// knew the project's id — which is exactly what you no longer have once it has
+// gone from the interface. A recovery window nobody can reach is not one.
+//
+// Owned, not shared: a member of a project somebody else deleted has no business
+// bringing it back.
+func (db *DB) ListTrashedProjects(ctx context.Context, userID string) ([]TrashedProject, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT p.id, p.name, p.color, p.icon, p.view_mode, p.owner_id, p.is_inbox,
+		       p.archived, p.sort_order, p.created_at, p.updated_at, p.deleted_at,
+		       (SELECT count(*) FROM tasks t
+		         WHERE t.project_id = p.id AND t.deleted_at = p.deleted_at) AS task_count
+		FROM projects p
+		WHERE p.owner_id = ? AND p.deleted_at IS NOT NULL
+		ORDER BY p.deleted_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []TrashedProject{}
+	for rows.Next() {
+		var t TrashedProject
+		var created, updated, deleted int64
+		var icon sql.NullString
+		if err := rows.Scan(&t.ID, &t.Name, &t.Color, &icon, &t.ViewMode, &t.OwnerID,
+			&t.IsInbox, &t.Archived, &t.SortOrder, &created, &updated, &deleted,
+			&t.TaskCount); err != nil {
+			return nil, err
+		}
+		t.Icon = icon.String
+		t.CreatedAt = time.Unix(created, 0).UTC()
+		t.UpdatedAt = time.Unix(updated, 0).UTC()
+		t.DeletedAt = time.Unix(deleted, 0).UTC()
+		t.Role = RoleOwner
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // RestoreProject brings a project back, along with the tasks that were deleted with
 // it. Tasks deleted before it are left in the trash: they were deleted on purpose
 // and separately, and restoring a project should not undo that too.

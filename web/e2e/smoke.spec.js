@@ -181,6 +181,45 @@ test('manifestet og service workeren findes, og ikonerne findes også', async ({
 });
 
 /**
+ * A project can be renamed, deleted and brought back.
+ *
+ * The round trip matters more than the three steps: deleting used to be a
+ * one-way door in the interface — the API could restore, but only from an id
+ * that had already disappeared from the screen.
+ */
+test('et projekt kan omdøbes, slettes og hentes tilbage', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Ferie');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+
+	const title = page.getByLabel('Projektets navn');
+	await expect(title).toHaveValue('Ferie');
+
+	await title.fill('Sommerferie');
+	await title.press('Enter');
+	await expect(sidebar.getByRole('link', { name: 'Sommerferie' })).toBeVisible();
+
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.getByRole('button', { name: 'Slet projektet' }).click();
+
+	await expect(sidebar.getByRole('link', { name: 'Sommerferie' })).toBeHidden();
+
+	// And it is reachable again, which is the half that did not exist.
+	await page.goto('/indstillinger/data');
+	const trash = page.locator('section.panel').filter({ hasText: 'Papirkurv' });
+	await expect(trash.getByText('Sommerferie')).toBeVisible();
+
+	await trash.getByRole('button', { name: 'Hent tilbage' }).click();
+	await expect(sidebar.getByRole('link', { name: 'Sommerferie' })).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * The MCP connector address must not fall through to the app shell.
  *
  * It did: `/mcp` was not a route, so the SPA fallback answered 200 with a page

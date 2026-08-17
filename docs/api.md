@@ -100,6 +100,8 @@ curl -X POST https://todo.example.dk/api/v1/tasks/quick-add \
 | `POST` | `/projects/{id}/invites` | Share it. `{"email": …, "role": "editor"\|"viewer"}` |
 | `DELETE` | `/projects/{id}/members/{userID}` | |
 | `GET` | `/projects/{id}/activity` | |
+| `GET` | `/trash/projects` | What you have deleted and can still bring back, with how long is left. |
+| `POST` | `/trash/projects/{id}/restore` | Brings it back with the tasks that went with it. |
 
 ### Views, filters and labels
 
