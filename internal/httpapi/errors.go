@@ -36,6 +36,17 @@ const (
 	CodeRateLimited     = "rate_limited"
 	CodeInternal        = "internal_error"
 	CodePayloadTooLarge = "payload_too_large"
+
+	// Four situations that used to answer plain `conflict`, which the frontend
+	// renders as "that already exists". For these that is not merely vague, it is
+	// wrong: an unconfigured Gmail is not a Gmail that is already there, and a
+	// second factor that is off is not one that is on. A code exists so the
+	// interface can say the true thing — the server's own prose is English for a
+	// log, and deciding what a person reads is the frontend's job.
+	CodeGmailNotConfigured = "gmail_not_configured"
+	CodeAINotConfigured    = "ai_not_configured"
+	CodeTOTPNotEnabled     = "totp_not_enabled"
+	CodeInboxProtected     = "inbox_protected"
 )
 
 func writeError(w http.ResponseWriter, status int, code, message string) {

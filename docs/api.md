@@ -52,6 +52,10 @@ what a person reads is decided by the client, which knows what language they are
 | `forbidden` | 403 | Cross-site request, or admin needed. |
 | `not_found` | 404 | Does not exist, or you cannot see it. |
 | `conflict` | 409 | Already exists, or the state does not allow it. |
+| `gmail_not_configured` | 409 | No Google OAuth client is registered on this server. |
+| `ai_not_configured` | 409 | No AI provider has been set up. |
+| `totp_not_enabled` | 409 | Two-factor is off, and the request needs it on. |
+| `inbox_protected` | 409 | The Inbox cannot be deleted. |
 | `validation_failed` | 422 | Check `fields`. |
 | `rate_limited` | 429 | Too many attempts. |
 | `internal_error` | 500 | Our fault. |

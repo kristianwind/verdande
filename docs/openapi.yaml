@@ -1946,6 +1946,13 @@ components:
             type: object
             properties:
               address: { type: string, example: todo+abc123@example.dk }
+              configured:
+                type: boolean
+                description: |
+                  Whether a mail server is set up at all. The address is real
+                  either way, but with no mail server nothing on the internet
+                  routes to it — and an interface that does not say so is
+                  promising something that will not happen.
     Gmail:
       description: OK
       content:
@@ -1995,6 +2002,10 @@ components:
             - rate_limited
             - internal_error
             - payload_too_large
+            - gmail_not_configured
+            - ai_not_configured
+            - totp_not_enabled
+            - inbox_protected
         error: { type: string }
         fields:
           type: object
