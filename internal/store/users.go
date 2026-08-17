@@ -274,6 +274,50 @@ func (db *DB) DeleteUser(ctx context.Context, userID string) error {
 	return nil
 }
 
+// ListPeople returns everybody the caller shares at least one project with, plus
+// the caller.
+//
+// The set the interface needs to put a name on an `assignee_id` — in a task row,
+// in a filter, anywhere a person appears next to work. Fetched once rather than
+// looked up per row, and deliberately *not* the instance's user list: that is the
+// administrator's page, and a task list has no business enumerating everybody with
+// an account here.
+//
+// Themselves included, because a client comparing "is this me" against the same
+// list it draws from has one source rather than two.
+func (db *DB) ListPeople(ctx context.Context, userID string) ([]Person, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT DISTINCT u.id, u.name, u.avatar_color
+		FROM users u
+		WHERE u.id = ?
+		   -- the owners of projects the caller is a member of
+		   OR u.id IN (SELECT p.owner_id FROM projects p
+		                 JOIN project_members m ON m.project_id = p.id
+		                WHERE m.user_id = ? AND p.deleted_at IS NULL)
+		   -- and the members of every project the caller can see
+		   OR u.id IN (SELECT m2.user_id FROM project_members m2
+		                 JOIN projects p2 ON p2.id = m2.project_id
+		                WHERE p2.deleted_at IS NULL
+		                  AND (p2.owner_id = ?
+		                       OR EXISTS (SELECT 1 FROM project_members m3
+		                                   WHERE m3.project_id = p2.id AND m3.user_id = ?)))
+		ORDER BY u.name`, userID, userID, userID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	people := []Person{}
+	for rows.Next() {
+		var p Person
+		if err := rows.Scan(&p.ID, &p.Name, &p.AvatarColor); err != nil {
+			return nil, err
+		}
+		people = append(people, p)
+	}
+	return people, rows.Err()
+}
+
 // UserCount is what decides whether the instance still needs its first admin.
 func (db *DB) UserCount(ctx context.Context) (int, error) {
 	var n int

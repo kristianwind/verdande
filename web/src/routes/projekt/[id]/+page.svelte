@@ -26,6 +26,8 @@
 	let sections = $state([]);
 	let members = $state([]);
 	let showShare = $state(false);
+	let showLog = $state(false);
+	let activity = $state([]);
 	let inviteEmail = $state('');
 	let inviteRole = $state('editor');
 	let inviteLink = $state('');
@@ -64,6 +66,63 @@
 			api.listMembers(project.id).then((r) => (members = r.members));
 		}
 	});
+
+	// Loaded when it is opened rather than with the page: it is a record you go
+	// looking for, not something every visit should pay for.
+	$effect(() => {
+		if (showLog && project) {
+			api.activity(project.id).then((r) => (activity = r.activity)).catch(() => {});
+		}
+	});
+
+	/**
+	 * What each recorded event is called.
+	 *
+	 * The log has been written since the beginning — nineteen kinds of entry — and
+	 * nothing has ever read it. The keys are the server's and they are stable; this
+	 * is the only place they become Danish.
+	 *
+	 * An unknown key falls through to the key itself rather than being hidden: a
+	 * build that records something this table has not learned yet should still show
+	 * that it happened.
+	 */
+	const EVENTS = {
+		'project.created': 'oprettede projektet',
+		'project.updated': 'ændrede projektet',
+		'project.deleted': 'slettede projektet',
+		'project.imported': 'importerede projektet',
+		'section.created': 'oprettede en sektion',
+		'section.updated': 'ændrede en sektion',
+		'section.deleted': 'slettede en sektion',
+		'member.invited': 'inviterede',
+		'member.added': 'tilføjede',
+		'member.removed': 'fjernede',
+		'member.role_changed': 'ændrede rollen for',
+		'task.created': 'oprettede en opgave',
+		'task.updated': 'ændrede en opgave',
+		'task.completed': 'lukkede en opgave',
+		'task.reopened': 'genåbnede en opgave',
+		'task.moved': 'flyttede en opgave',
+		'task.deleted': 'slettede en opgave',
+		'task.split': 'delte en opgave op',
+		'comment.created': 'skrev en kommentar'
+	};
+
+	/** The bit of context an entry carries, when it has one worth reading. */
+	function detail(entry) {
+		const p = entry.payload ?? {};
+		return p.name ?? p.email ?? p.role ?? '';
+	}
+
+	function when(iso) {
+		const then = new Date(iso);
+		const seconds = Math.round((Date.now() - then) / 1000);
+		if (seconds < 60) return 'lige nu';
+		if (seconds < 3600) return `for ${Math.floor(seconds / 60)} min. siden`;
+		if (seconds < 86400) return `for ${Math.floor(seconds / 3600)} timer siden`;
+		if (seconds < 604800) return `for ${Math.floor(seconds / 86400)} dage siden`;
+		return then.toLocaleDateString('da-DK', { day: 'numeric', month: 'short', year: 'numeric' });
+	}
 
 	// The chosen view is kept locally as well as on the project, so switching is
 	// instant and only persists once the request lands.
@@ -353,6 +412,12 @@
 				</button>
 			{/if}
 
+			{#if !project.is_inbox}
+				<button class="share" onclick={() => (showLog = !showLog)} aria-expanded={showLog}>
+					Historik
+				</button>
+			{/if}
+
 			{#if isOwner && !project.is_inbox}
 				<button class="remove" onclick={remove} aria-label="Slet projektet">
 					<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -361,6 +426,26 @@
 				</button>
 			{/if}
 		</header>
+
+		{#if showLog}
+			<div class="panel">
+				<ul class="log">
+					{#each activity as entry (entry.id)}
+						<li>
+							<span class="who">{entry.user_name}</span>
+							<span class="what">
+								{EVENTS[entry.event] ?? entry.event}{#if detail(entry)}
+									<span class="detail">{detail(entry)}</span>{/if}
+							</span>
+							<span class="when">{when(entry.created_at)}</span>
+						</li>
+					{/each}
+				</ul>
+				{#if !activity.length}
+					<p class="empty">Ingenting er sket her endnu.</p>
+				{/if}
+			</div>
+		{/if}
 
 		{#if choosingColor}
 			<div class="panel swatches" role="group" aria-label="Vælg farve">
@@ -869,6 +954,52 @@
 		border-radius: var(--radius);
 		font-size: var(--text-sm);
 		font-weight: 550;
+	}
+
+	.log {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		/* Capped and scrolled: a busy project's log is thousands of lines, and a
+		   panel that pushes the tasks off the screen is a panel you close again. */
+		max-height: 320px;
+		overflow-y: auto;
+	}
+
+	.log li {
+		display: flex;
+		align-items: baseline;
+		gap: var(--s2);
+		padding: var(--s2) 0;
+		border-bottom: 1px solid var(--line);
+		font-size: var(--text-sm);
+	}
+
+	.log li:last-child {
+		border-bottom: 0;
+	}
+
+	.who {
+		font-weight: 500;
+		flex: none;
+	}
+
+	.what {
+		color: var(--ink-muted);
+		flex: 1;
+		min-width: 0;
+	}
+
+	.detail {
+		color: var(--ink);
+	}
+
+	.when {
+		color: var(--ink-faint);
+		font-size: var(--text-xs);
+		flex: none;
 	}
 
 	.link-out {

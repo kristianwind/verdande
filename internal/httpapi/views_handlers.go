@@ -92,6 +92,31 @@ func (s *Server) handleUpcoming(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"days": out})
 }
 
+// handlePeople lists everybody the caller shares a project with, so an interface
+// can put a name and a face on an assignee id.
+//
+// One request per session rather than a lookup per row, and not the instance's
+// user list — that is the administrator's page. A task list has no business
+// enumerating everybody with an account here.
+func (s *Server) handlePeople(w http.ResponseWriter, r *http.Request) {
+	people, err := s.db.ListPeople(r.Context(), userFrom(r.Context()).ID)
+	if err != nil {
+		s.internal(w, "list people", err)
+		return
+	}
+	out := make([]personJSON, 0, len(people))
+	for _, p := range people {
+		out = append(out, personJSON{ID: p.ID, Name: p.Name, AvatarColor: p.AvatarColor})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"people": out})
+}
+
+type personJSON struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	AvatarColor string `json:"avatar_color"`
+}
+
 type delegatedPerson struct {
 	UserID      string     `json:"user_id"`
 	Name        string     `json:"name"`

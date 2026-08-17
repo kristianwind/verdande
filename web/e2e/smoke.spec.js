@@ -570,7 +570,10 @@ test('et invitationslink opretter kontoen og giver adgang til projektet', async 
 	await sidebar.getByRole('link', { name: 'Venter på andre' }).click();
 	await expect(page.getByRole('heading', { name: 'Venter på andre' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Nabo' })).toBeVisible();
-	await expect(page.getByText('males inden fredag')).toBeVisible();
+	// The task's own text, not the whole row's: quick add read "fredag" as the due
+	// date, so the title is "males inden" and the rest of that line is metadata —
+	// which now has the assignee in it too.
+	await expect(page.getByText('males inden', { exact: true })).toBeVisible();
 
 	expect(trouble).toEqual([]);
 });
@@ -757,8 +760,32 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 	await andreas.reload();
 	await expect(andreas.getByLabel('Ny opgave')).toBeVisible();
 	await expect(andreas.getByText('Du kan se dette projekt')).toHaveCount(0);
-	await context.close();
 
+	// Now that they can edit, hand them something — and the row says whose it is.
+	// Only when it is somebody else's: your own list would otherwise carry your own
+	// face on every line, which is a column of one initial telling you nothing.
+	await page.getByLabel('Ny opgave').fill('brænde kaffe');
+	await page.getByLabel('Ny opgave').press('Enter');
+	await page.getByText('brænde kaffe', { exact: true }).click();
+	const drawer = page.getByRole('complementary', { name: 'Opgave' });
+	await drawer.getByLabel('Ansvarlig').selectOption({ label: 'andreas' });
+	await page.keyboard.press('Escape');
+
+	const row = page.locator('.row').filter({ hasText: 'brænde kaffe' });
+	await expect(row.getByTitle('Ansvarlig: andreas')).toBeVisible();
+	// And not on a task that is nobody's.
+	await page.getByLabel('Ny opgave').fill('min egen');
+	await page.getByLabel('Ny opgave').press('Enter');
+	await expect(
+		page.locator('.row').filter({ hasText: 'min egen' }).locator('.assignee')
+	).toHaveCount(0);
+
+	// The log has recorded all of this since the beginning and nothing showed it.
+	await page.getByRole('button', { name: 'Historik' }).click();
+	await expect(page.getByText('oprettede projektet')).toBeVisible();
+	await expect(page.getByText('ændrede rollen for')).toBeVisible();
+
+	await context.close();
 	expect(trouble).toEqual([]);
 });
 

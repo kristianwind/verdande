@@ -65,6 +65,9 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | REST API: projects, sections, tasks, sub-tasks, ordering | Done, tested |
 | Today, Upcoming, search, activity log | Done, tested |
 | Waiting on others: what you have delegated, by person | Done, tested |
+| Assignee shown on every task that is somebody else's | Done, smoke-tested |
+| Activity log, visible per project | Done, smoke-tested |
+| Change a member's role without removing them | Done, tested |
 | Sharing: invites, roles, members | Done, tested |
 | Live sync over WebSocket | Done |
 | Web interface: sign-in, views, quick add, ⌘K, shortcuts | Done |

@@ -264,6 +264,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			})
 			r.Get("/upcoming", s.handleUpcoming)
 			r.Get("/delegated", s.handleDelegated)
+			r.Get("/people", s.handlePeople)
 			r.Get("/search", s.handleSearch)
 
 			r.Route("/projects", func(r chi.Router) {

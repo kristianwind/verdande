@@ -153,3 +153,50 @@ func TestDelegatedIsPerPersonAndRespectsAccess(t *testing.T) {
 		t.Errorf("a task in a project they cannot see: %v", people)
 	}
 }
+
+// /people is what puts a name on an assignee id. It must be the people you share
+// work with — not the instance's user list, which is the administrator's page.
+func TestPeopleIsWhoYouShareWorkWith(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	colleague := ts.newUser(t, "anders@example.dk", "Anders")
+	ts.newUser(t, "fremmed@example.dk", "Fremmed")
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Delt"})
+	ts.do(t, "POST", "/api/v1/projects/"+project["id"].(string)+"/invites", map[string]any{
+		"email": "anders@example.dk", "role": "editor",
+	})
+
+	_, body := ts.do(t, "GET", "/api/v1/people", nil)
+	names := map[string]bool{}
+	for _, raw := range body["people"].([]any) {
+		p := raw.(map[string]any)
+		names[p["name"].(string)] = true
+		if p["avatar_color"] == "" {
+			t.Errorf("no avatar colour for %v — the row cannot draw a face", p["name"])
+		}
+	}
+
+	if !names["Kristian"] {
+		t.Error("yourself is missing, so a client cannot tell 'me' from 'somebody else' against one list")
+	}
+	if !names["Anders"] {
+		t.Error("somebody sharing a project is missing")
+	}
+	if names["Fremmed"] {
+		t.Error("an account with no project in common is listed — this is not the user directory")
+	}
+
+	// And it is symmetric: the person invited sees the person who invited them.
+	_, theirs := colleague.do(t, "GET", "/api/v1/people", nil)
+	seen := map[string]bool{}
+	for _, raw := range theirs["people"].([]any) {
+		seen[raw.(map[string]any)["name"].(string)] = true
+	}
+	if !seen["Kristian"] || !seen["Anders"] {
+		t.Errorf("the member cannot see who they share with: %v", seen)
+	}
+	if seen["Fremmed"] {
+		t.Errorf("a stranger is listed: %v", seen)
+	}
+}

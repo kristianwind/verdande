@@ -307,5 +307,6 @@ export const api = {
 	today: () => get('/today'),
 	upcoming: (days) => get(`/upcoming${days ? `?days=${days}` : ''}`),
 	delegated: () => get('/delegated'),
+	people: () => get('/people'),
 	search: (q) => get(`/search?q=${encodeURIComponent(q)}`)
 };

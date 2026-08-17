@@ -18,6 +18,14 @@ class AppState {
 	projects = $state([]);
 	/** The foldable headings over the projects in the sidebar. */
 	groups = $state([]);
+	/**
+	 * Everybody you share a project with, and yourself.
+	 *
+	 * Loaded once so a task row can put a name on an `assignee_id` without a
+	 * request per row — and without every list having to know which project each
+	 * task belongs to in order to ask for its members.
+	 */
+	people = $state([]);
 	tasks = $state([]);
 	loading = $state(true);
 	/** Transient messages: a failed save, a rolled-back change. */
@@ -52,6 +60,23 @@ class AppState {
 		return this.projects.find((p) => p.id === id);
 	}
 
+	personById(id) {
+		return this.people.find((p) => p.id === id) ?? null;
+	}
+
+	/**
+	 * The person a task is waiting on, or null when it is nobody or yourself.
+	 *
+	 * Yourself is nobody, on purpose: every row in your own list would otherwise
+	 * carry your own face, which is a column of the same initial telling you
+	 * nothing. The point of showing an assignee is that it is *not* you.
+	 */
+	assigneeOf(task) {
+		const id = task?.assignee_id;
+		if (!id || id === this.user?.id) return null;
+		return this.personById(id) ?? { id, name: 'Ukendt', avatar_color: '#8a8f98' };
+	}
+
 	get detailTask() {
 		return this.tasks.find((t) => t.id === this.detailId) ?? null;
 	}
@@ -68,12 +93,14 @@ class AppState {
 		this.loading = true;
 		try {
 			this.user = await api.me();
-			const [{ projects }, { groups }] = await Promise.all([
+			const [{ projects }, { groups }, { people }] = await Promise.all([
 				api.listProjects(),
-				api.listProjectGroups()
+				api.listProjectGroups(),
+				api.people()
 			]);
 			this.projects = projects;
 			this.groups = groups;
+			this.people = people;
 			this.connect();
 		} catch (e) {
 			this.user = null;

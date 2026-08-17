@@ -48,6 +48,8 @@
 		};
 	}
 
+	// Only when it is somebody else's: see app.assigneeOf.
+	let assignee = $derived(app.assigneeOf(task));
 	let due = $derived(dueLabel(task.due_date));
 	let time = $derived(
 		task.due_datetime
@@ -81,8 +83,19 @@
 			<span class="description">{task.description}</span>
 		{/if}
 
-		{#if due || task.labels?.length || task.recurrence_text}
+		{#if assignee || due || task.labels?.length || task.recurrence_text}
 			<span class="meta">
+				{#if assignee}
+					<!-- First in the row, because "who" changes what the rest of the line
+					     means: a date on somebody else's task is their deadline, not
+					     yours. -->
+					<span class="assignee" title="Ansvarlig: {assignee.name}">
+						<span class="face" style="background: {assignee.avatar_color}">
+							{assignee.name[0]?.toUpperCase() ?? '?'}
+						</span>
+						{assignee.name}
+					</span>
+				{/if}
 				{#if due}
 					<span class="due" data-tone={due.tone}>
 						{due.text}{#if time}&nbsp;{time}{/if}
@@ -257,6 +270,25 @@
 		stroke-width: 2;
 		stroke-linecap: round;
 		stroke-linejoin: round;
+	}
+
+	.assignee {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--s1);
+		color: var(--ink-muted);
+	}
+
+	.face {
+		width: 14px;
+		height: 14px;
+		border-radius: var(--radius-full);
+		display: inline-grid;
+		place-items: center;
+		font-size: 9px;
+		font-weight: 560;
+		color: #fff;
+		flex: none;
 	}
 
 	.label {

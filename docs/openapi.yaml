@@ -1352,6 +1352,36 @@ paths:
                           type: array
                           items: { $ref: "#/components/schemas/Task" }
 
+  /api/v1/people:
+    get:
+      tags: [views]
+      summary: Everybody you share a project with, and yourself.
+      description: |
+        What an interface needs to put a name and a face on an `assignee_id` — in
+        a task row, in a filter, anywhere a person appears beside work. One
+        request per session rather than a lookup per row, and per project members
+        would mean knowing which project every task belongs to first.
+
+        Deliberately not the instance's user list: that is
+        `/users`, administrators only. A task list has no business enumerating
+        everybody with an account here.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  people:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        avatar_color: { type: string }
+
   /api/v1/delegated:
     get:
       tags: [views]
