@@ -45,3 +45,8 @@ node_modules/
 # the process is killed, which during a hung build is exactly what happens. One
 # was committed by accident.
 /web/vite.config.js.timestamp-*.mjs
+
+# A compiled `go build ./tools/shots` in the repo root. It was committed once by
+# accident — 8.9 MB of macOS binary — and `go build ./tools/shots` without -o puts
+# it right back.
+/shots
