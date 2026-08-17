@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -149,6 +150,38 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	}
 	s.activity(r, projectID, "", "project.deleted", nil)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type trashedProjectJSON struct {
+	projectJSON
+	DeletedAt string `json:"deleted_at"`
+	// PurgeAfter is when it stops being recoverable. Sent rather than left for
+	// the frontend to work out, because the retention window is the server's and
+	// a copy of it in the interface is a copy that will one day disagree.
+	PurgeAfter string `json:"purge_after"`
+	TaskCount  int    `json:"task_count"`
+}
+
+// handleListTrashedProjects is what makes restoring reachable. The restore
+// endpoint has always existed; without this, using it meant knowing the id of
+// something that had already vanished from the interface.
+func (s *Server) handleListTrashedProjects(w http.ResponseWriter, r *http.Request) {
+	trashed, err := s.db.ListTrashedProjects(r.Context(), userFrom(r.Context()).ID)
+	if err != nil {
+		s.internal(w, "list trashed projects", err)
+		return
+	}
+
+	out := make([]trashedProjectJSON, 0, len(trashed))
+	for _, t := range trashed {
+		out = append(out, trashedProjectJSON{
+			projectJSON: toProjectJSON(t.Project),
+			DeletedAt:   t.DeletedAt.Format(time.RFC3339),
+			PurgeAfter:  t.DeletedAt.Add(s.cfg.TrashRetention).Format(time.RFC3339),
+			TaskCount:   t.TaskCount,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"projects": out})
 }
 
 func (s *Server) handleRestoreProject(w http.ResponseWriter, r *http.Request) {

@@ -101,6 +101,36 @@
 	}
 
 	let exportProject = $state('');
+
+	// --- the trash -------------------------------------------------------------
+
+	let trashed = $state([]);
+	let loadingTrash = $state(true);
+
+	$effect(() => {
+		api
+			.listTrashedProjects()
+			.then((r) => (trashed = r.projects))
+			.catch((e) => app.toast(humanMessage(e)))
+			.finally(() => (loadingTrash = false));
+	});
+
+	async function restore(project) {
+		const previous = trashed;
+		trashed = trashed.filter((p) => p.id !== project.id);
+		try {
+			await api.restoreProject(project.id);
+			await app.refreshProjects();
+		} catch (e) {
+			trashed = previous;
+			app.toast(humanMessage(e));
+		}
+	}
+
+	/** Whole days left, rounded down — "0 dage tilbage" is the truthful last day. */
+	function daysLeft(iso) {
+		return Math.max(0, Math.floor((new Date(iso) - Date.now()) / 86400000));
+	}
 </script>
 
 <section class="panel">
@@ -143,6 +173,38 @@
 				</div>
 			{/if}
 		</div>
+	{/if}
+</section>
+
+<section class="panel">
+	<header>
+		<h2>Papirkurv</h2>
+		<p class="hint">
+			Slettede projekter, med deres opgaver. De bliver hentet tilbage præcis som
+			de var — bortset fra opgaver, du havde slettet hver for sig først; dem var
+			der en grund til.
+		</p>
+	</header>
+
+	{#if loadingTrash}
+		<p class="empty">…</p>
+	{:else if trashed.length === 0}
+		<p class="empty">Papirkurven er tom.</p>
+	{:else}
+		<ul class="list">
+			{#each trashed as project (project.id)}
+				<li>
+					<div class="what">
+						<span class="title">{project.name}</span>
+						<span class="meta">
+							{project.task_count} opgave{project.task_count === 1 ? '' : 'r'} ·
+							{daysLeft(project.purge_after)} dage tilbage
+						</span>
+					</div>
+					<button class="use" onclick={() => restore(project)}>Hent tilbage</button>
+				</li>
+			{/each}
+		</ul>
 	{/if}
 </section>
 

@@ -285,9 +285,10 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				})
 			})
 
-			// Restoring is outside the block above: a trashed project is invisible
-			// to the permission check by design, so the handler resolves ownership
-			// itself.
+			// The trash is outside the block above: a deleted project is invisible
+			// to the permission check by design, so these handlers resolve
+			// ownership themselves.
+			r.Get("/trash/projects", s.handleListTrashedProjects)
 			r.Post("/trash/projects/{projectID}/restore", s.handleRestoreProject)
 
 			r.Route("/sections/{sectionID}", func(r chi.Router) {
