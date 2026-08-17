@@ -438,6 +438,14 @@ test('en opgave kan trækkes til en anden dag og videre til et projekt', async (
 	await expect(day('I morgen').getByText('hent pakken')).toBeVisible();
 	await expect(day('I dag').getByText('hent pakken')).toBeHidden();
 
+	// Onto "I dag" in the sidebar: the most-made rescheduling there is, and the
+	// sidebar is where the pointer already is. "Kommende" deliberately does not
+	// take one — it is a range, not a day, so a drop would have to invent a date
+	// its label does not name.
+	await row.dragTo(sidebar.getByRole('link', { name: 'I dag' }));
+	await expect(day('I dag').getByText('hent pakken')).toBeVisible();
+	await row.dragTo(day('I morgen'));
+
 	// And onto a project, which is a move rather than a field: the task has to
 	// find a place among that project's tasks, and leave its old section behind.
 	await row.dragTo(sidebar.getByRole('link', { name: 'Ærinder' }));

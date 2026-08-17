@@ -224,6 +224,34 @@
 		await app.reorderProjects(ordered.map((p) => p.id));
 	}
 
+	// --- a task dropped on "I dag" ---------------------------------------------------
+
+	/**
+	 * "Gør det i dag" is the most-made rescheduling there is, and the sidebar is
+	 * where the pointer already goes.
+	 *
+	 * Only this one of the two date views. "Kommende" is a range rather than a
+	 * day — it starts today and runs a week — so a drop on it would have to invent
+	 * a date the label does not name. The month grid inside it takes drops per
+	 * cell, which is where a specific day is actually offered.
+	 */
+	let overToday = $state(false);
+
+	function todayISO() {
+		const now = new Date();
+		return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+			now.getDate()
+		).padStart(2, '0')}`;
+	}
+
+	async function onDropOnToday(event) {
+		event.preventDefault();
+		const id = dragged(event, TASK);
+		overToday = false;
+		if (!id) return;
+		await app.reschedule(id, todayISO());
+	}
+
 	// --- a task dropped on a project ------------------------------------------------
 
 	/** The project row lit up because a task is hovering over it. */
@@ -306,7 +334,20 @@
 	</div>
 
 	<div class="views">
-		<a href="/" class:active={current === '/'} onclick={onnavigate}>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<a
+			href="/"
+			class:active={current === '/'}
+			class:receiving={overToday}
+			onclick={onnavigate}
+			ondragover={(e) => {
+				if (!carries(e, TASK)) return;
+				accept(e);
+				overToday = true;
+			}}
+			ondragleave={() => (overToday = false)}
+			ondrop={onDropOnToday}
+		>
 			<span class="dot today" aria-hidden="true"></span>
 			I dag
 		</a>
