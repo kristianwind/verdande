@@ -69,6 +69,39 @@ type projectRequest struct {
 	Archived *bool   `json:"archived"`
 }
 
+type reorderProjectsRequest struct {
+	// IDs in the order they should appear, top to bottom.
+	IDs []string `json:"ids"`
+}
+
+// handleReorderProjects sets the sidebar order.
+//
+// The whole list rather than one move: a person has a handful of projects, and
+// sending the order you want is both simpler to reason about and impossible to
+// get into the half-ordered state a sequence of individual moves can produce if
+// one of them fails.
+//
+// Projects the caller does not own are skipped — sort_order is a column on the
+// project, so a shared one sits where its owner put it.
+func (s *Server) handleReorderProjects(w http.ResponseWriter, r *http.Request) {
+	var req reorderProjectsRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	// A ceiling rather than a guess at what is reasonable: this is a bound on
+	// the transaction, not an opinion about how many projects somebody may have.
+	if len(req.IDs) > 500 {
+		writeFieldErrors(w, map[string]string{"ids": "at most 500 at a time"})
+		return
+	}
+
+	if err := s.db.ReorderProjects(r.Context(), userFrom(r.Context()).ID, req.IDs); err != nil {
+		s.internal(w, "reorder projects", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	var req projectRequest
 	if err := decodeJSON(w, r, &req); err != nil {

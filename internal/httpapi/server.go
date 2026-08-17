@@ -259,6 +259,8 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			r.Route("/projects", func(r chi.Router) {
 				r.Get("/", s.handleListProjects)
 				r.Post("/", s.handleCreateProject)
+				// Above /{projectID}, or chi reads "reorder" as an id.
+				r.Post("/reorder", s.handleReorderProjects)
 
 				r.Route("/{projectID}", func(r chi.Router) {
 					// Read access is the floor for the whole subtree; the writes
