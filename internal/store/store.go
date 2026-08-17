@@ -38,6 +38,20 @@ func Open(path string) (*DB, error) {
 		"_pragma=busy_timeout(5000)",
 		"_pragma=foreign_keys(ON)",
 		"_pragma=synchronous(NORMAL)",
+		// Every write transaction takes the write lock up front.
+		//
+		// Without this, `BEGIN` is deferred: a transaction starts as a reader and
+		// asks for the write lock at its first UPDATE. SQLite refuses that upgrade
+		// with SQLITE_BUSY *immediately* and does not apply busy_timeout to it —
+		// backing off cannot help, because the transaction is already holding a
+		// read snapshot that the other writer is invalidating. So the timeout above
+		// looks like it covers writer contention and covers none of it: two people
+		// saving at the same moment get a 500 in two milliseconds.
+		//
+		// `immediate` takes the lock at BEGIN instead, where busy_timeout does
+		// apply and the second writer waits its turn. The driver leaves read-only
+		// transactions deferred, so readers still run concurrently.
+		"_txlock=immediate",
 		// Keep the temp b-trees FTS5 and ORDER BY build in memory rather than
 		// spilling them into the data volume.
 		"_pragma=temp_store(MEMORY)",
