@@ -146,6 +146,24 @@ func (db *DB) UpdatePasswordHash(ctx context.Context, userID, hash, keepSessionI
 	})
 }
 
+// UpdateProfile changes the things a person may change about themselves.
+//
+// The email address is not among them: it identifies the account, it is what
+// invites were sent to, and changing it is a re-verification flow rather than a
+// field. Neither is is_admin — an account cannot promote itself.
+func (db *DB) UpdateProfile(ctx context.Context, userID, name, timezone, locale string) error {
+	res, err := db.ExecContext(ctx,
+		`UPDATE users SET name = ?, timezone = ?, locale = ?, updated_at = ? WHERE id = ?`,
+		name, timezone, locale, time.Now().Unix(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (db *DB) SetTOTPSecret(ctx context.Context, userID, secret string, enabled bool) error {
 	var value any
 	if secret != "" {

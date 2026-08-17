@@ -156,6 +156,72 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toUserJSON(userFrom(r.Context())))
 }
 
+type updateProfileRequest struct {
+	Name     *string `json:"name"`
+	Timezone *string `json:"timezone"`
+	Locale   *string `json:"locale"`
+}
+
+// handleUpdateProfile changes name, timezone and language.
+//
+// The timezone is not cosmetic: every date in the app is resolved in it, so "i
+// morgen kl 9" means a different instant after this call than before. Which is
+// exactly why it has to be changeable — an account created from an invite
+// inherits a default, and somebody in another country would otherwise have every
+// due date land an hour out with no way to say so.
+func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	var req updateProfileRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	user := userFrom(r.Context())
+
+	name, timezone, locale := user.Name, user.Timezone, user.Locale
+	fields := map[string]string{}
+
+	if req.Name != nil {
+		name = strings.TrimSpace(*req.Name)
+		if name == "" {
+			fields["name"] = "required"
+		} else if utf8.RuneCountInString(name) > 80 {
+			fields["name"] = "must be at most 80 characters"
+		}
+	}
+	if req.Timezone != nil {
+		timezone = strings.TrimSpace(*req.Timezone)
+		// Checked against the running system's zone database rather than a list
+		// kept here: a hardcoded list goes stale every time a country moves its
+		// clocks, and this one is the same database the dates are resolved with.
+		if _, err := time.LoadLocation(timezone); err != nil || timezone == "" {
+			fields["timezone"] = "must be a zone like Europe/Copenhagen"
+		}
+	}
+	if req.Locale != nil {
+		locale = strings.TrimSpace(*req.Locale)
+		// The locale picks which quick-add grammar parses a line, so an unknown
+		// one would quietly stop "i morgen" being understood.
+		if locale != "da" && locale != "en" {
+			fields["locale"] = "must be da or en"
+		}
+	}
+	if len(fields) > 0 {
+		writeFieldErrors(w, fields)
+		return
+	}
+
+	if err := s.db.UpdateProfile(r.Context(), user.ID, name, timezone, locale); err != nil {
+		s.storeError(w, "update profile", err)
+		return
+	}
+
+	updated, err := s.db.UserByID(r.Context(), user.ID)
+	if err != nil {
+		s.internal(w, "reload user", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toUserJSON(updated))
+}
+
 // --- creating accounts --------------------------------------------------------
 
 type signupRequest struct {
