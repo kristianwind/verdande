@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -249,6 +251,16 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A change of project is a move, not a field: it has to renumber the task
+	// among its new neighbours. Done before the rest so a request that both moves
+	// and edits ends up entirely applied or entirely refused.
+	if req.ProjectID != nil {
+		if err := s.moveTaskToProject(r.Context(), taskID, *req.ProjectID, user.ID); err != nil {
+			writeError(w, http.StatusNotFound, CodeNotFound, err.Error())
+			return
+		}
+	}
+
 	u := store.TaskUpdate{
 		Description: req.Description, Priority: req.Priority,
 		SectionID: req.SectionID, ParentID: req.ParentID,
@@ -473,11 +485,18 @@ func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	projectID := req.ProjectID
+	// Set when the text named a project that does not exist. The task is still
+	// created — see below — but the caller is told, because the alternative is
+	// what it used to be: "#Dekoration" disappears from the title, the task lands
+	// somewhere else, and nothing anywhere says why.
+	unknownProject := ""
 	if parsed.Project != "" {
 		// An unknown "#name" is not an error: the task still gets created, in the
 		// Inbox, rather than a thought being thrown away over a typo.
 		if id, err := s.db.ProjectByName(r.Context(), user.ID, parsed.Project); err == nil {
 			projectID = id
+		} else {
+			unknownProject = parsed.Project
 		}
 	}
 	if projectID == "" {
@@ -510,6 +529,16 @@ func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
 	t.Labels = parsed.Labels
 	s.activity(r, t.ProjectID, t.ID, "task.created", map[string]any{"content": t.Content})
 	s.publish(t.ProjectID, "task.created", toTaskJSON(*t))
+
+	if unknownProject != "" {
+		// Alongside the task rather than instead of it: the task was created, and
+		// this says what could not be honoured while creating it.
+		writeJSON(w, http.StatusCreated, struct {
+			taskJSON
+			UnknownProject string `json:"unknown_project"`
+		}{toTaskJSON(*t), unknownProject})
+		return
+	}
 	writeJSON(w, http.StatusCreated, toTaskJSON(*t))
 }
 
@@ -524,6 +553,42 @@ func (s *Server) handleQuickAddPreview(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- helpers --------------------------------------------------------------------
+
+// moveTaskToProject moves a task to another project, if that is really what was
+// asked for.
+//
+// Shared by the REST handler and the MCP tool, because they had drifted: both
+// accepted project_id on an update, both checked the caller's rights on the
+// destination — which reads as "understood" — and then neither passed it on,
+// because store.TaskUpdate has no such field. The task stayed where it was and
+// the response said OK. An argument that is validated and then dropped is worse
+// than one that is refused.
+//
+// A move rather than a field assignment: sort_order is per project, so landing
+// in a new one means being given a position among its tasks.
+func (s *Server) moveTaskToProject(ctx context.Context, taskID, projectID, userID string) error {
+	if projectID == "" {
+		return nil
+	}
+	current, err := s.db.GetTask(ctx, taskID, userID)
+	if err != nil {
+		return errors.New("not found")
+	}
+	if current.ProjectID == projectID {
+		return nil // already there; not worth a write or a renumber
+	}
+	if _, err := store.RequireProjectRole(ctx, s.db, projectID, userID, store.RoleEditor); err != nil {
+		return errors.New("not found")
+	}
+
+	// No neighbours: it lands at the start of the destination, which is the only
+	// answer available when the caller did not say where. Section is cleared —
+	// a section belongs to the project being left behind.
+	if _, err := s.db.MoveTask(ctx, taskID, projectID, "", "", ""); err != nil {
+		return errors.New("not found")
+	}
+	return nil
+}
 
 func validateTaskContent(content string, priority *int) map[string]string {
 	fields := map[string]string{}
