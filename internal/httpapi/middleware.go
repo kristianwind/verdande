@@ -78,6 +78,14 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, session, err := s.authenticate(r)
 		if err != nil {
+			// A database that could not be read is not a person who is not signed
+			// in. Answering 401 for both means an infrastructure problem shows up
+			// as everybody being logged out at once — the frontend clears its state
+			// and shows the sign-in screen — and nothing in the logs says why.
+			if !errors.Is(err, errNoCredentials) && !errors.Is(err, store.ErrNotFound) {
+				s.internal(w, "authenticate", err)
+				return
+			}
 			writeError(w, http.StatusUnauthorized, CodeUnauthorized, "not signed in")
 			return
 		}
@@ -123,6 +131,11 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 // Both are accepted everywhere. An API token belongs to a person and carries their
 // permissions exactly — there is no separate service identity to reason about, and
 // a script therefore cannot reach anything its owner could not.
+// errNoCredentials means the request carried nothing to authenticate with, as
+// opposed to carrying something that turned out to be wrong — or to the lookup
+// itself failing, which callers must not treat as a failed login.
+var errNoCredentials = errors.New("no credentials")
+
 func (s *Server) authenticate(r *http.Request) (*store.User, *store.Session, error) {
 	if token := bearerToken(r); token != "" && auth.IsAPIToken(token) {
 		user, err := s.db.UserByAPIToken(r.Context(), token)
@@ -134,7 +147,7 @@ func (s *Server) authenticate(r *http.Request) (*store.User, *store.Session, err
 
 	cookie, err := r.Cookie(s.cookieName())
 	if err != nil || cookie.Value == "" {
-		return nil, nil, errors.New("no credentials")
+		return nil, nil, errNoCredentials
 	}
 	session, user, err := s.db.SessionByToken(r.Context(), cookie.Value)
 	if err != nil {
