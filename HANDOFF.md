@@ -180,7 +180,20 @@ Safari vil have en PNG som `apple-touch-icon`, men der er ingen SVG-renderer på
 maskinen, så referencerne til PNG-filer blev fjernet frem for at pege på filer,
 der ikke findes. Rendér dem, hvis PWA'en skal se rigtig ud på iOS.
 
-### 6. OpenAPI-specifikationen
+### 6. E2E-røgtests med Playwright
+
+Briefen bad om dem under "Definition of done". **De findes ikke.** Der er 557 tests,
+men alle er Go: ingen af dem åbner en browser.
+
+Det er ikke akademisk. Begge de fejl, der blev fundet allersidst — etiket-ruten
+skrevet uden for routes-træet, og et manifest der lovede ikoner, som aldrig blev
+genereret — overlevede netop fordi intet rører frontendens rutetræ. Go-testene
+kunne ikke have fanget nogen af dem.
+
+En røgtest på fire flows ville dække det meste: log ind, opret en opgave via quick
+add, luk den, og klik hvert link i sidebjælken.
+
+### 7. OpenAPI-specifikationen
 
 Briefen bad om en. `docs/api.md` er skrevet i hånden og er komplet, men der er ingen
 maskinlæsbar spec.
@@ -231,3 +244,17 @@ push, men intet publiceres, før du kører workflowet manuelt. Landing pagen i
 
 **verdande.app**, **verdande.dev** og **verdande.io** var alle ledige, da navnet
 blev valgt. De er ikke købt.
+
+---
+
+## Hvor denne session slap
+
+Sidste commit: `fix(web)` — etiket-ruten og PWA-ikonerne. CI grøn på Go, Docker og
+dokumentation.
+
+Alt i den oprindelige brief er bygget, med de undtagelser, der står under
+[huller](#huller-i-den-rækkefølge-jeg-ville-tage-dem) — hvoraf frontendens
+indstillingsflade og Playwright-røgtestene er de to, jeg selv ville tage først.
+
+Ingen løse ender i arbejdstræet: `git status` er ren, og der ligger ikke halvfærdig
+kode nogen steder.
