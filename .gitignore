@@ -40,3 +40,8 @@ node_modules/
 
 # Built documentation
 /site_build/
+
+# Vite writes these while bundling vite.config.js and removes them again — unless
+# the process is killed, which during a hung build is exactly what happens. One
+# was committed by accident.
+/web/vite.config.js.timestamp-*.mjs
