@@ -153,6 +153,9 @@ test('hver fane under indstillinger renderer', async ({ page }) => {
 		'Integrationer',
 		'AI',
 		'API-tokens',
+		// Only an administrator sees this one, and the account these tests run as
+		// is the first account, which is one.
+		'Brugere',
 		'Data og skabeloner'
 	]) {
 		await tabs.getByRole('link', { name: label, exact: true }).click();
@@ -531,6 +534,72 @@ test('enhedslisten viser denne enhed, og en anden kan logges ud', async ({ brows
 
 	await expect(panel.getByText('denne enhed')).toBeVisible();
 	expect(trouble).toEqual([]);
+});
+
+/**
+ * An administrator can put somebody on the instance without sharing a project
+ * with them first.
+ *
+ * This is the answer to "how do I create a user": there is no open registration
+ * and no account with a password somebody else chose, so adding a person means
+ * issuing an invite that carries no project. The whole loop is worth driving —
+ * the link, a second browser, the signup, and the new account showing up in the
+ * list as somebody who is *not* an administrator.
+ */
+test('en administrator kan invitere en bruger til instansen', async ({ browser, page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/indstillinger/brugere');
+
+	await page.getByLabel('E-mailadresse').fill('anders@example.dk');
+	await page.getByRole('button', { name: 'Send invitation' }).click();
+
+	const link = await page.locator('.link-out').textContent();
+	expect(link).toContain('/invite?token=');
+	await expect(page.getByText('anders@example.dk')).toBeVisible();
+	await expect(page.getByText('til instansen')).toBeVisible();
+
+	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const invitee = await context.newPage();
+	await invitee.goto(link);
+	await invitee.getByLabel('Navn').fill('Anders');
+	await invitee.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
+	await invitee.getByRole('button', { name: 'Opret konto' }).click();
+
+	// They are in — with an Inbox of their own, and no project shared with them,
+	// which is the difference between this and a project invite.
+	await expect(invitee.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+	await expect(invitee.getByRole('heading', { name: 'I dag' })).toBeVisible();
+	await context.close();
+
+	await page.reload();
+	const konti = page.locator('section.panel').filter({ hasText: 'Konti' });
+	const row = konti.locator('li').filter({ hasText: 'Anders' });
+	await expect(row).toBeVisible();
+	// Invited, not promoted. Asserted through the button that offers to promote
+	// them — which only reads this way for somebody who is not one. Matching the
+	// word "administrator" in the row would match that very button.
+	await expect(row.getByRole('button', { name: 'Gør til administrator' })).toBeVisible();
+	// And the invite is spent rather than left live.
+	await expect(page.getByText('Afventer svar')).toBeHidden();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * The two refusals that keep an instance administrable. Driven here as well as in
+ * the API tests because the interface has to *say* why, and a 409 nobody explains
+ * is a button that appears broken.
+ */
+test('den sidste administrator kan hverken fjernes eller slette sig selv', async ({ page }) => {
+	await page.goto('/indstillinger/brugere');
+
+	const konti = page.locator('section.panel').filter({ hasText: 'Konti' });
+	const mine = konti.locator('li').filter({ hasText: 'dig' });
+	await expect(mine).toBeVisible();
+
+	// No buttons on your own row: the server refuses both, and a button whose only
+	// purpose is to be refused wastes a click to teach a rule.
+	await expect(mine.getByRole('button')).toHaveCount(0);
 });
 
 /**

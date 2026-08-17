@@ -163,6 +163,117 @@ func (db *DB) PeopleByIDs(ctx context.Context, ids []string) (map[string]Person,
 	return people, rows.Err()
 }
 
+// UserSummary is a user as the administrator's list shows them: the account, plus
+// the two numbers that say what deleting it would take with it and the one that
+// says whether it is in use at all.
+type UserSummary struct {
+	User
+	// LastSeenAt is the most recent request from any of their sessions, zero if
+	// they have never signed in — which is what an invite that was accepted and
+	// then forgotten looks like.
+	LastSeenAt time.Time
+	// ProjectCount excludes the Inbox: every account has one, so counting it would
+	// make "1 project" mean "nothing".
+	ProjectCount int
+	// TaskCount is everything a delete would destroy, which is not the same as
+	// "their tasks": it is the tasks in projects they own *plus* every task they
+	// wrote anywhere, because tasks.created_by cascades. A number that counted
+	// only the first would understate the damage in exactly the case that matters
+	// — a colleague leaving a shared project.
+	TaskCount int
+}
+
+// ListUsers returns every account on the instance. Administrators only — this is
+// the whole membership of the server, which is not a list anybody else is owed.
+func (db *DB) ListUsers(ctx context.Context) ([]UserSummary, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT u.id, u.email, u.name, u.avatar_color, u.is_admin, u.created_at,
+		       COALESCE((SELECT max(s.last_seen_at) FROM sessions s WHERE s.user_id = u.id), 0),
+		       (SELECT count(*) FROM projects p
+		         WHERE p.owner_id = u.id AND p.is_inbox = 0 AND p.deleted_at IS NULL),
+		       (SELECT count(*) FROM tasks t JOIN projects p ON p.id = t.project_id
+		         WHERE t.deleted_at IS NULL
+		           AND (p.owner_id = u.id OR t.created_by = u.id))
+		FROM users u
+		ORDER BY u.is_admin DESC, u.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []UserSummary{}
+	for rows.Next() {
+		var s UserSummary
+		var isAdmin int
+		var created, lastSeen int64
+		if err := rows.Scan(&s.ID, &s.Email, &s.Name, &s.AvatarColor, &isAdmin, &created,
+			&lastSeen, &s.ProjectCount, &s.TaskCount); err != nil {
+			return nil, err
+		}
+		s.IsAdmin = isAdmin == 1
+		s.CreatedAt = time.Unix(created, 0).UTC()
+		if lastSeen > 0 {
+			s.LastSeenAt = time.Unix(lastSeen, 0).UTC()
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// CountAdmins is what stops the last administrator from being deleted or demoted.
+// An instance with no administrator has no way back: there is no console, and the
+// setup route refuses to run once an account exists.
+func (db *DB) CountAdmins(ctx context.Context) (int, error) {
+	var n int
+	err := db.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE is_admin = 1`).Scan(&n)
+	return n, err
+}
+
+func (db *DB) SetUserAdmin(ctx context.Context, userID string, admin bool) error {
+	res, err := db.ExecContext(ctx,
+		`UPDATE users SET is_admin = ?, updated_at = ? WHERE id = ?`,
+		boolToInt(admin), time.Now().Unix(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeleteUser removes an account and everything that hangs off it.
+//
+// A hard delete, and the only one in this database. Every other delete here is a
+// `deleted_at` with a trash behind it; this one relies on the foreign keys and
+// there is no way back — which is why the handler sends the counts to the
+// interface first.
+//
+// What goes is wider than it looks. `projects.owner_id` cascades, so their
+// projects go and every task in them goes too. But `tasks.created_by` cascades as
+// well, so **every task they ever wrote goes, including in projects somebody else
+// owns**. Retiring a colleague's account therefore removes their contributions
+// from shared projects rather than leaving them behind unattributed.
+//
+// That is the schema as it stands rather than a decision made here. Changing it —
+// `created_by` as ON DELETE SET NULL, so the work stays and loses its author —
+// means rebuilding the tasks table, which carries the FTS triggers with it. Worth
+// doing; not worth doing quietly as part of adding a screen.
+//
+// What survives: tasks merely *assigned* to them, which are unassigned by
+// `assignee_id ON DELETE SET NULL`, and completions, by the same rule on
+// `completed_by`.
+func (db *DB) DeleteUser(ctx context.Context, userID string) error {
+	res, err := db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // UserCount is what decides whether the instance still needs its first admin.
 func (db *DB) UserCount(ctx context.Context) (int, error) {
 	var n int

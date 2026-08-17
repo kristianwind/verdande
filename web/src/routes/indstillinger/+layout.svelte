@@ -11,17 +11,23 @@
 	 * is six places for them to drift apart.
 	 */
 	import { page } from '$app/stores';
+	import { app } from '$lib/stores.svelte.js';
 
 	let { children } = $props();
 
-	const SECTIONS = [
+	// Brugere is only shown to administrators — the API refuses everybody else, and
+	// a tab that answers 403 is a promise the interface cannot keep. Hidden rather
+	// than disabled: this is not a feature to upsell, it is one that does not
+	// apply to you.
+	let sections = $derived([
 		{ href: '/indstillinger', label: 'Konto' },
 		{ href: '/indstillinger/notifikationer', label: 'Notifikationer' },
 		{ href: '/indstillinger/integrationer', label: 'Integrationer' },
 		{ href: '/indstillinger/ai', label: 'AI' },
 		{ href: '/indstillinger/tokens', label: 'API-tokens' },
+		...(app.user?.is_admin ? [{ href: '/indstillinger/brugere', label: 'Brugere' }] : []),
 		{ href: '/indstillinger/data', label: 'Data og skabeloner' }
-	];
+	]);
 
 	let current = $derived($page.url.pathname.replace(/\/$/, '') || '/indstillinger');
 </script>
@@ -32,7 +38,7 @@
 	</header>
 
 	<nav aria-label="Indstillinger">
-		{#each SECTIONS as section (section.href)}
+		{#each sections as section (section.href)}
 			<a href={section.href} class:active={current === section.href}>{section.label}</a>
 		{/each}
 	</nav>

@@ -136,6 +136,70 @@ func (db *DB) InviteByToken(ctx context.Context, token string) (*Invite, error) 
 	return &inv, nil
 }
 
+// PendingInvite is an invite that has been sent and not yet used, as the
+// administrator's list shows it. The token is not here and cannot be: only its
+// hash is stored, so a link that has gone astray is revoked rather than resent.
+type PendingInvite struct {
+	ID          string
+	Email       string
+	ProjectID   string
+	ProjectName string
+	Role        Role
+	InvitedBy   string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+}
+
+// ListPendingInvites returns invites that are neither accepted nor expired.
+//
+// Expired ones are left out rather than shown greyed: an invite past its date is
+// not a thing anybody can act on, and a list of them would grow forever. The
+// project name is joined in because an invite with no project means something
+// different — an invitation to the instance itself — and the interface has to be
+// able to say which it is.
+func (db *DB) ListPendingInvites(ctx context.Context) ([]PendingInvite, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT i.id, i.email, COALESCE(i.project_id, ''), COALESCE(p.name, ''), i.role,
+		       COALESCE(u.name, ''), i.created_at, i.expires_at
+		FROM invites i
+		LEFT JOIN projects p ON p.id = i.project_id
+		LEFT JOIN users u ON u.id = i.created_by
+		WHERE i.accepted_at IS NULL AND i.expires_at > ?
+		ORDER BY i.created_at DESC`, time.Now().Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []PendingInvite{}
+	for rows.Next() {
+		var p PendingInvite
+		var created, expires int64
+		if err := rows.Scan(&p.ID, &p.Email, &p.ProjectID, &p.ProjectName, &p.Role,
+			&p.InvitedBy, &created, &expires); err != nil {
+			return nil, err
+		}
+		p.CreatedAt = time.Unix(created, 0).UTC()
+		p.ExpiresAt = time.Unix(expires, 0).UTC()
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// DeleteInvite revokes an invite, which is what makes a link sent to the wrong
+// address recoverable: the token cannot be looked up, so withdrawing it is the
+// only way to stop it working before it expires.
+func (db *DB) DeleteInvite(ctx context.Context, inviteID string) error {
+	res, err := db.ExecContext(ctx, `DELETE FROM invites WHERE id = ?`, inviteID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // AcceptInvite marks the invite used and grants the membership it promised, in one
 // transaction. Splitting the two would allow a signup to fail partway and leave a
 // live invite behind, which is a link that still works after it has been used.

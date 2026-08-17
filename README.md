@@ -37,8 +37,10 @@ mail-to-task address, and an MCP endpoint so Claude can work your task list dire
   views, and foldable groups over the projects in the sidebar.
 - **Drag where it means something.** Reorder a list or a board, file a project under
   a group, drop a task on another project, or drop it on another day.
-- **Sharing.** Internal users are created by an admin; anyone else joins through an
-  invite link sent to their email. Owner, editor and viewer roles.
+- **Sharing.** Owner, editor and viewer roles. There is no open registration:
+  everybody arrives through an invite link, either to a project or — from
+  **Settings → Brugere** — to the instance itself. Nobody's password is ever chosen
+  by somebody else.
 - **Live sync.** A change made by somebody else appears without a refresh.
 - **Recurring tasks** as RRULE (RFC 5545), reminders, comments and attachments.
 - **Standards, not homegrown formats.** iCalendar and CalDAV, ICS feeds, OAuth2 with
@@ -69,6 +71,7 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | Task detail: description, sub-tasks, comments, files, reminders | Done |
 | Settings: account, notifications, integrations, AI, tokens, data | Done |
 | Device list: where you are signed in, and signing one out | Done, tested |
+| User administration: invite to the instance, promote, remove | Done, tested |
 | Invite and password-reset links that open the right page | Done, smoke-tested |
 | Drag to reorder, in both the list and the board | Done |
 | Drag a task to another project or another day | Done, smoke-tested |

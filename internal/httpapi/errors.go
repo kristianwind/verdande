@@ -47,7 +47,15 @@ const (
 	CodeAINotConfigured    = "ai_not_configured"
 	CodeTOTPNotEnabled     = "totp_not_enabled"
 	CodeInboxProtected     = "inbox_protected"
+	// And a fifth, for the same reason: refusing to remove the last administrator
+	// is not "that already exists" either, and it is the one refusal on the user
+	// page that a person needs explained rather than merely reported.
+	CodeLastAdmin = "last_admin"
 )
+
+// errLastAdmin is returned to the caller that already wrote the response, so it
+// stops rather than carrying on. It is never rendered anywhere.
+var errLastAdmin = errors.New("httpapi: refused to remove the last administrator")
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, APIError{Code: code, Message: message})

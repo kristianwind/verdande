@@ -856,6 +856,140 @@ paths:
         "204": { description: Deleted. }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/users:
+    get:
+      tags: [auth]
+      summary: Everybody on the instance, and the invites not yet accepted.
+      description: |
+        Administrators only. Each user carries what deleting them would destroy,
+        so the confirmation can name real numbers without a second request in the
+        middle of a decision.
+
+        Session only: an API token cannot enumerate the instance's membership.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminUser" }
+                  invites:
+                    type: array
+                    items: { $ref: "#/components/schemas/PendingInvite" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [auth]
+      summary: Invite somebody to the instance.
+      description: |
+        There is no open registration and no account created with a password
+        somebody else chose: this issues an invite with no project attached, and
+        the link ends with a password only its owner has seen. The same link and
+        the same `/auth/signup` as a project invite — an invite whose project is
+        empty simply grants no membership when it is accepted.
+
+        No name is asked for. The signup form asks the person themselves, and a
+        name an administrator guesses is a name somebody has to correct.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  link:
+                    type: string
+                    description: |
+                      Returned so the interface can offer to copy it. On an
+                      instance with no mail server that is the only way the invite
+                      reaches anybody.
+                  emailed: { type: boolean }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: That address already has an account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /api/v1/users/{userID}:
+    parameters:
+      - { name: userID, in: path, required: true, schema: { type: string } }
+    patch:
+      tags: [auth]
+      summary: Make somebody an administrator, or stop them being one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_admin: { type: boolean }
+      responses:
+        "204": { description: Changed. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            The last administrator cannot be demoted — `code` is `last_admin`.
+            An instance with no administrator has no way back: there is no
+            console, and setup refuses to run once an account exists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [auth]
+      summary: Remove an account and everything the foreign keys take with it.
+      description: |
+        The only hard delete in this API. Everything else is soft-deleted with a
+        trash behind it; this is not recoverable.
+
+        What goes is wider than it looks: their projects, every task in those
+        projects, **and every task they wrote anywhere** — `tasks.created_by`
+        cascades, so retiring a colleague's account removes their contributions
+        from shared projects too. Tasks merely assigned to them are unassigned
+        and survive.
+
+        Refused for your own account, and for the last administrator.
+      responses:
+        "204": { description: Deleted. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Your own account, or the last administrator.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/invites/{inviteID}:
+    parameters:
+      - { name: inviteID, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [auth]
+      summary: Withdraw an invite that has not been accepted.
+      description: |
+        Only the token's hash is stored, so a link sent to the wrong address
+        cannot be looked up and resent — withdrawing it is the only way to stop
+        it working before it expires.
+      responses:
+        "204": { description: Withdrawn. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/v1/project-groups:
     get:
       tags: [projects]
@@ -2269,6 +2403,48 @@ components:
         recovery_codes:
           type: array
           items: { type: string }
+
+    AdminUser:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        name: { type: string }
+        avatar_color: { type: string }
+        is_admin: { type: boolean }
+        self:
+          type: boolean
+          description: The caller, so the interface can grey out what nobody should do to their own account here.
+        created_at: { type: string, format: date-time }
+        last_seen_at:
+          type: string
+          format: date-time
+          description: |
+            Absent when they have never signed in — which is what an invite that
+            was accepted and then forgotten looks like. Absent rather than zero,
+            because 1970 in an interface reads as a bug.
+        project_count:
+          type: integer
+          description: Projects they own, excluding the Inbox every account has.
+        task_count:
+          type: integer
+          description: |
+            Everything a delete would destroy: tasks in projects they own, plus
+            every task they wrote anywhere. Not the same as "their tasks", and
+            the difference is the whole point of showing it.
+
+    PendingInvite:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        project_name:
+          type: string
+          description: Absent for an invite to the instance itself rather than to a project.
+        role: { type: string, enum: [owner, editor, viewer] }
+        invited_by: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
 
     Session:
       type: object

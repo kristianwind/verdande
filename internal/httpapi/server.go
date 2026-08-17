@@ -297,6 +297,19 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				})
 			})
 
+			// The instance's membership. Administrators only, and behind
+			// requireSession as well as requireAdmin: an API token belongs to a
+			// person, and a leaked one must not be able to mint an account or
+			// delete somebody else's.
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireSession, s.requireAdmin)
+				r.Get("/users", s.handleListUsers)
+				r.Post("/users", s.handleCreateUser)
+				r.Patch("/users/{userID}", s.handleUpdateUser)
+				r.Delete("/users/{userID}", s.handleDeleteUser)
+				r.Delete("/invites/{inviteID}", s.handleDeleteInvite)
+			})
+
 			// Groups are a person's own headings over their projects, so there is
 			// no project permission to check — every query here is scoped to the
 			// caller.

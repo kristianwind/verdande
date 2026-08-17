@@ -46,7 +46,9 @@ const MESSAGES = {
 		'Gmail er ikke sat op på denne server. Administratoren skal registrere en OAuth-klient hos Google og sætte VERDANDE_GMAIL_CLIENT_ID og _SECRET.',
 	ai_not_configured: 'Der er ikke valgt en AI-udbyder. Sæt den op under Indstillinger → AI.',
 	totp_not_enabled: 'To-faktor er ikke slået til.',
-	inbox_protected: 'Indbakken kan ikke slettes.'
+	inbox_protected: 'Indbakken kan ikke slettes.',
+	last_admin:
+		'Det er den sidste administrator. Gør en anden til administrator først — ellers er der ingen, der kan komme ind på denne side igen.'
 };
 
 /**
@@ -169,6 +171,13 @@ export const api = {
 	totpDisable: (password) => post('/auth/totp/disable', { password }),
 	listSessions: () => get('/auth/sessions'),
 	endSession: (id) => del(`/auth/sessions/${id}`),
+
+	// --- users, administrators only
+	listUsers: () => get('/users'),
+	inviteUser: (email) => post('/users', { email }),
+	setUserAdmin: (id, isAdmin) => patch(`/users/${id}`, { is_admin: isAdmin }),
+	deleteUser: (id) => del(`/users/${id}`),
+	revokeInvite: (id) => del(`/invites/${id}`),
 
 	recoveryCodes: () => get('/auth/recovery-codes'),
 	regenerateRecoveryCodes: (password) => post('/auth/recovery-codes', { password }),
