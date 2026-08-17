@@ -27,7 +27,11 @@
 	let filters = $state([]);
 	let labels = $state([]);
 
+	// Reads app.labelsChanged so the effect re-runs when a label is created,
+	// renamed or deleted anywhere — including in another tab, or by Claude
+	// through the connector.
 	$effect(() => {
+		app.labelsChanged;
 		api.listFilters().then((r) => (filters = r.filters)).catch(() => {});
 		api.listLabels().then((r) => (labels = r.labels)).catch(() => {});
 	});

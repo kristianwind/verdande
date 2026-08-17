@@ -133,6 +133,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.activity(r, p.ID, "", "project.created", map[string]any{"name": p.Name})
+	s.publishToOwner(r, "project.created", toProjectJSON(*p))
 	writeJSON(w, http.StatusCreated, toProjectJSON(*p))
 }
 
@@ -168,6 +169,7 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, "get project", err)
 		return
 	}
+	s.publishToOwner(r, "project.updated", toProjectJSON(*p))
 	writeJSON(w, http.StatusOK, toProjectJSON(*p))
 }
 
@@ -182,6 +184,7 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.activity(r, projectID, "", "project.deleted", nil)
+	s.publishToOwner(r, "project.deleted", map[string]string{"id": projectID})
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -245,6 +245,7 @@ func (s *Server) handleCreateLabel(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, "create label", err)
 		return
 	}
+	s.publishToOwner(r, "label.changed", labelJSON{l.ID, l.Name, l.Color, l.SortOrder, 0})
 	writeJSON(w, http.StatusCreated, labelJSON{l.ID, l.Name, l.Color, l.SortOrder, 0})
 }
 
@@ -263,6 +264,7 @@ func (s *Server) handleUpdateLabel(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, "update label", err)
 		return
 	}
+	s.publishToOwner(r, "label.changed", nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -272,5 +274,6 @@ func (s *Server) handleDeleteLabel(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, "delete label", err)
 		return
 	}
+	s.publishToOwner(r, "label.changed", nil)
 	w.WriteHeader(http.StatusNoContent)
 }
