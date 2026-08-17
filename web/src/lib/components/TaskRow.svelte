@@ -72,7 +72,9 @@
 		</svg>
 	</button>
 
-	<button class="body" onclick={() => onedit?.(task)}>
+	<!-- Opening the detail drawer is the default. `onedit` is for the callers that
+	     want the click to mean something else. -->
+	<button class="body" onclick={() => (onedit ? onedit(task) : app.openDetail(task.id))}>
 		<span class="content">{task.content}</span>
 
 		{#if task.description}

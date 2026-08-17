@@ -6,6 +6,7 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import SignIn from '$lib/components/SignIn.svelte';
+	import TaskDetail from '$lib/components/TaskDetail.svelte';
 
 	let { children } = $props();
 
@@ -34,6 +35,9 @@
 			return;
 		}
 		if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+		// The navigation shortcuts are for the list. With a task open, "t" means the
+		// letter t — the drawer is a place you are, not a place you pass through.
+		if (app.detailId) return;
 
 		switch (event.key) {
 			case 'q':
@@ -110,6 +114,12 @@
 	</div>
 
 	<CommandPalette bind:open={paletteOpen} />
+
+	<!-- Mounted here rather than in each view, so a task opens the same way from
+	     Today, a project, a label or a saved filter. -->
+	{#if app.detailTask}
+		<TaskDetail task={app.detailTask} onclose={() => app.closeDetail()} />
+	{/if}
 
 	<!-- Toasts are for things that failed after the interface already said they
 	     had succeeded. Nothing else earns an interruption. -->
