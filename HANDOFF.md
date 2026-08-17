@@ -44,9 +44,22 @@ Yggdrasil er en anden klient og sender ingen. Det kostede en runde at finde ud a
 så det står her.
 
 Vil man alligevel holde pakken privat, skal imaget lægges på værten manuelt med
-`docker login` efterfulgt af `docker pull` — før serveren oprettes, og igen efter
-hver udgivelse. Panelets eget pull fejler stadig lydløst; det finder bare imaget,
-der allerede er der.
+`docker login` efterfulgt af `docker pull` — som den bruger, dæmonen kører som —
+før serveren oprettes, og igen efter hver udgivelse. Panelets eget pull fejler
+stadig lydløst; det finder bare imaget, der allerede er der. Det skjuler
+opdateringer: panelet henter ved hver recreate, fejler stille og kører videre på
+det gamle lokale image, så en ny version *ser ud* til at rulle ud uden at gøre
+det.
+
+**Serveren skal ikke slettes for at prøve igen.** Image-referencen læses fra runen
+ved container-create, og både Start og Restart genskaber containeren. Når imaget
+kan hentes, er et almindeligt Start nok.
+
+**En rune opdaterer ikke sig selv.** Panelet skriver rune-rækken fra en
+UI-handling — hverken genstart eller timer gør det — så en ændring i
+`rune/verdande.yaml` kræver **Runes → verdande → Update**. Katalog-listen caches
+ti minutter i hukommelsen, så to forsøg lige efter hinanden kan begge give den
+gamle version.
 
 ## Navnet
 
