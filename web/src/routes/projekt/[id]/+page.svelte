@@ -101,6 +101,61 @@
 		}
 	}
 
+	// --- sections -------------------------------------------------------------------
+
+	let addingSection = $state(false);
+	let renamingSection = $state(null);
+	let sectionName = $state('');
+
+	async function addSection(event) {
+		event.preventDefault();
+		const name = sectionName.trim();
+		if (!name) return;
+		addingSection = false;
+		sectionName = '';
+		try {
+			sections = [...sections, await api.createSection(project.id, name)];
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
+	async function renameSection(event, section) {
+		event.preventDefault();
+		const name = sectionName.trim();
+		renamingSection = null;
+		if (!name || name === section.name) return;
+
+		const previous = sections;
+		sections = sections.map((s) => (s.id === section.id ? { ...s, name } : s));
+		try {
+			await api.updateSection(section.id, { name });
+		} catch (e) {
+			sections = previous;
+			app.toast(humanMessage(e));
+		}
+	}
+
+	async function removeSection(section) {
+		const count = open.filter((t) => t.section_id === section.id).length;
+		const warning = count
+			? `Slet sektionen "${section.name}"? De ${count} opgaver bliver, men mister deres sektion.`
+			: `Slet sektionen "${section.name}"?`;
+		if (!confirm(warning)) return;
+
+		const previous = sections;
+		sections = sections.filter((s) => s.id !== section.id);
+		try {
+			await api.deleteSection(section.id);
+			// The tasks are not deleted with it; they come back unsectioned, and the
+			// list has to be re-read to show them in the right place.
+			await app.loadTasks({ project_id: project.id });
+		} catch (e) {
+			sections = previous;
+			app.toast(humanMessage(e));
+		}
+	}
+
 	async function invite(event) {
 		event.preventDefault();
 		inviteError = '';
@@ -249,7 +304,34 @@
 			{#each sections as section (section.id)}
 				{@const tasks = open.filter((t) => t.section_id === section.id)}
 				<section>
-					<h2>{section.name}</h2>
+					<div class="section-head">
+						{#if renamingSection === section.id}
+							<form onsubmit={(e) => renameSection(e, section)}>
+								<!-- svelte-ignore a11y_autofocus -->
+								<input
+									bind:value={sectionName}
+									autofocus
+									aria-label="Sektionens navn"
+									onblur={() => (renamingSection = null)}
+									onkeydown={(e) => e.key === 'Escape' && (renamingSection = null)}
+								/>
+							</form>
+						{:else}
+							<h2>{section.name}</h2>
+							{#if canEdit}
+								<button
+									class="section-action"
+									onclick={() => {
+										renamingSection = section.id;
+										sectionName = section.name;
+									}}>Omdøb</button
+								>
+								<button class="section-action remove" onclick={() => removeSection(section)}>
+									Slet
+								</button>
+							{/if}
+						{/if}
+					</div>
 					<TaskList {tasks} projectId={project.id} sectionId={section.id} {canEdit} />
 					{#if !tasks.length}
 						<p class="empty">Tom</p>
@@ -257,7 +339,35 @@
 				</section>
 			{/each}
 
-			{#if !open.length}
+			{#if canEdit}
+				<section class="add-section">
+					{#if addingSection}
+						<form onsubmit={addSection}>
+							<!-- svelte-ignore a11y_autofocus -->
+							<input
+								bind:value={sectionName}
+								autofocus
+								placeholder="Sektionens navn"
+								aria-label="Ny sektion"
+								onblur={() => !sectionName.trim() && (addingSection = false)}
+								onkeydown={(e) => e.key === 'Escape' && (addingSection = false)}
+							/>
+						</form>
+					{:else}
+						<button
+							class="add"
+							onclick={() => {
+								addingSection = true;
+								sectionName = '';
+							}}
+						>
+							+ Tilføj sektion
+						</button>
+					{/if}
+				</section>
+			{/if}
+
+			{#if !open.length && !sections.length}
 				<p class="clear">
 					<span class="rune" aria-hidden="true">ᚹ</span>
 					Ingenting her endnu.
@@ -546,6 +656,79 @@
 		padding: 0 var(--s2) var(--s2);
 		border-bottom: 1px solid var(--line);
 		margin-bottom: var(--s2);
+	}
+
+	.section-head {
+		display: flex;
+		align-items: baseline;
+		gap: var(--s3);
+		border-bottom: 1px solid var(--line);
+		margin-bottom: var(--s2);
+	}
+
+	.section-head h2 {
+		border-bottom: 0;
+		margin-bottom: 0;
+		flex: 1;
+		min-width: 0;
+	}
+
+	/* Hidden until the section is hovered or something in it has focus: a heading
+	   with two buttons permanently beside it stops reading as a heading. */
+	.section-action {
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+		padding: 0 var(--s1);
+		opacity: 0;
+		transition: opacity var(--fast) var(--ease);
+	}
+
+	.section-head:hover .section-action,
+	.section-action:focus-visible {
+		opacity: 1;
+	}
+
+	.section-action:hover {
+		color: var(--ink);
+	}
+
+	.section-action.remove:hover {
+		color: var(--danger);
+	}
+
+	.section-head form {
+		flex: 1;
+	}
+
+	.section-head input,
+	.add-section input {
+		width: 100%;
+		padding: var(--s1) var(--s2);
+		background: var(--surface-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		font-size: var(--text-sm);
+		outline: none;
+	}
+
+	.section-head input:focus,
+	.add-section input:focus {
+		border-color: var(--accent);
+	}
+
+	.add-section {
+		margin-top: var(--s5);
+	}
+
+	.add-section .add {
+		font-size: var(--text-sm);
+		color: var(--ink-faint);
+		padding: var(--s2);
+		transition: color var(--fast) var(--ease);
+	}
+
+	.add-section .add:hover {
+		color: var(--accent);
 	}
 
 	.empty,
