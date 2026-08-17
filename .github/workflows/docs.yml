@@ -1,0 +1,58 @@
+name: Documentation
+
+# The docs are built on every push so a broken build is caught immediately, but
+# only published once GitHub Pages has been enabled for the repository. Until the
+# owner decides to publish, this job builds and stops.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      # Pinned deliberately. The Material maintainers have announced that MkDocs
+      # 2.0 removes the plugin system and breaks every theme override with no
+      # migration path — an unpinned install would break this build on the day it
+      # lands, for a docs site nobody was editing.
+      - run: pip install 'mkdocs-material==9.7.7'
+
+      - run: mkdocs build --strict
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site_build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # Only runs once Pages is enabled. Until then the build above still guards
+    # against a broken docs tree.
+    if: github.event_name == 'workflow_dispatch'
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

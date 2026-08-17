@@ -13,8 +13,10 @@ Which is what a to-do list is.
 
 ## Status
 
-Early. The foundation is built and tested; the API and web interface are being
-written. See [What works today](#what-works-today).
+All six phases are built. See [What works today](#what-works-today) for what is
+tested and what is not.
+
+Documentation: [`docs/`](docs/), built with Material for MkDocs.
 
 ## Why this exists
 
@@ -40,10 +42,10 @@ mail-to-task address, and an MCP endpoint so Claude can work your task list dire
 
 ## What works today
 
-**Phases 1 and 3 are complete; phase 2 is most of the way there.** You can install
-it, create an account, add tasks by typing a sentence, share a project, watch
-somebody else's changes appear live, set up repeating chores and reminders, save
-filters, and subscribe to it from Apple Calendar.
+**Every phase in the plan is built.** You can install it, add tasks by typing a
+sentence, share projects, watch somebody else's changes appear live, set repeating
+chores and reminders, save filters, import your Todoist account, sync two-way with
+Apple Reminders, forward mail into it, and add it to Claude as a connector.
 
 | Area | State |
 |---|---|
@@ -64,10 +66,20 @@ filters, and subscribe to it from Apple Calendar.
 | ICS calendar feed, task durations | Done, tested |
 | Project templates | Done, tested |
 | Nightly backups with rotation | Done, tested |
-| Import/export, CalDAV, mail-to-task, Gmail, MCP, AI | Planned — phases 4–5 |
+| Comments, attachments, notifications, Web Push | Built |
+| Todoist CSV import and export, account export | Done, tested |
+| MCP server for Claude | Done, tested |
+| CalDAV server (two-way VTODO) | Done, tested |
+| Mail-to-task | Done, tested |
+| AI layer (Anthropic/OpenAI/Google/local) | Built, degrades when unconfigured |
+| Gmail settings | Partial — see below |
+| Documentation, landing page, licence | Done |
 
-Not yet built: comments and attachments, Web Push, and everything from phase 4
-onwards.
+**Not finished:** the Gmail integration stores its settings but has no OAuth2 flow
+yet, so it cannot actually connect. Web Push and the AI providers are implemented
+but have only been exercised against their specs, not against live services. And
+the interface does not yet expose comments, attachments, reminders, templates,
+import/export or the settings pages — all of it works through the API.
 
 Search finds `grøn` when you type `gron`, because Unicode does not consider `ø` an
 accented `o` and a Danish-first app that cannot do this is broken for its own users.
@@ -154,13 +166,14 @@ is part of it.
 1. **MVP** — auth, projects, sections, tasks, sub-tasks, priorities, due dates,
    quick add, Today and Upcoming, search, keyboard shortcuts. *(done)*
 2. **Sharing** — invites, roles, assignees, comments, attachments, activity log,
-   realtime sync, notifications.
+   realtime sync, notifications. *(done)*
 3. **Pro parity** — recurring tasks, reminders, filter queries, board and calendar
    views, durations, ICS feeds, templates, automatic backups. *(done)*
-4. **Import/export** — Todoist CSV and official export in, CSV/JSON/ICS out.
+4. **Import/export** — Todoist CSV and official export in, CSV/JSON/ICS out. *(done)*
 5. **Integrations** — CalDAV server, mail-to-task, Gmail, MCP server for Claude,
-   and a provider-agnostic AI layer that also talks to a local model.
-6. **Publication** — documentation, landing page, open-source scaffolding.
+   and a provider-agnostic AI layer that also talks to a local model. *(done,
+   except Gmail's OAuth flow)*
+6. **Publication** — documentation, landing page, open-source scaffolding. *(done)*
 
 ## Development
 
@@ -199,4 +212,4 @@ protocol of its own — CalDAV and the REST API *are* the sync.
 
 ## License
 
-Not yet chosen. MIT is the intention when this is published.
+[MIT](LICENSE). See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).

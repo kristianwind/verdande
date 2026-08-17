@@ -30,3 +30,6 @@ node_modules/
 # Frontend build output and dependencies
 /web/build/
 /web/.svelte-kit/
+
+# Built documentation
+/site_build/

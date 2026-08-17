@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>verdande — self-hosted tasks, shared</title>
+		<meta
+			name="description"
+			content="Self-hosted tasks and projects, shared. One Go binary with SQLite inside it. CalDAV, mail-to-task and an MCP connector for Claude."
+		/>
+		<meta name="theme-color" content="#111312" />
+
+		<meta property="og:title" content="verdande" />
+		<meta property="og:description" content="Self-hosted tasks and projects, shared. One binary, SQLite inside it." />
+		<meta property="og:type" content="website" />
+
+		<link rel="icon" href="icon.svg" type="image/svg+xml" />
+
+		<style>
+			/*
+			 * The same tokens as the app, so the site and the thing it describes
+			 * look like one project rather than two.
+			 */
+			:root {
+				--ground: #111312;
+				--surface: #171a19;
+				--surface-raised: #1d211f;
+				--line: #262b29;
+				--line-strong: #343a37;
+				--ink: #e8ebe9;
+				--ink-muted: #9aa39e;
+				--ink-faint: #6b736f;
+				--accent: #5fbf8f;
+				--accent-ink: #0d1411;
+				--radius: 8px;
+				--radius-lg: 12px;
+				--font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+				--font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+			}
+
+			@media (prefers-color-scheme: light) {
+				:root:not([data-theme='dark']) {
+					--ground: #faf9f7;
+					--surface: #ffffff;
+					--surface-raised: #ffffff;
+					--line: #e5e3de;
+					--line-strong: #d3d0c9;
+					--ink: #1c201e;
+					--ink-muted: #5f6763;
+					--ink-faint: #8b918d;
+					--accent: #2f8f63;
+					--accent-ink: #ffffff;
+				}
+			}
+
+			*,
+			*::before,
+			*::after {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				background: var(--ground);
+				color: var(--ink);
+				font-family: var(--font);
+				font-size: 16px;
+				line-height: 1.6;
+				-webkit-font-smoothing: antialiased;
+			}
+
+			.wrap {
+				max-width: 940px;
+				margin: 0 auto;
+				padding: 0 1.5rem;
+			}
+
+			/* --- hero --- */
+
+			header {
+				padding: 6rem 0 4rem;
+				text-align: center;
+			}
+
+			.mark {
+				font-size: 3rem;
+				color: var(--accent);
+				line-height: 1;
+				display: block;
+				margin-bottom: 1rem;
+			}
+
+			h1 {
+				margin: 0;
+				font-size: clamp(2.5rem, 7vw, 3.75rem);
+				font-weight: 560;
+				letter-spacing: -0.03em;
+				line-height: 1.05;
+			}
+
+			.lede {
+				margin: 1.25rem auto 0;
+				max-width: 30rem;
+				font-size: 1.125rem;
+				color: var(--ink-muted);
+			}
+
+			.norn {
+				margin: 2rem auto 0;
+				max-width: 34rem;
+				font-size: 0.9375rem;
+				color: var(--ink-faint);
+			}
+
+			.actions {
+				display: flex;
+				gap: 0.75rem;
+				justify-content: center;
+				flex-wrap: wrap;
+				margin-top: 2.5rem;
+			}
+
+			.button {
+				display: inline-block;
+				padding: 0.625rem 1.25rem;
+				border-radius: var(--radius);
+				text-decoration: none;
+				font-size: 0.9375rem;
+				font-weight: 550;
+				border: 1px solid var(--line-strong);
+				color: var(--ink);
+				transition: border-color 150ms ease, background 150ms ease;
+			}
+
+			.button:hover {
+				border-color: var(--accent);
+			}
+
+			.button.primary {
+				background: var(--accent);
+				color: var(--accent-ink);
+				border-color: var(--accent);
+			}
+
+			.button.primary:hover {
+				opacity: 0.9;
+			}
+
+			/* --- the one screenshot substitute: the thing it actually does --- */
+
+			.demo {
+				margin: 4rem 0;
+				background: var(--surface);
+				border: 1px solid var(--line);
+				border-radius: var(--radius-lg);
+				overflow: hidden;
+			}
+
+			.demo-bar {
+				display: flex;
+				align-items: center;
+				gap: 0.5rem;
+				padding: 0.75rem 1rem;
+				border-bottom: 1px solid var(--line);
+				font-size: 0.8125rem;
+				color: var(--ink-faint);
+			}
+
+			.demo-body {
+				padding: 1.5rem;
+				font-family: var(--font-mono);
+				font-size: 0.875rem;
+				line-height: 2;
+				overflow-x: auto;
+			}
+
+			.typed {
+				white-space: nowrap;
+			}
+
+			/* The tints match the app's own parse highlighting. */
+			mark {
+				background: color-mix(in srgb, var(--accent) 20%, transparent);
+				color: var(--ink);
+				border-radius: 3px;
+				padding: 1px 2px;
+			}
+
+			mark.p {
+				background: color-mix(in srgb, #cf6b6b 22%, transparent);
+			}
+
+			mark.proj {
+				background: color-mix(in srgb, #6b9ecf 22%, transparent);
+			}
+
+			mark.lbl {
+				background: color-mix(in srgb, #d69f5c 22%, transparent);
+			}
+
+			.arrow {
+				color: var(--ink-faint);
+				padding: 0 0.5rem;
+			}
+
+			.result {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.5rem;
+				align-items: center;
+				margin-top: 0.75rem;
+				font-family: var(--font);
+				font-size: 0.875rem;
+			}
+
+			.chip {
+				border: 1px solid var(--line-strong);
+				border-radius: 999px;
+				padding: 1px 0.625rem;
+				color: var(--ink-muted);
+				font-size: 0.75rem;
+			}
+
+			/* --- features --- */
+
+			section {
+				padding: 3rem 0;
+			}
+
+			h2 {
+				font-size: 1.5rem;
+				font-weight: 560;
+				letter-spacing: -0.02em;
+				margin: 0 0 2rem;
+			}
+
+			.grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+				gap: 1px;
+				background: var(--line);
+				border: 1px solid var(--line);
+				border-radius: var(--radius-lg);
+				overflow: hidden;
+			}
+
+			.cell {
+				background: var(--ground);
+				padding: 1.5rem;
+			}
+
+			.cell h3 {
+				margin: 0 0 0.5rem;
+				font-size: 1rem;
+				font-weight: 560;
+			}
+
+			.cell p {
+				margin: 0;
+				font-size: 0.9375rem;
+				color: var(--ink-muted);
+			}
+
+			/* --- install --- */
+
+			pre {
+				background: var(--surface);
+				border: 1px solid var(--line);
+				border-radius: var(--radius);
+				padding: 1rem 1.25rem;
+				overflow-x: auto;
+				font-family: var(--font-mono);
+				font-size: 0.8125rem;
+				line-height: 1.7;
+				color: var(--ink);
+			}
+
+			.muted {
+				color: var(--ink-muted);
+				font-size: 0.9375rem;
+			}
+
+			ul.plain {
+				list-style: none;
+				padding: 0;
+				margin: 1rem 0 0;
+				color: var(--ink-muted);
+				font-size: 0.9375rem;
+			}
+
+			ul.plain li {
+				padding-left: 1.25rem;
+				position: relative;
+				margin-bottom: 0.375rem;
+			}
+
+			ul.plain li::before {
+				content: '·';
+				position: absolute;
+				left: 0.375rem;
+				color: var(--accent);
+			}
+
+			footer {
+				border-top: 1px solid var(--line);
+				margin-top: 4rem;
+				padding: 2rem 0 4rem;
+				text-align: center;
+				color: var(--ink-faint);
+				font-size: 0.875rem;
+			}
+
+			footer a {
+				color: var(--ink-muted);
+			}
+
+			a {
+				color: var(--accent);
+			}
+		</style>
+	</head>
+
+	<body>
+		<div class="wrap">
+			<header>
+				<span class="mark" aria-hidden="true">ᚹ</span>
+				<h1>verdande</h1>
+				<p class="lede">
+					Self-hosted tasks and projects, shared with the people you share the work with.
+					One binary, SQLite inside it.
+				</p>
+				<p class="norn">
+					Verdande is one of the three Norns — the one who spins <em>that which is
+					becoming</em>. Not what has been, and not what is fated to be: the thing you are
+					in the middle of. Which is what a to-do list is.
+				</p>
+
+				<div class="actions">
+					<a class="button primary" href="https://kristianwind.github.io/verdande/self-hosting/">
+						Self-host it
+					</a>
+					<a class="button" href="https://github.com/kristianwind/verdande">Source</a>
+					<a class="button" href="https://kristianwind.github.io/verdande/">Documentation</a>
+				</div>
+			</header>
+
+			<!-- No screenshot: the quick-add parser is the thing worth showing, and it
+			     shows better as the actual text than as a picture of it. -->
+			<div class="demo">
+				<div class="demo-bar">
+					<span aria-hidden="true">+</span>
+					<span>Add a task</span>
+				</div>
+				<div class="demo-body">
+					<div class="typed">
+						betal moms <mark>i morgen</mark> <mark>kl 10</mark>
+						<mark class="p">p1</mark> <mark class="proj">#Firma</mark>
+						<mark class="lbl">@regnskab</mark>
+					</div>
+					<div class="result">
+						<span class="arrow">→</span>
+						<strong>betal moms</strong>
+						<span class="chip">Tomorrow 10:00</span>
+						<span class="chip">P1</span>
+						<span class="chip">Firma</span>
+						<span class="chip">regnskab</span>
+					</div>
+				</div>
+			</div>
+
+			<section>
+				<h2>What it does</h2>
+				<div class="grid">
+					<div class="cell">
+						<h3>Reads what you type</h3>
+						<p>
+							Dates, times, priorities, projects, labels and repetition, parsed out of
+							one line — in Danish and English, mixed freely.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Shared, properly</h3>
+						<p>
+							Owner, editor and viewer roles. People outside your instance join by
+							invite link. Changes appear live.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>A real CalDAV server</h3>
+						<p>
+							Two-way. Tick something off in Apple Reminders and it is ticked off
+							here. Not a read-only feed pretending.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Claude, connected</h3>
+						<p>
+							A built-in MCP server. Ask what is due this week, or have a task added,
+							in conversation.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Mail to task</h3>
+						<p>
+							Forward an email to your own address and it becomes a task, subject
+							parsed like anything else you type.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Yours to leave</h3>
+						<p>
+							Import from Todoist, export back to it, or take everything as JSON. The
+							round trip is tested, not promised.
+						</p>
+					</div>
+				</div>
+			</section>
+
+			<section>
+				<h2>Running it</h2>
+				<pre><code>docker run -d --name verdande \
+  -p 8080:8080 \
+  -v verdande-data:/data \
+  -e VERDANDE_BASE_URL=https://todo.example.dk \
+  ghcr.io/kristianwind/verdande:latest</code></pre>
+				<p class="muted" style="margin-top: 1rem">
+					Open the address and create the first account. That one is the administrator.
+				</p>
+				<ul class="plain">
+					<li>No database to provision — SQLite is inside the binary.</li>
+					<li>Distroless image: no shell, no package manager, one static file.</li>
+					<li>amd64 and arm64, so a Raspberry Pi is fine.</li>
+					<li>Nightly backups, fourteen kept, written with <code>VACUUM INTO</code>.</li>
+				</ul>
+			</section>
+
+			<section>
+				<h2>What it will not do</h2>
+				<p class="muted">
+					No karma or points. No team workspaces. No native apps. No mail integration
+					beyond Gmail and the forwarding address. No languages beyond Danish and English.
+					And no sync protocol of its own — CalDAV and the API <em>are</em> the sync.
+				</p>
+			</section>
+
+			<footer>
+				<p>
+					MIT licensed ·
+					<a href="https://github.com/kristianwind/verdande">github.com/kristianwind/verdande</a>
+				</p>
+				<p>Deployed as a Rune in <a href="https://github.com/kristianwind/yggdrasil">Yggdrasil</a>.</p>
+			</footer>
+		</div>
+	</body>
+</html>

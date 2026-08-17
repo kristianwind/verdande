@@ -1,0 +1,16 @@
+/* The app's accent, so the docs and the thing they describe look like one project. */
+:root {
+	--md-primary-fg-color: #2f8f63;
+	--md-accent-fg-color: #2f8f63;
+}
+
+[data-md-color-scheme='slate'] {
+	--md-primary-fg-color: #5fbf8f;
+	--md-accent-fg-color: #6fcf9f;
+	--md-default-bg-color: #111312;
+}
+
+.md-header__title {
+	font-weight: 560;
+	letter-spacing: -0.02em;
+}

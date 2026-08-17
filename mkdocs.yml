@@ -1,0 +1,77 @@
+site_name: verdande
+site_description: Self-hosted tasks and projects, shared. One binary, SQLite inside it.
+site_url: https://kristianwind.github.io/verdande/
+repo_url: https://github.com/kristianwind/verdande
+repo_name: kristianwind/verdande
+edit_uri: edit/main/docs/
+
+# Not the default `site/` — that directory holds the landing page, which is a
+# separate thing deployed to a separate place.
+site_dir: site_build
+
+theme:
+  name: material
+  language: en
+  # The same two-theme arrangement as the app itself, and the same accent.
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+extra_css:
+  - stylesheets/verdande.css
+
+nav:
+  - Home: index.md
+  - Setting it up:
+      - Self-hosting: self-hosting.md
+      - As a Rune: rune.md
+      - Configuration: configuration.md
+  - Using it:
+      - Quick add: quick-add.md
+      - Filters: filters.md
+      - Importing from Todoist: import.md
+  - Connecting things:
+      - Calendar and CalDAV: caldav.md
+      - Mail to task: mail.md
+      - Claude (MCP): mcp.md
+      - AI features: ai.md
+  - Reference:
+      - API: api.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+
+plugins:
+  - search
