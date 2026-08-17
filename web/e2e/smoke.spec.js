@@ -805,6 +805,46 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 });
 
 /**
+ * The project page on a phone.
+ *
+ * Every other test here runs at desktop width, and this is what that misses: the
+ * header is a flex row of a title and four controls, and 390px does not have room
+ * for them. Without wrapping, the heading was squeezed to its min-content — which
+ * with `overflow-wrap: anywhere` is one character — so a project called
+ * "Skovvænget" rendered as a vertical column of letters while the buttons ran off
+ * the right edge. It looked like a broken font.
+ */
+test('projektsiden er brugbar på en telefon', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto('/');
+
+	// The sidebar is a drawer at this width, so the project is reached through it.
+	await page.getByRole('button', { name: 'Vis menu' }).click();
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Skovvænget');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+
+	const heading = page.getByRole('heading', { name: 'Skovvænget' });
+	await expect(heading).toBeVisible();
+
+	const box = await heading.boundingBox();
+	// Wide enough to hold the word, and short enough not to be a column of
+	// letters. One line of "Skovvænget" at --text-2xl is nowhere near 200px tall.
+	expect(box.width, 'overskriften er klemt sammen').toBeGreaterThan(120);
+	expect(box.height, 'overskriften er brudt op i én bogstavkolonne').toBeLessThan(120);
+
+	// And nothing sticks out past the right edge of the page.
+	const overflow = await page.evaluate(
+		() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+	);
+	expect(overflow, 'siden kan scrolles vandret').toBeLessThanOrEqual(1);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * The MCP connector address must not fall through to the app shell.
  *
  * It did: `/mcp` was not a route, so the SPA fallback answered 200 with a page

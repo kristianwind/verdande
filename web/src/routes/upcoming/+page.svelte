@@ -135,17 +135,21 @@
 		max-width: 1400px;
 	}
 
+	/* Wraps, for the same reason the project header does: a title and a switcher
+	   are more than a phone's width, and the switcher belongs underneath rather
+	   than squeezing the heading. */
 	header {
 		display: flex;
 		align-items: center;
-		gap: var(--s4);
+		gap: var(--s3);
+		flex-wrap: wrap;
 		margin-bottom: var(--s5);
 	}
 
 	h1 {
 		font-size: var(--text-2xl);
-		flex: 1;
-		min-width: 0;
+		flex: 1 1 8ch;
+		min-width: 8ch;
 	}
 
 	.views {

@@ -548,7 +548,10 @@
 				ondrop={(e) => onSectionDrop(e, '')}
 			>
 				<TaskList tasks={unsectioned} projectId={project.id} sectionId="" {canEdit} />
-				{#if !unsectioned.length}
+				<!-- Only once there are sections to be "without": on a project with none,
+				     the label is a heading for the only list there is, and the empty
+				     state below already says the project is empty. -->
+				{#if sections.length && !unsectioned.length}
 					<p class="empty">Uden sektion</p>
 				{/if}
 			</section>
@@ -664,17 +667,28 @@
 		max-width: 1400px;
 	}
 
+	/* Wraps, and the title keeps a floor.
+	 *
+	 * Without both, a phone squeezes the heading to its min-content — which with
+	 * `overflow-wrap: anywhere` is *one character*, so "Skovvænget" came out as a
+	 * vertical column of letters while the buttons ran off the right edge. Four
+	 * controls beside a title is more than 390px has, so they belong on the next
+	 * line rather than in a race for the same one.
+	 */
 	header {
 		display: flex;
 		align-items: center;
-		gap: var(--s4);
+		gap: var(--s3);
+		flex-wrap: wrap;
 		margin-bottom: var(--s5);
 	}
 
 	h1 {
 		font-size: var(--text-2xl);
-		flex: 1;
-		min-width: 0;
+		/* 8ch rather than 0: the basis is what stops flex shrinking it past the
+		   point where the wrapping below is the better answer. */
+		flex: 1 1 8ch;
+		min-width: 8ch;
 		overflow-wrap: anywhere;
 	}
 
@@ -694,8 +708,8 @@
 
 	/* Matches the heading it stands in for, so the swap does not move the page. */
 	.title {
-		flex: 1;
-		min-width: 0;
+		flex: 1 1 8ch;
+		min-width: 8ch;
 		font-size: var(--text-2xl);
 		font-weight: 560;
 		letter-spacing: -0.015em;
