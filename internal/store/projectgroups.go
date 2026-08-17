@@ -18,6 +18,7 @@ type ProjectGroup struct {
 	ID        string
 	OwnerID   string
 	Name      string
+	Color     string
 	Collapsed bool
 	SortOrder float64
 	CreatedAt time.Time
@@ -26,7 +27,7 @@ type ProjectGroup struct {
 
 func (db *DB) ListProjectGroups(ctx context.Context, userID string) ([]ProjectGroup, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, owner_id, name, collapsed, sort_order, created_at, updated_at
+		`SELECT id, owner_id, name, color, collapsed, sort_order, created_at, updated_at
 		 FROM project_groups WHERE owner_id = ?
 		 ORDER BY sort_order, created_at`, userID)
 	if err != nil {
@@ -39,7 +40,7 @@ func (db *DB) ListProjectGroups(ctx context.Context, userID string) ([]ProjectGr
 		var g ProjectGroup
 		var collapsed int
 		var created, updated int64
-		if err := rows.Scan(&g.ID, &g.OwnerID, &g.Name, &collapsed, &g.SortOrder,
+		if err := rows.Scan(&g.ID, &g.OwnerID, &g.Name, &g.Color, &collapsed, &g.SortOrder,
 			&created, &updated); err != nil {
 			return nil, err
 		}
@@ -59,9 +60,9 @@ func (db *DB) GetProjectGroup(ctx context.Context, groupID, userID string) (*Pro
 	var collapsed int
 	var created, updated int64
 	err := db.QueryRowContext(ctx,
-		`SELECT id, owner_id, name, collapsed, sort_order, created_at, updated_at
+		`SELECT id, owner_id, name, color, collapsed, sort_order, created_at, updated_at
 		 FROM project_groups WHERE id = ? AND owner_id = ?`, groupID, userID).
-		Scan(&g.ID, &g.OwnerID, &g.Name, &collapsed, &g.SortOrder, &created, &updated)
+		Scan(&g.ID, &g.OwnerID, &g.Name, &g.Color, &collapsed, &g.SortOrder, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -80,6 +81,9 @@ func (db *DB) CreateProjectGroup(ctx context.Context, g *ProjectGroup) error {
 	}
 	now := time.Now().UTC()
 	g.CreatedAt, g.UpdatedAt = now, now
+	if g.Color == "" {
+		g.Color = DefaultColor
+	}
 	if g.SortOrder == 0 {
 		var max sql.NullFloat64
 		if err := db.QueryRowContext(ctx,
@@ -90,14 +94,15 @@ func (db *DB) CreateProjectGroup(ctx context.Context, g *ProjectGroup) error {
 		g.SortOrder = max.Float64 + 1024
 	}
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO project_groups (id, owner_id, name, collapsed, sort_order, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		g.ID, g.OwnerID, g.Name, boolToInt(g.Collapsed), g.SortOrder, now.Unix(), now.Unix())
+		`INSERT INTO project_groups (id, owner_id, name, color, collapsed, sort_order, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		g.ID, g.OwnerID, g.Name, g.Color, boolToInt(g.Collapsed), g.SortOrder, now.Unix(), now.Unix())
 	return err
 }
 
 type ProjectGroupUpdate struct {
 	Name      *string
+	Color     *string
 	Collapsed *bool
 	SortOrder *float64
 }
@@ -105,6 +110,7 @@ type ProjectGroupUpdate struct {
 func (db *DB) UpdateProjectGroup(ctx context.Context, groupID, userID string, u ProjectGroupUpdate) error {
 	set, args := buildUpdate(map[string]any{
 		"name":       u.Name,
+		"color":      u.Color,
 		"collapsed":  u.Collapsed,
 		"sort_order": u.SortOrder,
 	})

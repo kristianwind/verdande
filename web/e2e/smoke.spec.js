@@ -256,7 +256,10 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	await sidebar.getByLabel('Gruppens navn').fill('Arbejde');
 	await sidebar.getByLabel('Gruppens navn').press('Enter');
 
-	const heading = sidebar.getByRole('button', { name: 'Arbejde' });
+	// `exact`, because the heading's colour dot is a button too and its label is
+	// "Farve på Arbejde" — and Playwright matches an accessible name by substring
+	// unless told otherwise.
+	const heading = sidebar.getByRole('button', { name: 'Arbejde', exact: true });
 	await expect(heading).toBeVisible();
 	await expect(sidebar.getByText('Træk et projekt herop')).toBeVisible();
 
@@ -295,11 +298,38 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	await heading.click();
 	await expect(heading).toHaveAttribute('aria-expanded', 'false');
 	await page.reload();
-	await expect(sidebar.getByRole('button', { name: 'Arbejde' })).toHaveAttribute(
+	await expect(sidebar.getByRole('button', { name: 'Arbejde', exact: true })).toHaveAttribute(
 		'aria-expanded',
 		'false'
 	);
-	await sidebar.getByRole('button', { name: 'Arbejde' }).click();
+	await sidebar.getByRole('button', { name: 'Arbejde', exact: true }).click();
+
+	// Colour, and indentation. The dot is the control as well as the preview, so
+	// the thing you press is the thing you are about to change.
+	await sidebar.getByRole('button', { name: 'Farve på Arbejde' }).click();
+	await sidebar.getByRole('button', { name: 'Petrol' }).click();
+
+	const painted = await sidebar.locator('.folder-head .group-dot').evaluate((el) =>
+		getComputedStyle(el).backgroundColor
+	);
+	expect(painted, 'gruppens prik fik ikke sin farve').not.toBe('rgba(0, 0, 0, 0)');
+
+	// A project inside a group starts further in than a row outside one. Measured
+	// rather than asserted on a class, because indentation is a fact about where
+	// the row's contents land — and measured at the *content* edge, not the box:
+	// the indent is padding, so the element's own left edge does not move.
+	await sidebar.getByRole('link', { name: 'Regnskab' }).dragTo(heading);
+	const contentLeft = (el) =>
+		el.getBoundingClientRect().left + parseFloat(getComputedStyle(el).paddingLeft);
+	const [inside, outside] = await Promise.all([
+		sidebar.locator('.folder > a').first().evaluate(contentLeft),
+		sidebar.locator('.views a').first().evaluate(contentLeft)
+	]);
+	expect(inside, 'et projekt i en gruppe er ikke rykket ind').toBeGreaterThan(outside);
+
+	await sidebar
+		.getByRole('link', { name: 'Regnskab' })
+		.dragTo(sidebar.getByRole('heading', { name: 'Projekter' }));
 
 	// Renaming writes one row rather than one per project, which is the reason a
 	// group is a table and not a string repeated on every project.
@@ -307,14 +337,14 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	const name = sidebar.getByLabel('Gruppens navn');
 	await name.fill('Kontoret');
 	await name.press('Enter');
-	await expect(sidebar.getByRole('button', { name: 'Kontoret' })).toBeVisible();
+	await expect(sidebar.getByRole('button', { name: 'Kontoret', exact: true })).toBeVisible();
 
 	// Deleting the heading must not take the project filed under it. It is
 	// ungrouped here, which is the case that would look identical either way if
 	// the assertion were only "the group is gone".
 	page.once('dialog', (dialog) => dialog.accept());
 	await sidebar.getByRole('button', { name: 'Slet' }).click();
-	await expect(sidebar.getByRole('button', { name: 'Kontoret' })).toBeHidden();
+	await expect(sidebar.getByRole('button', { name: 'Kontoret', exact: true })).toBeHidden();
 	await expect(sidebar.getByRole('link', { name: 'Regnskab' })).toBeVisible();
 
 	expect(trouble).toEqual([]);

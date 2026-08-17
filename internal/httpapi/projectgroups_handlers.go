@@ -19,12 +19,16 @@ import (
 type projectGroupJSON struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
+	Color     string  `json:"color"`
 	Collapsed bool    `json:"collapsed"`
 	SortOrder float64 `json:"sort_order"`
 }
 
 func toProjectGroupJSON(g store.ProjectGroup) projectGroupJSON {
-	return projectGroupJSON{ID: g.ID, Name: g.Name, Collapsed: g.Collapsed, SortOrder: g.SortOrder}
+	return projectGroupJSON{
+		ID: g.ID, Name: g.Name, Color: g.Color,
+		Collapsed: g.Collapsed, SortOrder: g.SortOrder,
+	}
 }
 
 func (s *Server) handleListProjectGroups(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +46,7 @@ func (s *Server) handleListProjectGroups(w http.ResponseWriter, r *http.Request)
 
 type projectGroupRequest struct {
 	Name      *string `json:"name"`
+	Color     *string `json:"color"`
 	Collapsed *bool   `json:"collapsed"`
 }
 
@@ -59,7 +64,15 @@ func (s *Server) handleCreateProjectGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if req.Color != nil && !store.ValidColor(*req.Color) {
+		writeFieldErrors(w, map[string]string{"color": colorFieldError})
+		return
+	}
+
 	g := &store.ProjectGroup{Name: name, OwnerID: userFrom(r.Context()).ID}
+	if req.Color != nil {
+		g.Color = *req.Color
+	}
 	if req.Collapsed != nil {
 		g.Collapsed = *req.Collapsed
 	}
@@ -87,9 +100,13 @@ func (s *Server) handleUpdateProjectGroup(w http.ResponseWriter, r *http.Request
 		}
 		req.Name = &name
 	}
+	if req.Color != nil && !store.ValidColor(*req.Color) {
+		writeFieldErrors(w, map[string]string{"color": colorFieldError})
+		return
+	}
 
 	if err := s.db.UpdateProjectGroup(r.Context(), groupID, userID, store.ProjectGroupUpdate{
-		Name: req.Name, Collapsed: req.Collapsed,
+		Name: req.Name, Color: req.Color, Collapsed: req.Collapsed,
 	}); err != nil {
 		s.storeError(w, "update project group", err)
 		return

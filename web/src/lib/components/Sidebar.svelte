@@ -2,6 +2,7 @@
 	import { app, sidebar } from '$lib/stores.svelte.js';
 	import { api } from '$lib/api.js';
 	import { TASK, PROJECT, GROUP, startDrag, carries, dragged, accept } from '$lib/dnd.js';
+	import { COLORS, colorVar } from '$lib/colors.js';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
@@ -78,6 +79,8 @@
 	let newGroupName = $state('');
 	let renamingGroup = $state(null);
 	let groupName = $state('');
+	/** The group whose swatches are open, if any. */
+	let coloringGroup = $state(null);
 
 	async function createGroup(event) {
 		event.preventDefault();
@@ -353,7 +356,7 @@
 			}}
 			ondrop={(e) => (carries(e, TASK) ? onTaskDrop(e, project) : sortable && onDrop(e, project))}
 		>
-			<span class="dot" aria-hidden="true"></span>
+			<span class="dot" style="background: {colorVar(project.color)}" aria-hidden="true"></span>
 			{project.name}
 			{#if project.shared}
 				<span class="count">{project.member_count}</span>
@@ -480,6 +483,20 @@
 					     the heading away from a screen reader. The whole heading folds —
 					     at this size a lone chevron is a target you miss, and the name is
 					     where the eye already is. -->
+					<!-- The dot is the control as well as the preview: what you press is
+					     the thing you are about to change. It also keeps the heading's
+					     actions down to two — they carry `opacity: 0` rather than
+					     `display: none`, so they take their width whether or not you can
+					     see them, and a third one squeezed the group's name until it
+					     truncated. -->
+					<button
+						class="dot group-dot"
+						style="background: {colorVar(group.color)}"
+						onclick={() => (coloringGroup = coloringGroup === group.id ? null : group.id)}
+						aria-expanded={coloringGroup === group.id}
+						aria-label="Farve på {group.name}"
+						title="Farve"
+					></button>
 					<h2 class="fold">
 						<button onclick={() => app.toggleGroup(group.id)} aria-expanded={!group.collapsed}>
 							<svg
@@ -504,6 +521,25 @@
 					<button class="group-action remove" onclick={() => removeGroup(group)}>Slet</button>
 				{/if}
 			</div>
+
+			{#if coloringGroup === group.id}
+				<div class="swatches" role="group" aria-label="Farve på {group.name}">
+					{#each COLORS as color (color.id)}
+						<button
+							class="swatch"
+							class:chosen={(group.color ?? 'graphite') === color.id}
+							style="background: {colorVar(color.id)}"
+							title={color.name}
+							aria-label={color.name}
+							aria-pressed={(group.color ?? 'graphite') === color.id}
+							onclick={() => {
+								app.setGroupColor(group.id, color.id);
+								coloringGroup = null;
+							}}
+						></button>
+					{/each}
+				</div>
+			{/if}
 
 			{#if !group.collapsed}
 				{#each inside as project (project.id)}
@@ -850,6 +886,72 @@
 
 	.folder-head .count {
 		margin-left: 0;
+	}
+
+	/* The group's own mark, in front of the chevron so the colours of the headings
+	   line up with each other rather than with the projects underneath. */
+	.group-dot {
+		margin-left: var(--s2);
+		padding: 0;
+		box-shadow: 0 0 0 2px var(--surface-sunken);
+		transition: box-shadow var(--fast) var(--ease);
+	}
+
+	.group-dot:hover,
+	.group-dot:focus-visible {
+		box-shadow:
+			0 0 0 2px var(--surface-sunken),
+			0 0 0 3px var(--line-strong);
+		outline: none;
+	}
+
+	/* Projects inside a group are indented to the group's name, not to its dot:
+	   the eye follows the text, and lining up under the dot leaves the names
+	   looking a step short of where the heading starts. */
+	.folder > a {
+		padding-left: calc(var(--s2) + var(--s4));
+	}
+
+	/* The line is indented with them, so a drop between two projects in a group
+	   reads as landing in the group rather than across the whole sidebar. */
+	.folder > a.sortable::before {
+		left: calc(var(--s2) + var(--s4));
+	}
+
+	.folder > .empty {
+		padding-left: calc(var(--s2) + var(--s4));
+	}
+
+	.swatches {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--s2);
+		padding: var(--s2) var(--s2) var(--s3);
+	}
+
+	.swatch {
+		width: 16px;
+		height: 16px;
+		border-radius: var(--radius-full);
+		flex: none;
+		/* A ring in the ground colour, so the chosen one reads as selected without
+		   the swatch changing size and shuffling the row as you move along it. */
+		box-shadow: 0 0 0 2px var(--surface-sunken);
+		transition: box-shadow var(--fast) var(--ease);
+	}
+
+	.swatch:hover,
+	.swatch:focus-visible {
+		box-shadow:
+			0 0 0 2px var(--surface-sunken),
+			0 0 0 3px var(--line-strong);
+		outline: none;
+	}
+
+	.swatch.chosen {
+		box-shadow:
+			0 0 0 2px var(--surface-sunken),
+			0 0 0 3px var(--ink);
 	}
 
 	.folder-head form {

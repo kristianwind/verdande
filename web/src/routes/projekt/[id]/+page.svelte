@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
+	import { COLORS, colorVar } from '$lib/colors.js';
 	import TaskList from '$lib/components/TaskList.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
 	import BoardView from '$lib/components/BoardView.svelte';
@@ -73,6 +74,18 @@
 	let unsectioned = $derived(open.filter((t) => !t.section_id));
 
 	let editing = $state(false);
+	let choosingColor = $state(false);
+
+	/**
+	 * The colour is written to the store as well as here: the sidebar reads its own
+	 * copy of the project list, and a dot that only changed on this page would be
+	 * the same colour in the two places you look at it.
+	 */
+	async function setColor(color) {
+		choosingColor = false;
+		project = { ...project, color };
+		await app.setProjectColor(project.id, color);
+	}
 
 	/** Renames on blur. A no-op when nothing changed, so tabbing through is free. */
 	async function rename(input) {
@@ -216,6 +229,17 @@
 					{/if}
 				</h1>
 			{/if}
+			{#if isOwner && !project.is_inbox}
+				<button
+					class="color"
+					style="background: {colorVar(project.color)}"
+					onclick={() => (choosingColor = !choosingColor)}
+					aria-expanded={choosingColor}
+					aria-label="Farve på projektet"
+					title="Farve på projektet"
+				></button>
+			{/if}
+
 			<div class="views" role="group" aria-label="Visning">
 				{#each [['list', 'Liste'], ['board', 'Board'], ['calendar', 'Kalender']] as [value, label]}
 					<button
@@ -240,6 +264,22 @@
 				</button>
 			{/if}
 		</header>
+
+		{#if choosingColor}
+			<div class="panel swatches" role="group" aria-label="Vælg farve">
+				{#each COLORS as color (color.id)}
+					<button
+						class="swatch"
+						class:chosen={(project.color ?? 'graphite') === color.id}
+						style="background: {colorVar(color.id)}"
+						title={color.name}
+						aria-label={color.name}
+						aria-pressed={(project.color ?? 'graphite') === color.id}
+						onclick={() => setColor(color.id)}
+					></button>
+				{/each}
+			</div>
+		{/if}
 
 		{#if showShare}
 			<div class="panel">
@@ -480,6 +520,56 @@
 		stroke-width: 1.6;
 		stroke-linecap: round;
 		stroke-linejoin: round;
+	}
+
+	/* A circle in the project's own colour, which is both the control and its own
+	   preview: the thing you are about to change is what you press. */
+	.color {
+		flex: none;
+		width: 20px;
+		height: 20px;
+		border-radius: var(--radius-full);
+		box-shadow: 0 0 0 2px var(--ground);
+		transition: box-shadow var(--fast) var(--ease);
+	}
+
+	.color:hover,
+	.color:focus-visible {
+		box-shadow:
+			0 0 0 2px var(--ground),
+			0 0 0 3px var(--line-strong);
+		outline: none;
+	}
+
+	.swatches {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--s3);
+	}
+
+	.swatch {
+		width: 22px;
+		height: 22px;
+		border-radius: var(--radius-full);
+		flex: none;
+		/* A ring in the panel's own colour, so the selected swatch reads as chosen
+		   without changing size and shuffling the row as you move along it. */
+		box-shadow: 0 0 0 2px var(--surface);
+		transition: box-shadow var(--fast) var(--ease);
+	}
+
+	.swatch:hover,
+	.swatch:focus-visible {
+		box-shadow:
+			0 0 0 2px var(--surface),
+			0 0 0 3px var(--line-strong);
+		outline: none;
+	}
+
+	.swatch.chosen {
+		box-shadow:
+			0 0 0 2px var(--surface),
+			0 0 0 3px var(--ink);
 	}
 
 	.views {

@@ -45,6 +45,34 @@
 	--danger: #cf6b6b;
 	--danger-sunken: #33201f;
 
+	/* Marks for projects, groups, labels and filters.
+	 *
+	 * The one set of colours in this file that is *not* redefined per theme, and
+	 * on purpose. Everything else here is text, a ground or a border, and has to
+	 * be measured against whatever sits behind it. These are none of those: they
+	 * are small solid dots beside a label that carries the meaning, so what they
+	 * owe is to be told apart from one another and to be visible on both a
+	 * near-black and a white ground. All of them sit in the mid-tone band where
+	 * that is true, which is why none is very dark or very pale.
+	 *
+	 * It also keeps them out of the trap the themes are in: a colour added to four
+	 * blocks and forgotten in the fifth looks finished and falls back silently.
+	 * There is no fifth block to forget.
+	 *
+	 * The ids are what the database stores. web/src/lib/colors.js lists them for
+	 * the picker, and a Go test reads that file to check the server's list of
+	 * accepted names has not drifted from it. */
+	--color-graphite: #8a8f98;
+	--color-tomato: #d9614f;
+	--color-amber: #d9a04f;
+	--color-lime: #a3b74d;
+	--color-green: #4fae7a;
+	--color-teal: #45b0ab;
+	--color-blue: #5b9bd9;
+	--color-indigo: #7f83d6;
+	--color-violet: #a86fd0;
+	--color-magenta: #d46aa8;
+
 	/* Type. System stack: it renders instantly, matches the platform, and has
 	   proper Danish glyphs on every device — a webfont would cost a round trip
 	   and a flash of unstyled text on the one screen people open fifty times a day. */

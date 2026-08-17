@@ -122,7 +122,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	if req.Name != nil {
 		name = strings.TrimSpace(*req.Name)
 	}
-	if fields := validateProject(name, req.ViewMode); len(fields) > 0 {
+	if fields := validateProject(name, req.ViewMode, req.Color); len(fields) > 0 {
 		writeFieldErrors(w, fields)
 		return
 	}
@@ -158,7 +158,13 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		name = strings.TrimSpace(*req.Name)
 		req.Name = &name
 	}
-	if fields := validateProject(name, req.ViewMode); req.Name != nil && len(fields) > 0 {
+	// The name is only checked when it was sent — but the colour is checked
+	// whenever it was, which is why this is two conditions rather than one.
+	fields := validateProject(name, req.ViewMode, req.Color)
+	if req.Name == nil {
+		delete(fields, "name")
+	}
+	if len(fields) > 0 {
 		writeFieldErrors(w, fields)
 		return
 	}
@@ -260,7 +266,12 @@ func (s *Server) handleRestoreProject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func validateProject(name string, viewMode *string) map[string]string {
+// colorFieldError names the closed set rather than listing it. The list is ten
+// long and lives in three places already; a caller that got it wrong needs to be
+// pointed at the documentation, not handed a copy that will one day be stale.
+const colorFieldError = "must be one of the colours in the palette — see the Color schema"
+
+func validateProject(name string, viewMode, color *string) map[string]string {
 	fields := map[string]string{}
 	switch {
 	case name == "":
@@ -274,6 +285,11 @@ func validateProject(name string, viewMode *string) map[string]string {
 		default:
 			fields["view_mode"] = "must be list, board or calendar"
 		}
+	}
+	// Refused rather than stored and quietly painted as the default, which is what
+	// an unknown name would do — and which looks like a colour that did not save.
+	if color != nil && !store.ValidColor(*color) {
+		fields["color"] = colorFieldError
 	}
 	return fields
 }

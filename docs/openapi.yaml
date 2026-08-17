@@ -2549,7 +2549,7 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
-        color: { type: string }
+        color: { $ref: "#/components/schemas/Color" }
         icon: { type: string }
         view_mode: { type: string, enum: [list, board, calendar] }
         owner_id: { type: string }
@@ -2570,7 +2570,7 @@ components:
       type: object
       properties:
         name: { type: string }
-        color: { type: string }
+        color: { $ref: "#/components/schemas/Color" }
         icon: { type: string }
         view_mode: { type: string, enum: [list, board, calendar] }
         archived: { type: boolean }
@@ -2588,6 +2588,7 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
+        color: { $ref: "#/components/schemas/Color" }
         collapsed: { type: boolean }
         sort_order: { type: number }
 
@@ -2595,7 +2596,25 @@ components:
       type: object
       properties:
         name: { type: string }
+        color: { $ref: "#/components/schemas/Color" }
         collapsed: { type: boolean }
+
+    Color:
+      type: string
+      default: graphite
+      enum: [graphite, tomato, amber, lime, green, teal, blue, indigo, violet, magenta]
+      description: |
+        A name, not a hex value. The interface resolves it when it paints, so the
+        palette can be retuned for a new theme or a new display without rewriting
+        every row — and a database that stores a fact rather than a rendering.
+
+        The set is closed: an unknown name is refused rather than stored and
+        painted as the default, which would look like a colour that did not save.
+
+        One palette for all five themes. These are small solid marks beside a
+        label that carries the meaning, not text or grounds, so what they owe is
+        to be told apart and to be visible on both a near-black and a white
+        ground — which is why they all sit in the mid-tone band.
 
     Section:
       type: object

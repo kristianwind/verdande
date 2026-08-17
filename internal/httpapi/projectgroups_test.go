@@ -219,3 +219,53 @@ func groupOf(t *testing.T, ts *testServer, projectID string) string {
 	t.Fatalf("project %s is not in the listing", projectID)
 	return ""
 }
+
+// Colour is a name from a closed set, on both a project and a group.
+//
+// Refused rather than stored: an unknown name would be written happily and then
+// painted as the default, which looks like a colour that did not save.
+func TestAColourMustBeOneFromThePalette(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, group := ts.do(t, "POST", "/api/v1/project-groups", map[string]any{"name": "Arbejde"})
+	groupID := group["id"].(string)
+	if group["color"] != "graphite" {
+		t.Errorf("a new group's colour = %v, want graphite", group["color"])
+	}
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Regnskab"})
+	projectID := project["id"].(string)
+
+	for _, c := range []struct {
+		what, method, path string
+	}{
+		{"group", "PATCH", "/api/v1/project-groups/" + groupID},
+		{"project", "PATCH", "/api/v1/projects/" + projectID},
+	} {
+		resp, body := ts.do(t, c.method, c.path, map[string]any{"color": "teal"})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s, a real colour: %d %v", c.what, resp.StatusCode, body)
+		}
+		if body["color"] != "teal" {
+			t.Errorf("%s colour = %v, want teal", c.what, body["color"])
+		}
+
+		resp, body = ts.do(t, c.method, c.path, map[string]any{"color": "#ff0000"})
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s, a hex value: status %d, want 422 — body %v", c.what, resp.StatusCode, body)
+		}
+	}
+
+	// A rename does not disturb the colour, and a recolour does not disturb the
+	// name: both are PATCH fields on the same row, and the whole point of a PATCH
+	// is that the one you did not send is the one you did not mean.
+	_, renamed := ts.do(t, "PATCH", "/api/v1/project-groups/"+groupID,
+		map[string]any{"name": "Kontoret"})
+	if renamed["color"] != "teal" {
+		t.Errorf("colour = %v after a rename, want teal", renamed["color"])
+	}
+	if renamed["name"] != "Kontoret" {
+		t.Errorf("name = %v", renamed["name"])
+	}
+}

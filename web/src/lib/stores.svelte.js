@@ -410,6 +410,10 @@ class AppState {
 		await this.#patchGroup(id, { name });
 	}
 
+	async setGroupColor(id, color) {
+		await this.#patchGroup(id, { color });
+	}
+
 	async #patchGroup(id, patch) {
 		const previous = this.groups.find((g) => g.id === id);
 		if (!previous) return;
@@ -455,6 +459,20 @@ class AppState {
 			await api.reorderProjectGroups(ids);
 		} catch (e) {
 			this.groups = previous;
+			this.toast(humanMessage(e));
+		}
+	}
+
+	/** Marks a project with one of the palette's colours. */
+	async setProjectColor(projectId, color) {
+		const previous = this.projects.find((p) => p.id === projectId);
+		if (!previous || previous.color === color) return;
+
+		this.upsertProject({ ...previous, color });
+		try {
+			this.upsertProject(await api.updateProject(projectId, { color }));
+		} catch (e) {
+			this.upsertProject(previous);
 			this.toast(humanMessage(e));
 		}
 	}

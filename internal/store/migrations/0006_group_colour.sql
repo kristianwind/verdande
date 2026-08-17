@@ -1,0 +1,11 @@
+-- A colour on a sidebar group, so a group can be marked the way a project is.
+--
+-- Projects, labels and filters have carried a `color` since 0001; groups arrived
+-- in 0005 without one because nothing rendered any of them yet. Now that the
+-- sidebar paints them, a group without one would be the only thing in the list
+-- that could not be told apart at a glance.
+--
+-- Same default and same spelling as the others: a colour name, not a hex. The
+-- value has to survive a theme change and a redesign, and '#8a8f98' in ten
+-- thousand rows is a decision nobody can revisit.
+ALTER TABLE project_groups ADD COLUMN color TEXT NOT NULL DEFAULT 'graphite';
