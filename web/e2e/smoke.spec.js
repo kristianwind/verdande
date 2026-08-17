@@ -64,12 +64,23 @@ test('hvert link i sidebjælken fører et sted hen', async ({ page }) => {
 	await page.goto('/');
 
 	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
-	const links = await sidebar.getByRole('link').all();
-	expect(links.length).toBeGreaterThanOrEqual(4); // I dag, Kommende, Indbakke, Indstillinger
 
-	for (const link of links) {
-		const href = await link.getAttribute('href');
-		await link.click();
+	// Wait for one link before counting them. `all()` is a snapshot with no
+	// auto-waiting — it returns whatever matches at that instant — so counting
+	// straight after goto() measures how fast the machine is. It passed on a
+	// laptop and found zero links on a CI runner.
+	await expect(sidebar.getByRole('link').first()).toBeVisible();
+
+	const hrefs = await sidebar
+		.getByRole('link')
+		.evaluateAll((links) => links.map((a) => a.getAttribute('href')));
+	expect(hrefs.length).toBeGreaterThanOrEqual(4); // I dag, Kommende, Indbakke, Indstillinger
+
+	// Re-resolved by href on each pass rather than held as handles: navigating
+	// re-renders the sidebar, and a handle from before the click is a handle to
+	// an element that no longer exists.
+	for (const href of hrefs) {
+		await sidebar.locator(`a[href="${href}"]`).first().click();
 
 		// Something with a heading rendered. A route written outside the routes
 		// tree lands on the SPA shell and renders nothing — which is exactly how
