@@ -880,3 +880,52 @@ func TestMCPWithKeyIgnoresTheSessionCookie(t *testing.T) {
 			resp.StatusCode)
 	}
 }
+
+// --- mail to task ------------------------------------------------------------------
+
+// The address used to come out as todo+…@localhost on any instance without a
+// mail server, because VERDANDE_SMTP_FROM defaults to verdande@localhost and the
+// domain was taken from it unconditionally. That address looks real, cannot
+// receive anything, and gives no hint which of the two it is.
+func TestMailAddressDoesNotClaimToBeLocalhost(t *testing.T) {
+	ts := newTestServerWith(t, func(c *config.Config) {
+		c.BaseURL = "https://todo.example.dk"
+		// Left at the default, as an instance with no mail server has it.
+		c.SMTP.From = "verdande@localhost"
+	})
+	ts.bootstrap(t)
+
+	_, body := ts.do(t, "GET", "/api/v1/mail-address", nil)
+	address, _ := body["address"].(string)
+
+	if strings.HasSuffix(address, "@localhost") {
+		t.Errorf("address = %q — that can never receive mail", address)
+	}
+	if !strings.HasSuffix(address, "@todo.example.dk") {
+		t.Errorf("address = %q, want the public hostname", address)
+	}
+	if body["configured"] != false {
+		t.Error("no SMTP host is set, so configured should be false")
+	}
+}
+
+// A real sender address still wins: the mail server's own domain is the one that
+// can actually route this, and the web address may be a tunnel hostname.
+func TestMailAddressPrefersTheConfiguredSender(t *testing.T) {
+	ts := newTestServerWith(t, func(c *config.Config) {
+		c.BaseURL = "https://tunnel-abc123.example.net"
+		c.SMTP.Host = "mail.firma.dk"
+		c.SMTP.From = "verdande@firma.dk"
+	})
+	ts.bootstrap(t)
+
+	_, body := ts.do(t, "GET", "/api/v1/mail-address", nil)
+	address, _ := body["address"].(string)
+
+	if !strings.HasSuffix(address, "@firma.dk") {
+		t.Errorf("address = %q, want the sender's domain", address)
+	}
+	if body["configured"] != true {
+		t.Error("an SMTP host is set, so configured should be true")
+	}
+}

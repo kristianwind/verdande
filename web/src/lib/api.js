@@ -34,9 +34,29 @@ const MESSAGES = {
 	validation_failed: 'Tjek felterne herunder.',
 	payload_too_large: 'Det er for stort.',
 	internal_error: 'Noget gik galt. Prøv igen.',
-	offline: 'Ingen forbindelse til serveren.'
+	bad_request: 'Anmodningen kunne ikke læses.',
+	// Client-only: a network failure is not an HTTP status, so the server has no
+	// code for it.
+	offline: 'Ingen forbindelse til serveren.',
+
+	// Situations that used to arrive as a plain `conflict` and were therefore
+	// shown as "Det er der allerede." — which was not merely vague but wrong. An
+	// unconfigured Gmail is not a Gmail that is already connected.
+	gmail_not_configured:
+		'Gmail er ikke sat op på denne server. Administratoren skal registrere en OAuth-klient hos Google og sætte VERDANDE_GMAIL_CLIENT_ID og _SECRET.',
+	ai_not_configured: 'Der er ikke valgt en AI-udbyder. Sæt den op under Indstillinger → AI.',
+	totp_not_enabled: 'To-faktor er ikke slået til.',
+	inbox_protected: 'Indbakken kan ikke slettes.'
 };
 
+/**
+ * What to show a person for a failed request.
+ *
+ * A code with no message here falls back to the server's prose, which is English
+ * and written for a log — not good, but better than swallowing the only
+ * explanation there is. A code that turns up in that fallback is a code this
+ * table is missing.
+ */
 export function humanMessage(err) {
 	if (!(err instanceof ApiError)) return MESSAGES.offline;
 	return MESSAGES[err.code] ?? err.message ?? MESSAGES.internal_error;

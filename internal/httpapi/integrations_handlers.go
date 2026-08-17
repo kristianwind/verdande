@@ -18,6 +18,12 @@ import (
 
 type mailAddressResponse struct {
 	Address string `json:"address"`
+	// Configured says whether a mail server has been set up at all. Without one
+	// the address is still minted and still valid — the token is real, and the
+	// endpoint that receives mail works — but nothing on the internet routes to
+	// it yet, and an interface that shows the address without saying so is
+	// promising something that will not happen.
+	Configured bool `json:"configured"`
 }
 
 // handleGetMailAddress returns the personal address that turns an email into a
@@ -34,7 +40,10 @@ func (s *Server) handleGetMailAddress(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, "mail token", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, mailAddressResponse{Address: s.mailAddress(token)})
+	writeJSON(w, http.StatusOK, mailAddressResponse{
+		Address:    s.mailAddress(token),
+		Configured: s.cfg.SMTP.Host != "",
+	})
 }
 
 func (s *Server) handleRotateMailAddress(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +56,10 @@ func (s *Server) handleRotateMailAddress(w http.ResponseWriter, r *http.Request)
 		s.internal(w, "set mail token", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, mailAddressResponse{Address: s.mailAddress(token)})
+	writeJSON(w, http.StatusOK, mailAddressResponse{
+		Address:    s.mailAddress(token),
+		Configured: s.cfg.SMTP.Host != "",
+	})
 }
 
 func (s *Server) mailAddress(token string) string {
@@ -55,7 +67,15 @@ func (s *Server) mailAddress(token string) string {
 	if from := s.cfg.SMTP.From; strings.Contains(from, "@") {
 		// The mail server's own domain, which is the one that can actually route
 		// this — the web address may well be a tunnel hostname that receives no mail.
-		domain = from[strings.Index(from, "@")+1:]
+		//
+		// Except when it is the default. VERDANDE_SMTP_FROM falls back to
+		// verdande@localhost, so an instance with no mail server at all was
+		// handing out todo+…@localhost: an address that looks real, cannot
+		// possibly receive anything, and gives no hint which of the two it is.
+		// The public hostname is at least a domain that exists.
+		if d := from[strings.Index(from, "@")+1:]; d != "" && d != "localhost" {
+			domain = d
+		}
 	}
 	return "todo+" + token + "@" + domain
 }
@@ -251,8 +271,8 @@ func (s *Server) handleAISplit(w http.ResponseWriter, r *http.Request) {
 	}
 	if !cfg.Configured() {
 		// Not an error the user did anything to cause: the feature is simply off.
-		writeError(w, http.StatusConflict, CodeConflict,
-			"der er ikke sat en AI-udbyder op under indstillinger")
+		writeError(w, http.StatusConflict, CodeAINotConfigured,
+			"no AI provider is configured")
 		return
 	}
 
@@ -299,8 +319,8 @@ func (s *Server) handleAISummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !cfg.Configured() {
-		writeError(w, http.StatusConflict, CodeConflict,
-			"der er ikke sat en AI-udbyder op under indstillinger")
+		writeError(w, http.StatusConflict, CodeAINotConfigured,
+			"no AI provider is configured")
 		return
 	}
 

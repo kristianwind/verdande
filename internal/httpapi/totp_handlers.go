@@ -116,7 +116,7 @@ func (s *Server) handleRecoveryCodesRegenerate(w http.ResponseWriter, r *http.Re
 	user := userFrom(r.Context())
 
 	if !user.TOTPEnabled {
-		writeError(w, http.StatusConflict, CodeConflict,
+		writeError(w, http.StatusConflict, CodeTOTPNotEnabled,
 			"two-factor authentication is not switched on")
 		return
 	}

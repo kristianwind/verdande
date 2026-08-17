@@ -30,8 +30,8 @@ func (s *Server) handleGmailAuthorize(w http.ResponseWriter, r *http.Request) {
 	cfg := s.gmailConfig()
 
 	if !cfg.Configured() {
-		writeError(w, http.StatusConflict, CodeConflict,
-			"Gmail er ikke sat op på denne server — administratoren skal registrere en OAuth-klient hos Google")
+		writeError(w, http.StatusConflict, CodeGmailNotConfigured,
+			"no Google OAuth client is registered on this server")
 		return
 	}
 

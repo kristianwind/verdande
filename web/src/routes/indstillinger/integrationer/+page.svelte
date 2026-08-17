@@ -96,10 +96,18 @@
 
 	let feedURL = $state('');
 	let mailAddress = $state('');
+	/** Null until loaded, so the warning does not flash before the answer is in. */
+	let mailConfigured = $state(null);
 
 	$effect(() => {
 		api.feed().then((r) => (feedURL = r.url)).catch(() => {});
-		api.getMailAddress().then((r) => (mailAddress = r.address)).catch(() => {});
+		api
+			.getMailAddress()
+			.then((r) => {
+				mailAddress = r.address;
+				mailConfigured = r.configured;
+			})
+			.catch(() => {});
 	});
 
 	async function rotateFeed() {
@@ -114,7 +122,9 @@
 	async function rotateMail() {
 		if (!confirm('Ny adresse? Mail til den gamle bliver afvist.')) return;
 		try {
-			mailAddress = (await api.rotateMailAddress()).address;
+			const r = await api.rotateMailAddress();
+			mailAddress = r.address;
+			mailConfigured = r.configured;
 		} catch (e) {
 			app.toast(humanMessage(e));
 		}
@@ -217,6 +227,16 @@
 			hurtig tilføjelse — &ldquo;Fakturer Anders p1 #Firma&rdquo; virker også her.
 		</p>
 	</header>
+
+	{#if mailConfigured === false}
+		<p class="callback" data-tone="bad">
+			Der er ingen mailserver sat op på denne server, så adressen herunder kan
+			ikke modtage noget endnu. Sæt <span class="mono">VERDANDE_SMTP_HOST</span> og
+			de øvrige SMTP-indstillinger, og få mailserveren til at aflevere post til
+			<span class="mono">todo+*</span> videre til
+			<span class="mono">/inbound/mail</span>.
+		</p>
+	{/if}
 
 	<div class="field">
 		<label for="mail">Din adresse</label>

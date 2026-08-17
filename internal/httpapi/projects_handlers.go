@@ -141,7 +141,7 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
 	if err := s.db.DeleteProject(r.Context(), projectID); err != nil {
 		if strings.Contains(err.Error(), "Inbox cannot be deleted") {
-			writeError(w, http.StatusConflict, CodeConflict, "the Inbox cannot be deleted")
+			writeError(w, http.StatusConflict, CodeInboxProtected, "the Inbox cannot be deleted")
 			return
 		}
 		s.storeError(w, "delete project", err)
