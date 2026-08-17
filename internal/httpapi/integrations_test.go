@@ -929,3 +929,57 @@ func TestMailAddressPrefersTheConfiguredSender(t *testing.T) {
 		t.Error("an SMTP host is set, so configured should be true")
 	}
 }
+
+// A 200 with the app shell is an answer that says "yes, that exists" to anything
+// that asks. For /.well-known/ that is actively harmful: it is a reserved
+// namespace, and a client probing it is asking a yes-or-no question.
+//
+// Claude asks /.well-known/oauth-authorization-server before connecting to an
+// MCP server. It read the shell as "there is an authorization server here" and
+// then failed trying to register with it, reporting a broken sign-in service on
+// a server that has none and needs none.
+func TestWellKnownDoesNotAnswerWithTheAppShell(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	for _, path := range []string{
+		"/.well-known/oauth-authorization-server",
+		"/.well-known/oauth-protected-resource",
+		"/.well-known/openid-configuration",
+		"/.well-known/anything-at-all",
+	} {
+		resp, err := ts.client.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", path, resp.StatusCode)
+		}
+		if strings.Contains(string(body), "<!doctype html") {
+			t.Errorf("%s: answered with the app shell", path)
+		}
+	}
+}
+
+// The one well-known path that is real still works — it is a route, not a
+// fallthrough, so the rule above must not have swallowed it.
+func TestWellKnownCalDAVStillRedirects(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	client := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	resp, err := client.Get(ts.URL + "/.well-known/caldav")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		t.Error("CalDAV discovery was caught by the well-known rule")
+	}
+}
