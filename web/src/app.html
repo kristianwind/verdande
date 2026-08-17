@@ -7,6 +7,10 @@
 		<meta name="description" content="verdande — opgaver og projekter, delt." />
 		<link rel="manifest" href="/manifest.webmanifest" />
 		<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+		<!-- Safari ignores the manifest's icons entirely and looks for this by name.
+		     Without it an installed PWA on iOS gets a screenshot of the page as its
+		     home-screen icon. Generated from the same SVG by scripts/generate-icons.js. -->
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<title>verdande</title>
 		<script>
 			// Applied before first paint, so a dark-theme user never sees a white

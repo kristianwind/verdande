@@ -183,6 +183,12 @@ test('manifestet og service workeren findes, og ikonerne findes også', async ({
 		expect(iconResponse.ok(), `${icon.src} findes ikke`).toBeTruthy();
 	}
 
+	// Safari never reads the manifest's icons; it looks for this by name, and
+	// without it an installed PWA on iOS gets a screenshot of the page as its
+	// home-screen icon.
+	const appleIcon = await request.get('/apple-touch-icon.png');
+	expect(appleIcon.ok(), 'apple-touch-icon.png findes ikke').toBeTruthy();
+
 	// The service worker is what Web Push needs; without it a subscription cannot
 	// be created at all.
 	const worker = await request.get('/sw.js');
