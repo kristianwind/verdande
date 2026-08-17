@@ -983,3 +983,173 @@ func TestWellKnownCalDAVStillRedirects(t *testing.T) {
 		t.Error("CalDAV discovery was caught by the well-known rule")
 	}
 }
+
+// --- what the API accepts, it must actually do -------------------------------------
+
+// project_id on an update used to be validated and then dropped: the destination
+// was permission-checked, which reads as "understood", and the task never moved
+// while the answer said OK. Both the REST path and the MCP tool did it.
+func TestUpdateMovesTheTaskToAnotherProject(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]string{"name": "Firma"})
+	projectID := project["id"].(string)
+
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{"content": "betal moms"})
+	taskID := task["id"].(string)
+	if task["project_id"] == projectID {
+		t.Fatal("the task started in the destination; the test proves nothing")
+	}
+
+	resp, updated := ts.do(t, "PATCH", "/api/v1/tasks/"+taskID,
+		map[string]any{"project_id": projectID})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch: status %d, body %v", resp.StatusCode, updated)
+	}
+	if updated["project_id"] != projectID {
+		t.Errorf("project_id = %v, want %v — the move was accepted and not made",
+			updated["project_id"], projectID)
+	}
+
+	// And it really is there, not merely reported as there.
+	_, reread := ts.do(t, "GET", "/api/v1/tasks/"+taskID, nil)
+	if reread["project_id"] != projectID {
+		t.Errorf("after re-reading, project_id = %v", reread["project_id"])
+	}
+}
+
+func TestMCPUpdateMovesTheTaskToAnotherProject(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]string{"name": "Firma"})
+	projectID := project["id"].(string)
+
+	created := ts.callTool(t, "create_task", map[string]any{"text": "betal moms"})
+	taskID := created["id"].(string)
+
+	moved := ts.callTool(t, "update_task", map[string]any{
+		"task_id": taskID, "project_id": projectID,
+	})
+	if moved["project_id"] != projectID {
+		t.Errorf("project_id = %v, want %v", moved["project_id"], projectID)
+	}
+}
+
+// A project you cannot write to is refused rather than quietly ignored.
+func TestUpdateRefusesAProjectYouCannotWriteTo(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	other := ts.newUser(t, "anden@example.dk", "Anden")
+	_, theirs := other.do(t, "POST", "/api/v1/projects", map[string]string{"name": "Deres"})
+
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{"content": "min opgave"})
+	taskID := task["id"].(string)
+	mine := task["project_id"]
+
+	resp, _ := ts.do(t, "PATCH", "/api/v1/tasks/"+taskID,
+		map[string]any{"project_id": theirs["id"]})
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status %d, want 404", resp.StatusCode)
+	}
+
+	_, reread := ts.do(t, "GET", "/api/v1/tasks/"+taskID, nil)
+	if reread["project_id"] != mine {
+		t.Error("the task moved into somebody else's project")
+	}
+}
+
+// An unknown #project is still not an error — the thought is kept rather than
+// thrown away over a typo — but it is no longer silent. It used to vanish from
+// the title while the task went to the Inbox, with nothing saying why.
+func TestQuickAddSaysWhenTheProjectDoesNotExist(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/quick-add",
+		map[string]any{"text": "Lav plakat #3Dekoration"})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status %d, want 201 — the task should still be created", resp.StatusCode)
+	}
+	if body["unknown_project"] != "3Dekoration" {
+		t.Errorf("unknown_project = %v, want %q", body["unknown_project"], "3Dekoration")
+	}
+	if body["content"] != "Lav plakat" {
+		t.Errorf("content = %v", body["content"])
+	}
+}
+
+func TestQuickAddSaysNothingWhenTheProjectExists(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ts.do(t, "POST", "/api/v1/projects", map[string]string{"name": "Dekoration"})
+
+	_, body := ts.do(t, "POST", "/api/v1/tasks/quick-add",
+		map[string]any{"text": "Lav plakat #Dekoration"})
+	if _, present := body["unknown_project"]; present {
+		t.Errorf("reported an unknown project for one that exists: %v", body)
+	}
+}
+
+func TestMCPCreateSaysWhenTheProjectDoesNotExist(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	created := ts.callTool(t, "create_task", map[string]any{"text": "Lav plakat #3Dekoration"})
+	note, _ := created["note"].(string)
+	if !strings.Contains(note, "3Dekoration") {
+		t.Errorf("note = %q, want it to name the project that does not exist", note)
+	}
+}
+
+// Sub-tasks were unreachable over MCP: create_task had no parent_id, so a parent
+// with seven children arrived as eight unrelated tasks.
+func TestMCPCreateMakesSubtasks(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]string{"name": "Firma"})
+	parent := ts.callTool(t, "create_task", map[string]any{
+		"content": "Runen v2", "project_id": project["id"],
+	})
+	parentID := parent["id"].(string)
+
+	child := ts.callTool(t, "create_task", map[string]any{
+		"content": "Tegn ikonet", "parent_id": parentID,
+	})
+	if child["parent_id"] != parentID {
+		t.Errorf("parent_id = %v, want %v", child["parent_id"], parentID)
+	}
+	// A sub-task joins its parent's project whatever else was asked for.
+	if child["project_id"] != project["id"] {
+		t.Errorf("project_id = %v, want the parent's %v", child["project_id"], project["id"])
+	}
+
+	_, listed := ts.do(t, "GET", "/api/v1/tasks?parent_id="+parentID, nil)
+	if tasks, _ := listed["tasks"].([]any); len(tasks) != 1 {
+		t.Errorf("the parent has %d sub-tasks, want 1", len(tasks))
+	}
+}
+
+func TestMCPCreateRefusesASecondLevelOfSubtask(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	parent := ts.callTool(t, "create_task", map[string]any{"content": "Runen v2"})
+	child := ts.callTool(t, "create_task", map[string]any{
+		"content": "Tegn ikonet", "parent_id": parent["id"],
+	})
+
+	// A tool that refuses reports it inside the result with isError, not as a
+	// JSON-RPC error — the call itself was well formed, the arguments were not.
+	response := ts.rpc(t, "tools/call", map[string]any{
+		"name":      "create_task",
+		"arguments": map[string]any{"content": "Endnu dybere", "parent_id": child["id"]},
+	})
+	result, _ := response["result"].(map[string]any)
+	if result == nil || result["isError"] != true {
+		t.Errorf("a sub-task of a sub-task was accepted: %v", response)
+	}
+}
