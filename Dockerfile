@@ -5,7 +5,17 @@
 # manager and no libc — the attack surface of the running container is the binary.
 
 # --- 1. the web interface ----------------------------------------------------
-FROM node:22-alpine AS web
+#
+# Pinned to the *build* platform, not the target. What this stage produces is
+# HTML, CSS and JavaScript, which are the same bytes whatever the image will run
+# on — so building it once and copying it into both architectures is not an
+# optimisation, it is the correct thing.
+#
+# Without the pin, buildx runs this stage once per target, which means running
+# Node and esbuild under QEMU for arm64. That crashes: exit 132, SIGILL, an
+# instruction the emulator does not implement, roughly one release in three. It
+# looks like a broken build and is a broken emulator.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web
 
 WORKDIR /src
 COPY web/ ./
@@ -24,7 +34,12 @@ RUN if [ -f package.json ]; then \
     fi
 
 # --- 2. the binary -----------------------------------------------------------
-FROM golang:1.26-alpine AS build
+#
+# Also pinned to the build platform, and cross-compiled instead. Go does that
+# natively and CGO is already off, so there is nothing to emulate — where
+# building *in* the target architecture means running the whole Go toolchain
+# under QEMU for one of the two.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 
 WORKDIR /src
 
@@ -37,11 +52,13 @@ COPY . .
 COPY --from=web /src/build ./cmd/verdande/webbuild
 
 ARG VERSION=dev
+# Supplied by buildx per target. The default keeps a plain `docker build` working.
+ARG TARGETARCH=amd64
 
 # CGO off is what makes this binary static, and it is only possible because the
 # SQLite driver is pure Go. -trimpath and the empty buildid keep the output
 # reproducible; -s -w drop the symbol and DWARF tables, which is most of the size.
-RUN CGO_ENABLED=0 GOOS=linux go build \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
         -tags embedweb \
         -trimpath \
         -ldflags="-s -w -buildid= -X main.version=${VERSION}" \
