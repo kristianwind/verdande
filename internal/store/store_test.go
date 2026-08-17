@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -92,6 +93,51 @@ func TestPragmasAreSet(t *testing.T) {
 	}
 	if fk != 1 {
 		t.Error("foreign_keys is off; cascading deletes would silently not happen")
+	}
+}
+
+// Two people saving at the same moment must both succeed.
+//
+// This is a regression test for a specific and badly-behaved failure: with the
+// default deferred BEGIN, a write transaction starts as a reader and asks for the
+// write lock partway through. SQLite refuses that upgrade with SQLITE_BUSY at once
+// and does *not* apply busy_timeout to it — so the contention surfaced as a 500
+// two milliseconds after the request arrived, while every single-threaded test
+// passed. `_txlock=immediate` is what makes the timeout actually cover writers.
+func TestConcurrentWritersDoNotHitSQLiteBusy(t *testing.T) {
+	db := openTest(t)
+	ctx := context.Background()
+	seedTaskFixtures(t, db)
+
+	const writers = 8
+	errs := make(chan error, writers)
+
+	start := make(chan struct{})
+	for i := range writers {
+		go func(i int) {
+			<-start // all of them ask for the write lock at once
+			errs <- db.CreateTask(ctx, &Task{
+				ProjectID: "p1",
+				Content:   fmt.Sprintf("opgave %d", i),
+				CreatedBy: "u1",
+			}, nil)
+		}(i)
+	}
+	close(start)
+
+	for range writers {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent write failed: %v", err)
+		}
+	}
+
+	var n int
+	if err := db.QueryRowContext(ctx,
+		`SELECT count(*) FROM tasks WHERE project_id = 'p1'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != writers {
+		t.Errorf("wrote %d tasks, want %d", n, writers)
 	}
 }
 
