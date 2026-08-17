@@ -16,6 +16,7 @@ import (
 
 	"github.com/kristianwind/verdande/internal/config"
 	"github.com/kristianwind/verdande/internal/httpapi"
+	"github.com/kristianwind/verdande/internal/jobs"
 	"github.com/kristianwind/verdande/internal/store"
 )
 
@@ -53,9 +54,19 @@ func run() error {
 	defer db.Close()
 	log.Info("database ready", "path", db.Path())
 
+	api := httpapi.New(cfg, db, log, webAssets(log))
+
+	// Background work: reminders, the nightly backup, and the trash emptying
+	// itself. Started before the listener so a reminder that came due while the
+	// process was down goes out immediately rather than on the next tick.
+	jobCtx, stopJobs := context.WithCancel(context.Background())
+	defer stopJobs()
+	runner := jobs.New(cfg, db, log, api.Mail(), api.Hub())
+	runner.Start(jobCtx)
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.New(cfg, db, log, webAssets(log)),
+		Handler:           api,
 		ReadHeaderTimeout: 10 * time.Second,
 		// No WriteTimeout: it would also cap the WebSocket and any long file
 		// download. Per-handler timeouts do that job with the right granularity.
@@ -88,6 +99,11 @@ func run() error {
 	if err := srv.Shutdown(ctx); err != nil {
 		return fmt.Errorf("shutdown: %w", err)
 	}
+
+	// Let the background jobs finish the pass they are in. A shutdown during a
+	// backup would otherwise leave a partial file that looks like a backup.
+	stopJobs()
+	runner.Wait()
 
 	// WAL mode leaves recent writes in the -wal file. Checkpointing on the way out
 	// means a backup taken of a stopped container is complete.

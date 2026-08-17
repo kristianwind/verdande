@@ -67,6 +67,10 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	// Docker both need this to answer before anyone has logged in.
 	r.Get("/healthz", s.handleHealth)
 
+	// The calendar feed is outside /api/v1 and outside the session: a calendar
+	// client cannot log in, so the token in the path is the whole credential.
+	r.Get("/ics/{token}", s.handleICSFeed)
+
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(s.requireCSRF)
 
@@ -126,6 +130,18 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Delete("/{filterID}", s.handleDeleteFilter)
 			})
 
+			r.Get("/feed", s.handleGetFeed)
+			r.Post("/feed/rotate", s.handleRotateFeed)
+
+			r.Route("/templates", func(r chi.Router) {
+				r.Get("/", s.handleListTemplates)
+				r.Post("/", s.handleSaveTemplate)
+				r.Post("/{templateID}/use", s.handleUseTemplate)
+				r.Delete("/{templateID}", s.handleDeleteTemplate)
+			})
+
+			r.Delete("/reminders/{reminderID}", s.handleDeleteReminder)
+
 			r.Route("/labels", func(r chi.Router) {
 				r.Get("/", s.handleListLabels)
 				r.Post("/", s.handleCreateLabel)
@@ -184,6 +200,8 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 					r.Get("/", s.handleGetTask)
 					r.Patch("/", s.handleUpdateTask)
 					r.Delete("/", s.handleDeleteTask)
+					r.Get("/reminders", s.handleListReminders)
+					r.Post("/reminders", s.handleCreateReminder)
 					r.Post("/complete", s.handleCompleteTask)
 					r.Post("/reopen", s.handleReopenTask)
 					r.Post("/move", s.handleMoveTask)
@@ -199,6 +217,12 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.router.ServeHTTP(w, r) }
+
+// Mail and Hub are exposed so the background jobs can deliver through the same
+// sender and the same live connections the request path uses — a reminder should
+// arrive in an open tab exactly as a colleague's edit does.
+func (s *Server) Mail() *mail.Sender { return s.mail }
+func (s *Server) Hub() *realtime.Hub { return s.hub }
 
 // handleHealth reports whether verdande can actually serve requests, which means
 // reaching the database — a process that is up but cannot read its own data is not

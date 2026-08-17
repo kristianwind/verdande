@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -1004,5 +1006,305 @@ func TestDeletingALabelKeepsItsTasks(t *testing.T) {
 	}
 	if got, _ := after["labels"].([]any); len(got) != 0 {
 		t.Errorf("labels = %v, want empty", got)
+	}
+}
+
+// --- reminders, feeds and templates -----------------------------------------------
+
+func TestReminders(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "møde", "due_date": userDate(t, 0), "due_time": "14:00",
+	})
+	taskID := task["id"].(string)
+
+	// Relative: ten minutes before whenever the task is due.
+	offset := -10
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/"+taskID+"/reminders",
+		map[string]any{"offset_min": offset})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create relative reminder: %d %v", resp.StatusCode, body)
+	}
+
+	// Absolute.
+	resp, _ = ts.do(t, "POST", "/api/v1/tasks/"+taskID+"/reminders",
+		map[string]any{"remind_at": time.Now().Add(time.Hour).Format(time.RFC3339)})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create absolute reminder: %d", resp.StatusCode)
+	}
+
+	// Both at once is not a reminder with two times; it is a mistake.
+	resp, _ = ts.do(t, "POST", "/api/v1/tasks/"+taskID+"/reminders", map[string]any{
+		"offset_min": offset, "remind_at": time.Now().Format(time.RFC3339),
+	})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("a reminder with both a time and an offset: status %d, want 422", resp.StatusCode)
+	}
+
+	_, list := ts.do(t, "GET", "/api/v1/tasks/"+taskID+"/reminders", nil)
+	reminders, _ := list["reminders"].([]any)
+	if len(reminders) != 2 {
+		t.Fatalf("got %d reminders, want 2", len(reminders))
+	}
+}
+
+// A reminder that has come due is found by the sweep; one in the future is not,
+// and neither is one on a task that has already been done.
+func TestDueRemindersAreFoundOnce(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{"content": "husk"})
+	taskID := task["id"].(string)
+
+	past := time.Now().Add(-time.Minute)
+	future := time.Now().Add(time.Hour)
+	ts.do(t, "POST", "/api/v1/tasks/"+taskID+"/reminders",
+		map[string]any{"remind_at": past.Format(time.RFC3339)})
+	ts.do(t, "POST", "/api/v1/tasks/"+taskID+"/reminders",
+		map[string]any{"remind_at": future.Format(time.RFC3339)})
+
+	due, err := ts.db.DueReminders(t.Context(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 1 {
+		t.Fatalf("got %d due reminders, want only the one in the past", len(due))
+	}
+	if due[0].TaskContent != "husk" {
+		t.Errorf("the reminder does not carry the task's text: %+v", due[0])
+	}
+
+	// Marking it sent takes it out of the sweep, so it cannot go out twice.
+	if err := ts.db.MarkReminderSent(t.Context(), due[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	again, err := ts.db.DueReminders(t.Context(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again) != 0 {
+		t.Errorf("a sent reminder came round again: %+v", again)
+	}
+}
+
+// A reminder for something already done is a small betrayal of the whole feature.
+func TestCompletedTasksDoNotRemind(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{"content": "gjort"})
+	taskID := task["id"].(string)
+	ts.do(t, "POST", "/api/v1/tasks/"+taskID+"/reminders",
+		map[string]any{"remind_at": time.Now().Add(-time.Minute).Format(time.RFC3339)})
+
+	ts.do(t, "POST", "/api/v1/tasks/"+taskID+"/complete", nil)
+
+	due, err := ts.db.DueReminders(t.Context(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 0 {
+		t.Errorf("a completed task still reminded: %+v", due)
+	}
+}
+
+func TestICSFeed(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "møde med revisor", "due_date": userDate(t, 1), "due_time": "10:00",
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{"content": "uden dato"})
+
+	resp, body := ts.do(t, "GET", "/api/v1/feed", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get feed: %d %v", resp.StatusCode, body)
+	}
+	feedURL, _ := body["url"].(string)
+	if feedURL == "" {
+		t.Fatal("no feed URL was returned")
+	}
+
+	// The feed itself is fetched without a session, as a calendar client would.
+	path := feedURL[strings.Index(feedURL, "/ics/"):]
+	req, err := http.NewRequest("GET", ts.URL+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := (&http.Client{}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Body.Close()
+
+	if raw.StatusCode != http.StatusOK {
+		t.Fatalf("fetching the feed without a session: %d", raw.StatusCode)
+	}
+	if ct := raw.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/calendar") {
+		t.Errorf("Content-Type = %q, want text/calendar", ct)
+	}
+
+	content, _ := io.ReadAll(raw.Body)
+	feed := string(content)
+	if !strings.Contains(feed, "BEGIN:VCALENDAR") {
+		t.Error("the feed is not an iCalendar document")
+	}
+	if !strings.Contains(feed, "SUMMARY:møde med revisor") {
+		t.Error("the dated task is missing from the feed")
+	}
+	if strings.Contains(feed, "uden dato") {
+		t.Error("a task with no date appeared in a calendar")
+	}
+
+	// An invented token is a missing feed, not a prompt for credentials nobody
+	// can answer.
+	bad, err := (&http.Client{}).Get(ts.URL + "/ics/opfundet.ics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bad.Body.Close()
+	if bad.StatusCode != http.StatusNotFound {
+		t.Errorf("an unknown feed token: status %d, want 404", bad.StatusCode)
+	}
+}
+
+// Rotating the token is what somebody does when a feed URL has leaked, so the old
+// one has to stop working immediately.
+func TestRotatingTheFeedTokenBreaksTheOldURL(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, first := ts.do(t, "GET", "/api/v1/feed", nil)
+	oldURL := first["url"].(string)
+
+	_, second := ts.do(t, "POST", "/api/v1/feed/rotate", nil)
+	newURL := second["url"].(string)
+
+	if oldURL == newURL {
+		t.Fatal("rotating produced the same URL")
+	}
+
+	oldPath := oldURL[strings.Index(oldURL, "/ics/"):]
+	resp, err := (&http.Client{}).Get(ts.URL + oldPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("the old feed URL still works: status %d", resp.StatusCode)
+	}
+}
+
+func TestProjectTemplates(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Onboarding"})
+	projectID := project["id"].(string)
+
+	_, section := ts.do(t, "POST", "/api/v1/projects/"+projectID+"/sections",
+		map[string]any{"name": "Første uge"})
+	sectionID := section["id"].(string)
+
+	_, parent := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "opret konti", "project_id": projectID, "section_id": sectionID,
+		"priority": 1, "due_date": userDate(t, 0), "labels": []string{"it"},
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "udlever laptop", "project_id": projectID, "parent_id": parent["id"].(string),
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "opfølgning", "project_id": projectID, "due_date": userDate(t, 14),
+	})
+
+	resp, tpl := ts.do(t, "POST", "/api/v1/templates", map[string]any{
+		"project_id": projectID, "name": "Onboarding-skabelon",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("save template: %d %v", resp.StatusCode, tpl)
+	}
+	if tpl["task_count"] != float64(3) {
+		t.Errorf("task_count = %v, want 3", tpl["task_count"])
+	}
+
+	// Used a month later, the dates land relative to the new start.
+	start := time.Now().AddDate(0, 1, 0).Format("2006-01-02")
+	resp, created := ts.do(t, "POST", "/api/v1/templates/"+tpl["id"].(string)+"/use",
+		map[string]any{"name": "Onboarding: Mette", "start_date": start})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("use template: %d %v", resp.StatusCode, created)
+	}
+	if created["name"] != "Onboarding: Mette" {
+		t.Errorf("name = %v", created["name"])
+	}
+
+	newID := created["id"].(string)
+	_, list := ts.do(t, "GET", "/api/v1/tasks?project_id="+newID, nil)
+	tasks, _ := list["tasks"].([]any)
+	if len(tasks) != 3 {
+		t.Fatalf("the new project has %d tasks, want 3", len(tasks))
+	}
+
+	// Sections came across, sub-tasks kept their parent, and the spacing between
+	// the dates survived even though the dates themselves did not.
+	_, sections := ts.do(t, "GET", "/api/v1/projects/"+newID+"/sections", nil)
+	if got, _ := sections["sections"].([]any); len(got) != 1 {
+		t.Errorf("got %d sections, want 1", len(got))
+	}
+
+	var withParent, dated int
+	var earliest, latest string
+	for _, raw := range tasks {
+		task := raw.(map[string]any)
+		if task["parent_id"] != nil && task["parent_id"] != "" {
+			withParent++
+		}
+		if due, _ := task["due_date"].(string); due != "" {
+			dated++
+			if earliest == "" || due < earliest {
+				earliest = due
+			}
+			if due > latest {
+				latest = due
+			}
+		}
+	}
+	if withParent != 1 {
+		t.Errorf("%d tasks have a parent, want 1", withParent)
+	}
+	if dated != 2 {
+		t.Errorf("%d tasks have a date, want 2", dated)
+	}
+	if earliest != start {
+		t.Errorf("the first task is due %q, want the stated start %q", earliest, start)
+	}
+	first, _ := time.Parse("2006-01-02", earliest)
+	last, _ := time.Parse("2006-01-02", latest)
+	if gap := int(last.Sub(first).Hours() / 24); gap != 14 {
+		t.Errorf("the tasks are %d days apart, want the original 14", gap)
+	}
+}
+
+func TestTemplatesAreScopedToTheirOwner(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	other := ts.newUser(t, "anden@example.dk", "Anden")
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Privat"})
+	_, tpl := ts.do(t, "POST", "/api/v1/templates",
+		map[string]any{"project_id": project["id"].(string)})
+	tplID := tpl["id"].(string)
+
+	resp, _ := other.do(t, "POST", "/api/v1/templates/"+tplID+"/use", map[string]any{})
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("another user used the template: status %d", resp.StatusCode)
+	}
+	_, list := other.do(t, "GET", "/api/v1/templates", nil)
+	if got, _ := list["templates"].([]any); len(got) != 0 {
+		t.Errorf("another user's template list shows %d entries", len(got))
 	}
 }

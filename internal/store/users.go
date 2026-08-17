@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/kristianwind/verdande/internal/auth"
 )
 
 var (
@@ -200,4 +202,49 @@ func boolToInt(b bool) int {
 // driver's error type, which modernc's SQLite does not export in a usable form.
 func isUniqueViolation(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "unique constraint")
+}
+
+// --- calendar feed tokens -------------------------------------------------------
+
+// EnsureICSToken returns the user's feed token, minting one the first time it is
+// asked for. Created lazily rather than at signup so that somebody who never
+// subscribes to a calendar never has a standing credential they did not ask for.
+func (db *DB) EnsureICSToken(ctx context.Context, userID string) (string, error) {
+	var token sql.NullString
+	err := db.QueryRowContext(ctx, `SELECT ics_token FROM users WHERE id = ?`, userID).Scan(&token)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if token.Valid && token.String != "" {
+		return token.String, nil
+	}
+
+	fresh, err := auth.NewToken()
+	if err != nil {
+		return "", err
+	}
+	if err := db.SetICSToken(ctx, userID, fresh); err != nil {
+		return "", err
+	}
+	return fresh, nil
+}
+
+func (db *DB) SetICSToken(ctx context.Context, userID, token string) error {
+	_, err := db.ExecContext(ctx,
+		`UPDATE users SET ics_token = ?, updated_at = ? WHERE id = ?`,
+		token, time.Now().Unix(), userID)
+	return err
+}
+
+// UserByICSToken resolves a feed URL to its owner. The token is the whole
+// credential, so it is compared as an exact match on an indexed unique column and
+// nothing else about the request is trusted.
+func (db *DB) UserByICSToken(ctx context.Context, token string) (*User, error) {
+	if token == "" {
+		return nil, ErrNotFound
+	}
+	return db.scanUser(ctx, `SELECT `+userColumns+` FROM users WHERE ics_token = ?`, token)
 }

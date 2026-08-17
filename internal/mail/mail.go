@@ -59,6 +59,22 @@ Linket virker i %s. Hvis du ikke ved, hvad det her handler om, kan du roligt sle
 	return s.send(ctx, to, subject, body)
 }
 
+func (s *Sender) SendReminder(ctx context.Context, to, name, task, link string) error {
+	subject := "Påmindelse: " + task
+	body := fmt.Sprintf(`Hej %s
+
+Du bad om en påmindelse om:
+
+  %s
+
+%s
+
+— verdande
+`, name, task, link)
+
+	return s.send(ctx, to, subject, body)
+}
+
 func (s *Sender) SendPasswordReset(ctx context.Context, to, name, link string, ttl time.Duration) error {
 	subject := "Nulstil din adgangskode i verdande"
 	body := fmt.Sprintf(`Hej %s
