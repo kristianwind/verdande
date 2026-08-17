@@ -50,6 +50,10 @@
 
 	async function onDrop(event, target) {
 		event.preventDefault();
+		// The section around this list also takes drops, for the coarse "into here"
+		// gesture and for sections with no rows to aim at. A drop that landed on a
+		// row has already said exactly where it goes, so it stops here.
+		event.stopPropagation();
 		const id = draggingId;
 		const below = overBelow;
 		draggingId = null;

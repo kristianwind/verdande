@@ -351,6 +351,59 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 });
 
 /**
+ * A task can be dropped into a section, including one with nothing in it.
+ *
+ * Only the task *rows* took a drop, so a section with no rows had nothing to aim
+ * at — and a section you have just made is always empty, which is exactly when
+ * you want to fill it. The board has always taken a drop on the column; the list
+ * had no equivalent.
+ *
+ * The second half is the other thing that made this hard to report: the page used
+ * to say "Projektet findes ikke, eller du har ikke adgang til det" whenever the
+ * load failed *or* had not finished, so a dropped connection and a project you
+ * cannot see were one sentence, and it never asked again.
+ */
+test('en opgave kan trækkes ned i en tom sektion, og en fejlet indlæsning siger det', async ({
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Risteriet');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+
+	await page.getByLabel('Ny opgave').fill('brænde kaffe');
+	await page.getByLabel('Ny opgave').press('Enter');
+	await expect(page.getByText('brænde kaffe')).toBeVisible();
+
+	await page.getByRole('button', { name: '+ Tilføj sektion' }).click();
+	await page.getByLabel('Ny sektion').fill('Uge 34');
+	await page.getByLabel('Ny sektion').press('Enter');
+
+	const section = page
+		.locator('section')
+		.filter({ has: page.getByRole('heading', { name: 'Uge 34' }) });
+	await expect(section.getByText('Tom')).toBeVisible();
+
+	await page.locator('.sortable').filter({ hasText: 'brænde kaffe' }).dragTo(section);
+	await expect(section.getByText('brænde kaffe')).toBeVisible();
+	await expect(page.locator('.toast')).toHaveCount(0);
+
+	// A load that fails says so, and offers to try again.
+	await page.route('**/api/v1/projects/*', (r) => r.abort());
+	await page.reload();
+	await expect(page.getByText('Serveren svarede ikke')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Prøv igen' })).toBeVisible();
+	await page.unroute('**/api/v1/projects/*');
+	await page.getByRole('button', { name: 'Prøv igen' }).click();
+	await expect(page.getByRole('heading', { name: 'Risteriet' })).toBeVisible();
+
+	expect(trouble.filter((t) => !t.includes('projects'))).toEqual([]);
+});
+
+/**
  * A task can be dragged onto another day, and onto another project.
  *
  * Both are one gesture standing in for a form, and both cross a component

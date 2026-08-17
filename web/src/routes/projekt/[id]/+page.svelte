@@ -5,12 +5,24 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { COLORS, colorVar } from '$lib/colors.js';
+	import { TASK, carries, dragged, accept } from '$lib/dnd.js';
 	import TaskList from '$lib/components/TaskList.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
 	import BoardView from '$lib/components/BoardView.svelte';
 	import CalendarView from '$lib/components/CalendarView.svelte';
 
 	let project = $state(null);
+	/**
+	 * loading | ready | denied | failed.
+	 *
+	 * Four states rather than "is project null", which is what this was: the page
+	 * showed "Projektet findes ikke, eller du har ikke adgang til det" before the
+	 * first request had even returned, and again if it failed for any reason at
+	 * all. A slow load, a dropped connection, a server being restarted underneath
+	 * you and a project you genuinely cannot see were one message — and it never
+	 * asked again, so the wrong one stayed until somebody reloaded.
+	 */
+	let status = $state('loading');
 	let sections = $state([]);
 	let members = $state([]);
 	let showShare = $state(false);
@@ -22,22 +34,30 @@
 	let id = $derived($page.params.id);
 
 	$effect(() => {
-		const projectId = id;
-		if (!projectId) return;
-
-		Promise.all([
-			api.getProject(projectId),
-			api.listSections(projectId),
-			app.loadTasks({ project_id: projectId })
-		])
-			.then(([p, s]) => {
-				project = p;
-				sections = s.sections;
-			})
-			.catch(() => {
-				project = null;
-			});
+		load(id);
 	});
+
+	async function load(projectId) {
+		if (!projectId) return;
+		status = 'loading';
+		try {
+			const [p, s] = await Promise.all([
+				api.getProject(projectId),
+				api.listSections(projectId),
+				app.loadTasks({ project_id: projectId })
+			]);
+			project = p;
+			sections = s.sections;
+			status = 'ready';
+		} catch (e) {
+			project = null;
+			// 404 is the app's answer for both "no such project" and "not yours" —
+			// deliberately, so probing ids teaches nothing. Anything else is the
+			// request itself having failed, which is worth saying differently and
+			// worth offering to try again.
+			status = e?.status === 404 ? 'denied' : 'failed';
+		}
+	}
 
 	$effect(() => {
 		if (showShare && project) {
@@ -116,6 +136,56 @@
 			await app.refreshProjects();
 			goto('/');
 		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
+	// --- dropping a task into a section ---------------------------------------------
+
+	/**
+	 * The section under the pointer, '' for the unsectioned block at the top.
+	 *
+	 * Only the task *rows* used to accept a drop, so a section with nothing in it
+	 * had nothing to aim at and could not be filled by dragging at all — and a
+	 * section you have just made is always empty. The board has always taken a drop
+	 * on the column; this is the same idea in the list.
+	 */
+	let overSection = $state(null);
+
+	function onSectionDragOver(event, sectionId) {
+		if (!canEdit || !carries(event, TASK)) return;
+		accept(event);
+		overSection = sectionId;
+	}
+
+	async function onSectionDrop(event, sectionId) {
+		event.preventDefault();
+		const id = dragged(event, TASK);
+		overSection = null;
+		if (!id || !canEdit) return;
+
+		const task = app.get(id);
+		if (!task || (task.section_id ?? '') === sectionId) return;
+
+		// At the end of the section: dropping on the area rather than between two
+		// rows is the coarse gesture, and landing at the top would push whatever is
+		// there down.
+		const existing = open.filter((t) => (t.section_id ?? '') === sectionId && t.id !== id);
+		const after = [...existing].sort((a, b) => a.sort_order - b.sort_order).at(-1);
+
+		const previous = { ...task };
+		app.replace(id, { ...task, section_id: sectionId });
+		try {
+			app.replace(
+				id,
+				await api.moveTask(id, {
+					project_id: project.id,
+					section_id: sectionId,
+					after_id: after?.id ?? ''
+				})
+			);
+		} catch (e) {
+			app.replace(id, previous);
 			app.toast(humanMessage(e));
 		}
 	}
@@ -343,13 +413,28 @@
 		{:else if mode === 'calendar'}
 			<CalendarView projectId={project.id} />
 		{:else}
-			<section>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<section
+				class:over={overSection === ''}
+				ondragover={(e) => onSectionDragOver(e, '')}
+				ondragleave={() => (overSection = null)}
+				ondrop={(e) => onSectionDrop(e, '')}
+			>
 				<TaskList tasks={unsectioned} projectId={project.id} sectionId="" {canEdit} />
+				{#if !unsectioned.length}
+					<p class="empty">Uden sektion</p>
+				{/if}
 			</section>
 
 			{#each sections as section (section.id)}
 				{@const tasks = open.filter((t) => t.section_id === section.id)}
-				<section>
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<section
+					class:over={overSection === section.id}
+					ondragover={(e) => onSectionDragOver(e, section.id)}
+					ondragleave={() => (overSection = null)}
+					ondrop={(e) => onSectionDrop(e, section.id)}
+				>
 					<div class="section-head">
 						{#if renamingSection === section.id}
 							<form onsubmit={(e) => renameSection(e, section)}>
@@ -424,8 +509,18 @@
 		{#if project.role === 'viewer'}
 			<p class="readonly">Du kan se dette projekt, men ikke ændre det.</p>
 		{/if}
-	{:else}
+	{:else if status === 'loading'}
+		<!-- Deliberately blank, as on first load elsewhere: a spinner for a request
+		     that usually resolves in 30ms is a flash of anxiety, not feedback. -->
+		<div class="booting"></div>
+	{:else if status === 'denied'}
 		<p class="clear">Projektet findes ikke, eller du har ikke adgang til det.</p>
+	{:else}
+		<p class="clear">
+			<span class="rune" aria-hidden="true">ᚹ</span>
+			Kunne ikke hente projektet. Serveren svarede ikke.
+			<button class="retry" onclick={() => load(id)}>Prøv igen</button>
+		</p>
 	{/if}
 </div>
 
@@ -741,6 +836,14 @@
 
 	section {
 		margin-top: var(--s5);
+		border-radius: var(--radius);
+	}
+
+	/* The whole section lights up, because the whole section is the target. A line
+	   between two rows means "here exactly"; this means "in this one". */
+	section.over {
+		box-shadow: 0 0 0 1px var(--accent);
+		background: var(--surface-sunken);
 	}
 
 	h2 {
@@ -854,5 +957,25 @@
 		font-size: var(--text-2xl);
 		color: var(--accent);
 		opacity: 0.5;
+	}
+
+	.booting {
+		min-height: 50vh;
+	}
+
+	.retry {
+		padding: var(--s2) var(--s4);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+		transition:
+			border-color var(--fast) var(--ease),
+			color var(--fast) var(--ease);
+	}
+
+	.retry:hover {
+		border-color: var(--accent);
+		color: var(--ink);
 	}
 </style>
