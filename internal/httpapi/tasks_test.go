@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -1306,5 +1309,376 @@ func TestTemplatesAreScopedToTheirOwner(t *testing.T) {
 	_, list := other.do(t, "GET", "/api/v1/templates", nil)
 	if got, _ := list["templates"].([]any); len(got) != 0 {
 		t.Errorf("another user's template list shows %d entries", len(got))
+	}
+}
+
+// --- comments, attachments and import/export -----------------------------------------
+
+func TestCommentsAndAttachments(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{"content": "med kommentarer"})
+	taskID := task["id"].(string)
+
+	resp, comment := ts.do(t, "POST", "/api/v1/tasks/"+taskID+"/comments",
+		map[string]any{"body": "første kommentar"})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create comment: %d %v", resp.StatusCode, comment)
+	}
+	if comment["user_name"] != "Kristian" {
+		t.Errorf("user_name = %v", comment["user_name"])
+	}
+
+	// A file attached directly to the task.
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "bilag.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write([]byte("%PDF-1.4 ikke en rigtig pdf"))
+	writer.Close()
+
+	req, err := http.NewRequest("POST", ts.URL+"/api/v1/tasks/"+taskID+"/attachments", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	upload, err := ts.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upload.Body.Close()
+	if upload.StatusCode != http.StatusCreated {
+		t.Fatalf("upload: status %d", upload.StatusCode)
+	}
+
+	var attachment map[string]any
+	raw, _ := io.ReadAll(upload.Body)
+	json.Unmarshal(raw, &attachment)
+	if attachment["filename"] != "bilag.pdf" {
+		t.Errorf("filename = %v", attachment["filename"])
+	}
+
+	_, list := ts.do(t, "GET", "/api/v1/tasks/"+taskID+"/comments", nil)
+	if got, _ := list["comments"].([]any); len(got) != 1 {
+		t.Errorf("got %d comments, want 1", len(got))
+	}
+	if got, _ := list["attachments"].([]any); len(got) != 1 {
+		t.Errorf("got %d attachments on the task, want 1", len(got))
+	}
+
+	// The file downloads, and never as something a browser would render.
+	dl, dlBody := ts.do(t, "GET", "/api/v1/attachments/"+attachment["id"].(string), nil)
+	_ = dlBody
+	if dl.StatusCode != http.StatusOK {
+		t.Fatalf("download: status %d", dl.StatusCode)
+	}
+	if ct := dl.Header.Get("Content-Type"); ct != "application/octet-stream" {
+		t.Errorf("Content-Type = %q; an uploaded file must never be served inline", ct)
+	}
+	if cd := dl.Header.Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment") {
+		t.Errorf("Content-Disposition = %q, want an attachment", cd)
+	}
+}
+
+// A viewer can read a discussion but not join it, and cannot upload.
+func TestViewersCannotComment(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	viewer := ts.newUser(t, "viewer@example.dk", "Viewer")
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Delt"})
+	projectID := project["id"].(string)
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "opgave", "project_id": projectID,
+	})
+	taskID := task["id"].(string)
+	ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites",
+		map[string]any{"email": "viewer@example.dk", "role": "viewer"})
+	ts.do(t, "POST", "/api/v1/tasks/"+taskID+"/comments", map[string]any{"body": "ejerens ord"})
+
+	if r, body := viewer.do(t, "GET", "/api/v1/tasks/"+taskID+"/comments", nil); r.StatusCode != http.StatusOK {
+		t.Errorf("a viewer cannot read comments: %d %v", r.StatusCode, body)
+	}
+	if r, _ := viewer.do(t, "POST", "/api/v1/tasks/"+taskID+"/comments",
+		map[string]any{"body": "smuglet ind"}); r.StatusCode < 400 {
+		t.Errorf("a viewer could comment: status %d", r.StatusCode)
+	}
+}
+
+// Somebody else's comment is theirs. A project role does not confer the right to
+// rewrite what another person said.
+func TestOnlyTheAuthorCanEditAComment(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	editor := ts.newUser(t, "editor@example.dk", "Editor")
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Delt"})
+	projectID := project["id"].(string)
+	ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites",
+		map[string]any{"email": "editor@example.dk", "role": "editor"})
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "opgave", "project_id": projectID,
+	})
+	taskID := task["id"].(string)
+	_, comment := ts.do(t, "POST", "/api/v1/tasks/"+taskID+"/comments",
+		map[string]any{"body": "ejerens ord"})
+	commentID := comment["id"].(string)
+
+	resp, _ := editor.do(t, "PATCH", "/api/v1/comments/"+commentID,
+		map[string]any{"body": "omskrevet"})
+	if resp.StatusCode < 400 {
+		t.Errorf("an editor rewrote somebody else's comment: status %d", resp.StatusCode)
+	}
+
+	_, list := ts.do(t, "GET", "/api/v1/tasks/"+taskID+"/comments", nil)
+	comments, _ := list["comments"].([]any)
+	if comments[0].(map[string]any)["body"] != "ejerens ord" {
+		t.Error("the comment was changed")
+	}
+}
+
+func TestImportTodoistCSV(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	csv := "TYPE,CONTENT,DESCRIPTION,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE\n" +
+		"task,Betal moms,husk bilag,4,1,Kristian,,2026-03-15,en,\n" +
+		"note,En kommentar,,,,,,,,\n" +
+		"task,Find bilag,,1,2,Kristian,,,,\n" +
+		"section,Til gennemsyn,,,,,,,,\n" +
+		"task,Gennemgå,,3,1,Kristian,,,,\n"
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	writer.WriteField("name", "Fra Todoist")
+	part, err := writer.CreateFormFile("file", "firma.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write([]byte(csv))
+	writer.Close()
+
+	req, err := http.NewRequest("POST", ts.URL+"/api/v1/import/todoist", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("import: status %d, %s", resp.StatusCode, raw)
+	}
+	var result map[string]any
+	raw, _ := io.ReadAll(resp.Body)
+	json.Unmarshal(raw, &result)
+
+	if result["tasks"] != float64(3) {
+		t.Errorf("imported %v tasks, want 3", result["tasks"])
+	}
+	if result["sections"] != float64(1) {
+		t.Errorf("imported %v sections, want 1", result["sections"])
+	}
+	if result["comments"] != float64(1) {
+		t.Errorf("imported %v comments, want 1", result["comments"])
+	}
+
+	projectID := result["project_id"].(string)
+	_, list := ts.do(t, "GET", "/api/v1/tasks?project_id="+projectID, nil)
+	tasks, _ := list["tasks"].([]any)
+
+	var found bool
+	for _, raw := range tasks {
+		task := raw.(map[string]any)
+		if task["content"] != "Betal moms" {
+			continue
+		}
+		found = true
+		// Todoist's 4 is verdande's 1. Getting this backwards would invert the
+		// urgency of every imported task.
+		if task["priority"] != float64(1) {
+			t.Errorf("priority = %v, want 1", task["priority"])
+		}
+		if task["due_date"] != "2026-03-15" {
+			t.Errorf("due_date = %v", task["due_date"])
+		}
+	}
+	if !found {
+		t.Error("the imported task was not found")
+	}
+}
+
+// The whole point of import and export together: what goes in comes back out.
+func TestTodoistImportExportRoundTrip(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	original := "TYPE,CONTENT,DESCRIPTION,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE\n" +
+		"task,Betal moms,husk bilag,4,1,Kristian,,,,\n" +
+		"task,Find bilag,,2,2,Kristian,,,,\n" +
+		"task,Ring til revisor,,1,1,Kristian,,,,\n"
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	writer.WriteField("name", "Rundtur")
+	part, _ := writer.CreateFormFile("file", "firma.csv")
+	part.Write([]byte(original))
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/v1/import/todoist", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	var result map[string]any
+	json.Unmarshal(raw, &result)
+	projectID, _ := result["project_id"].(string)
+	if projectID == "" {
+		t.Fatalf("import failed: %s", raw)
+	}
+
+	// Export it again and compare the shape.
+	out, exported := ts.do(t, "GET", "/api/v1/export/projects/"+projectID+".csv", nil)
+	_ = exported
+	if out.StatusCode != http.StatusOK {
+		t.Fatalf("export: status %d", out.StatusCode)
+	}
+
+	// The response body was consumed by `do`; fetch it as text instead.
+	req2, _ := http.NewRequest("GET", ts.URL+"/api/v1/export/projects/"+projectID+".csv", nil)
+	req2.Header.Set("Sec-Fetch-Site", "same-origin")
+	csvResp, err := ts.client.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer csvResp.Body.Close()
+	csvBytes, _ := io.ReadAll(csvResp.Body)
+
+	roundTripped := string(csvBytes)
+	for _, want := range []string{"Betal moms", "Find bilag", "Ring til revisor", "husk bilag"} {
+		if !strings.Contains(roundTripped, want) {
+			t.Errorf("%q is missing from the export:\n%s", want, roundTripped)
+		}
+	}
+	// The priorities have to come back as Todoist's numbering, not verdande's.
+	if !strings.Contains(roundTripped, "task,Betal moms,husk bilag,4,1") {
+		t.Errorf("the exported row does not match Todoist's format:\n%s", roundTripped)
+	}
+	// And the sub-task comes back exactly as it went in: Todoist priority 2 became
+	// verdande's 3 on the way in and has to become 2 again on the way out.
+	if !strings.Contains(roundTripped, "task,Find bilag,,2,2") {
+		t.Errorf("the sub-task lost its indent or priority:\n%s", roundTripped)
+	}
+}
+
+func TestAccountExport(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Firma"})
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "en opgave", "project_id": project["id"].(string), "labels": []string{"vigtig"},
+	})
+	ts.do(t, "POST", "/api/v1/tasks/"+task["id"].(string)+"/comments",
+		map[string]any{"body": "en kommentar"})
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/v1/export/account", nil)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("export: status %d", resp.StatusCode)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+
+	var export map[string]any
+	if err := json.Unmarshal(raw, &export); err != nil {
+		t.Fatalf("the export is not valid JSON: %v", err)
+	}
+	if export["version"] != float64(1) {
+		t.Errorf("version = %v", export["version"])
+	}
+
+	// A password hash must never be in an export somebody emails to themselves.
+	if strings.Contains(string(raw), "$argon2id$") {
+		t.Error("the account export contains a password hash")
+	}
+
+	projects, _ := export["projects"].([]any)
+	if len(projects) < 2 {
+		t.Fatalf("got %d projects, want the Inbox and Firma", len(projects))
+	}
+
+	var foundComment bool
+	for _, p := range projects {
+		tasks, _ := p.(map[string]any)["tasks"].([]any)
+		for _, raw := range tasks {
+			comments, _ := raw.(map[string]any)["comments"].([]any)
+			if len(comments) > 0 {
+				foundComment = true
+			}
+		}
+	}
+	if !foundComment {
+		t.Error("comments are missing from the account export")
+	}
+	if labels, _ := export["labels"].([]any); len(labels) == 0 {
+		t.Error("labels are missing from the account export")
+	}
+}
+
+func TestNotifications(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	other := ts.newUser(t, "anden@example.dk", "Anden")
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Delt"})
+	projectID := project["id"].(string)
+	ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites",
+		map[string]any{"email": "anden@example.dk", "role": "editor"})
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "opgave", "project_id": projectID,
+	})
+	ts.do(t, "POST", "/api/v1/tasks/"+task["id"].(string)+"/comments",
+		map[string]any{"body": "sig noget"})
+
+	// The other member hears about it.
+	_, list := other.do(t, "GET", "/api/v1/notifications", nil)
+	notifications, _ := list["notifications"].([]any)
+	if len(notifications) == 0 {
+		t.Fatal("the other member was not notified about the comment")
+	}
+	if list["unread"] == float64(0) {
+		t.Error("the notification is not counted as unread")
+	}
+
+	// The author is not told what they just wrote.
+	_, own := ts.do(t, "GET", "/api/v1/notifications", nil)
+	if got, _ := own["notifications"].([]any); len(got) != 0 {
+		t.Errorf("the author was notified about their own comment: %v", got)
+	}
+
+	other.do(t, "POST", "/api/v1/notifications/read", nil)
+	_, after := other.do(t, "GET", "/api/v1/notifications", nil)
+	if after["unread"] != float64(0) {
+		t.Errorf("unread = %v after marking everything read", after["unread"])
 	}
 }

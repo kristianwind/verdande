@@ -131,7 +131,38 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			})
 
 			r.Get("/feed", s.handleGetFeed)
+
+			r.Route("/notifications", func(r chi.Router) {
+				r.Get("/", s.handleListNotifications)
+				r.Post("/read", s.handleMarkNotificationsRead)
+				r.Post("/{notificationID}/read", s.handleMarkNotificationsRead)
+			})
+
+			r.Route("/push", func(r chi.Router) {
+				r.Get("/key", s.handlePushKey)
+				r.Post("/subscribe", s.handleSubscribePush)
+				r.Post("/unsubscribe", s.handleUnsubscribePush)
+			})
+
+			r.Route("/attachments/{attachmentID}", func(r chi.Router) {
+				r.Get("/", s.handleDownloadAttachment)
+				r.Delete("/", s.handleDeleteAttachment)
+			})
+
+			r.Route("/comments/{commentID}", func(r chi.Router) {
+				r.Patch("/", s.handleUpdateComment)
+				r.Delete("/", s.handleDeleteComment)
+			})
 			r.Post("/feed/rotate", s.handleRotateFeed)
+
+			r.Route("/import", func(r chi.Router) {
+				r.Post("/todoist", s.handleImportTodoist)
+				r.Post("/csv", s.handleImportCSV)
+			})
+
+			r.Get("/export/account", s.handleExportAccount)
+			r.Get("/export/projects/{projectID}.csv", s.handleExportProject)
+			r.Get("/export/projects/{projectID}.ics", s.handleExportProjectICS)
 
 			r.Route("/templates", func(r chi.Router) {
 				r.Get("/", s.handleListTemplates)
@@ -200,6 +231,9 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 					r.Get("/", s.handleGetTask)
 					r.Patch("/", s.handleUpdateTask)
 					r.Delete("/", s.handleDeleteTask)
+					r.Get("/comments", s.handleListComments)
+					r.Post("/comments", s.handleCreateComment)
+					r.Post("/attachments", s.handleUploadAttachment)
 					r.Get("/reminders", s.handleListReminders)
 					r.Post("/reminders", s.handleCreateReminder)
 					r.Post("/complete", s.handleCompleteTask)
