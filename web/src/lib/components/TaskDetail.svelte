@@ -575,7 +575,12 @@
 	.drawer {
 		position: fixed;
 		inset: 0 0 0 auto;
-		width: min(480px, 100vw);
+		/* `100%` rather than `100vw`. For a fixed element a percentage resolves
+		   against the initial containing block, which excludes the scrollbar gutter
+		   — `100vw` does not, so the drawer was a few pixels wider than the page and
+		   the whole document could be pushed sideways. */
+		width: min(480px, 100%);
+		max-width: 100%;
 		z-index: 80;
 		display: flex;
 		flex-direction: column;
@@ -625,7 +630,12 @@
 
 	.scroll {
 		flex: 1;
+		min-width: 0;
 		overflow-y: auto;
+		/* Nothing inside may widen the drawer. A pasted URL in a comment or a long
+		   unbroken word would otherwise stretch the flex column and take the page
+		   with it. */
+		overflow-x: hidden;
 		overscroll-behavior: contain;
 		padding: var(--s4) var(--s4) var(--s8);
 		display: flex;
@@ -883,8 +893,12 @@
 	}
 
 	@media (max-width: 560px) {
+		/* Full width, stated as four insets rather than a width: the box is then
+		   defined by the viewport's edges and cannot be a rounding error wider than
+		   the thing it is pinned to. */
 		.drawer {
-			width: 100vw;
+			inset: 0;
+			width: auto;
 			border-left: 0;
 		}
 	}

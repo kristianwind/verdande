@@ -18,7 +18,13 @@
 		newName = '';
 		adding = false;
 		const project = await app.createProject(name);
-		if (project) goto(`/projekt/${project.id}`);
+		if (!project) return;
+		// Closes the drawer as well as navigating. On a phone the sidebar is an
+		// overlay, and creating a project moved the page underneath it while leaving
+		// it covering the screen — every link in here closes it, and this makes the
+		// same move for the same reason.
+		onnavigate?.();
+		goto(`/projekt/${project.id}`);
 	}
 
 	async function signOut() {

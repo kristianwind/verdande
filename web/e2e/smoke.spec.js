@@ -836,10 +836,20 @@ test('projektsiden er brugbar på en telefon', async ({ page }) => {
 	expect(box.height, 'overskriften er brudt op i én bogstavkolonne').toBeLessThan(120);
 
 	// And nothing sticks out past the right edge of the page.
-	const overflow = await page.evaluate(
-		() => document.documentElement.scrollWidth - document.documentElement.clientWidth
-	);
-	expect(overflow, 'siden kan scrolles vandret').toBeLessThanOrEqual(1);
+	const sideways = () =>
+		page.evaluate(
+			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+		);
+	expect(await sideways(), 'siden kan scrolles vandret').toBeLessThanOrEqual(1);
+
+	// The task drawer, too. It was `width: 100vw`, which includes the scrollbar
+	// gutter where a percentage does not, so the drawer came out wider than the
+	// page and the whole document could be pushed sideways.
+	await page.getByLabel('Ny opgave').fill('mal væggen');
+	await page.getByLabel('Ny opgave').press('Enter');
+	await page.getByText('mal væggen', { exact: true }).click();
+	await expect(page.getByRole('complementary', { name: 'Opgave' })).toBeVisible();
+	expect(await sideways(), 'opgaveruden skubber siden sidelæns').toBeLessThanOrEqual(1);
 
 	expect(trouble).toEqual([]);
 });
