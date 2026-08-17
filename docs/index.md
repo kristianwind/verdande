@@ -7,6 +7,8 @@ One binary with SQLite inside it — no database to provision, no second process
 Not what has been, and not what is fated to be — the thing you are in the middle
 of. Which is what a to-do list is.
 
+![The Today view](screenshots/today.png)
+
 ## What it is for
 
 Todoist Pro, on your own hardware, with your own data. And with the integrations a
@@ -28,6 +30,10 @@ forward mail to, and an MCP endpoint so Claude can work your task list directly.
   open standards rather than private formats.
 
 ## Getting it running
+
+verdande is built to be deployed as a **Rune** in
+[Yggdrasil Panel](rune.md) — that is its home, and the manifest ships with it. It
+runs anywhere Docker does as well.
 
 ```bash
 docker run -d --name verdande \

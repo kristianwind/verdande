@@ -301,6 +301,60 @@
 				color: var(--accent);
 			}
 
+			.rune-note {
+				margin: 1.25rem auto 0;
+				max-width: 32rem;
+				font-size: 0.9375rem;
+				color: var(--ink-muted);
+			}
+
+			.demo-note {
+				margin: 1rem 0 0;
+				font-family: var(--font);
+				font-size: 0.8125rem;
+				color: var(--ink-faint);
+			}
+
+			.demo-note code {
+				font-family: var(--font-mono);
+				color: var(--ink-muted);
+			}
+
+			.shot {
+				margin: 0 0 1.5rem;
+			}
+
+			.shot img {
+				width: 100%;
+				height: auto;
+				display: block;
+				border: 1px solid var(--line);
+				border-radius: var(--radius-lg);
+			}
+
+			.shot figcaption {
+				margin-top: 0.625rem;
+				font-size: 0.8125rem;
+				color: var(--ink-faint);
+				text-align: center;
+			}
+
+			.shots {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+				gap: 1.5rem;
+			}
+
+			h3.sub {
+				margin: 2rem 0 0.5rem;
+				font-size: 1rem;
+				font-weight: 560;
+			}
+
+			h3.sub:first-of-type {
+				margin-top: 0;
+			}
+
 			footer {
 				border-top: 1px solid var(--line);
 				margin-top: 4rem;
@@ -329,6 +383,11 @@
 					Self-hosted tasks and projects, shared with the people you share the work with.
 					One binary, SQLite inside it.
 				</p>
+				<p class="rune-note">
+					Built to be deployed as a <strong>Rune</strong> in
+					<a href="https://github.com/kristianwind/yggdrasil">Yggdrasil Panel</a> — upload
+					the manifest, fill in two fields, press start. It also runs anywhere Docker does.
+				</p>
 				<p class="norn">
 					Verdande is one of the three Norns — the one who spins <em>that which is
 					becoming</em>. Not what has been, and not what is fated to be: the thing you are
@@ -353,20 +412,62 @@
 				</div>
 				<div class="demo-body">
 					<div class="typed">
-						betal moms <mark>i morgen</mark> <mark>kl 10</mark>
-						<mark class="p">p1</mark> <mark class="proj">#Firma</mark>
-						<mark class="lbl">@regnskab</mark>
+						file the VAT return <mark>next friday</mark> <mark>at 10am</mark>
+						<mark class="p">p1</mark> <mark class="proj">#Accounts</mark>
+						<mark class="lbl">@tax</mark>
 					</div>
 					<div class="result">
 						<span class="arrow">→</span>
-						<strong>betal moms</strong>
-						<span class="chip">Tomorrow 10:00</span>
+						<strong>file the VAT return</strong>
+						<span class="chip">Fri 10:00</span>
 						<span class="chip">P1</span>
-						<span class="chip">Firma</span>
-						<span class="chip">regnskab</span>
+						<span class="chip">Accounts</span>
+						<span class="chip">tax</span>
 					</div>
+					<p class="demo-note">
+						The same line works in Danish —
+						<code>betal moms på fredag kl 10 p1 #Firma @regnskab</code> — and the two
+						can be mixed mid-sentence.
+					</p>
 				</div>
 			</div>
+
+			<section>
+				<h2>What it looks like</h2>
+				<figure class="shot">
+					<img
+						src="screenshots/today.png"
+						alt="The Today view: a sidebar of projects, filters and labels beside a list of tasks due today, each with its priority ring, time and labels."
+						width="1400"
+						height="900"
+						loading="lazy"
+					/>
+					<figcaption>Today. Dark is the default; there is a light theme too.</figcaption>
+				</figure>
+
+				<div class="shots">
+					<figure class="shot">
+						<img
+							src="screenshots/board.png"
+							alt="A project in board view: one column per section, with task cards showing due dates, labels and repetition."
+							width="1400"
+							height="900"
+							loading="lazy"
+						/>
+						<figcaption>Board view — one column per section.</figcaption>
+					</figure>
+					<figure class="shot">
+						<img
+							src="screenshots/today-light.png"
+							alt="The same Today view in the light theme."
+							width="1400"
+							height="900"
+							loading="lazy"
+						/>
+						<figcaption>The light theme.</figcaption>
+					</figure>
+				</div>
+			</section>
 
 			<section>
 				<h2>What it does</h2>
@@ -418,6 +519,16 @@
 
 			<section>
 				<h2>Running it</h2>
+
+				<h3 class="sub">As a Rune in Yggdrasil Panel</h3>
+				<p class="muted">
+					This is what it was built for. <strong>Runes → Carve a rune</strong>, upload
+					<code>rune/verdande.yaml</code>, create a server from it, set the public address
+					and your mail server, and start it. No port forwarding — give it a subdomain and
+					the panel routes it through your Cloudflare Tunnel.
+				</p>
+
+				<h3 class="sub">Or with Docker, anywhere</h3>
 				<pre><code>docker run -d --name verdande \
   -p 8080:8080 \
   -v verdande-data:/data \
@@ -448,7 +559,10 @@
 					MIT licensed ·
 					<a href="https://github.com/kristianwind/verdande">github.com/kristianwind/verdande</a>
 				</p>
-				<p>Deployed as a Rune in <a href="https://github.com/kristianwind/yggdrasil">Yggdrasil</a>.</p>
+				<p>
+					Built to run as a Rune in
+					<a href="https://github.com/kristianwind/yggdrasil">Yggdrasil Panel</a>.
+				</p>
 			</footer>
 		</div>
 	</body>

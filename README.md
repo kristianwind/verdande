@@ -5,6 +5,10 @@
   One binary, SQLite inside it, deployed as a Rune in Yggdrasil Panel.
 </p>
 
+<p align="center">
+  <img src="site/screenshots/today.png" alt="The Today view: projects, filters and labels in the sidebar, beside the tasks due today." width="900">
+</p>
+
 ---
 
 **Verdande** is one of the three Norns — the one who spins *that which is becoming*.
@@ -85,9 +89,22 @@ works through the API.
 Search finds `grøn` when you type `gron`, because Unicode does not consider `ø` an
 accented `o` and a Danish-first app that cannot do this is broken for its own users.
 
+## What it looks like
+
+| | |
+|---|---|
+| ![Board view](site/screenshots/board.png) | ![Light theme](site/screenshots/today-light.png) |
+| Board view — one column per section. | The light theme. |
+
+Regenerate these with `go run ./tools/shots` against a running instance.
+
 ## Running it
 
 ### As a Rune in Yggdrasil Panel
+
+verdande is built to be deployed as a **Rune** in
+[Yggdrasil Panel](https://github.com/kristianwind/yggdrasil) — that is its home,
+and the manifest ships in this repository. It runs anywhere Docker does as well.
 
 1. **Runes → Carve a rune (upload)** and pick [`rune/verdande.yaml`](rune/verdande.yaml).
 2. Create a server from it.
