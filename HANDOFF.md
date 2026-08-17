@@ -13,7 +13,7 @@ bruger det. Dette er noget andet: beslutningerne, hullerne og fælderne.
 | | |
 |---|---|
 | Repo | `kristianwind/verdande`, privat |
-| Lokal sti | `~/Documents/Code/ToDoApp` — se [mappenavnet](#mappenavnet) |
+| Lokal sti | `~/Documents/Code/verdande` |
 | Stack | Go 1.26, SQLite (modernc, ingen cgo), SvelteKit 5, én binary |
 | Deployes som | Rune i Yggdrasil Panel; kører også som almindelig Docker |
 | CI | Go (fmt, vet, race-tests), Docker-build, MkDocs — alle grønne |
@@ -220,16 +220,6 @@ hver i sin egen transaktion. Ret aldrig en migration, der er pushet.
 **Genskab screenshots med `go run ./tools/shots`** mod en kørende instans. Chromes
 eget `--screenshot` kan ikke sætte en sessionscookie og fotograferer kun
 login-siden.
-
----
-
-## Mappenavnet
-
-Arbejdskopien ligger i `~/Documents/Code/ToDoApp`, som var en pladsholder oprettet
-før projektet havde et navn. Alle andre projekter i mappen hedder det, de er.
-
-Omdøbning til `verdande` er sikker: git-remote, modulsti og CI refererer ikke den
-lokale sti. Gør det når ingen session har en shell åben i den.
 
 ---
 
