@@ -51,30 +51,29 @@
 		draggingId = null;
 		if (!id || !canEdit) return;
 
-		const task = app.tasks.find((t) => t.id === id);
+		const task = app.get(id);
 		if (!task || (task.section_id ?? '') === sectionId) return;
 
 		// Optimistic: the card is in the new column before the request goes out,
 		// because a card that snaps back for 200ms reads as a failed drop.
 		const previous = { ...task };
-		const index = app.tasks.findIndex((t) => t.id === id);
-		app.tasks[index] = { ...task, section_id: sectionId };
+		app.replace(id, { ...task, section_id: sectionId });
 
 		try {
 			// Dropped at the end of the column: the task after it is nothing, and
 			// the one before it is whatever was last there.
 			const existing = tasksIn(sectionId).filter((t) => t.id !== id);
 			const after = existing.at(-1);
-			const updated = await api.moveTask(id, {
-				project_id: project.id,
-				section_id: sectionId,
-				after_id: after?.id ?? ''
-			});
-			const i = app.tasks.findIndex((t) => t.id === id);
-			if (i >= 0) app.tasks[i] = updated;
-		} catch (e) {
-			const i = app.tasks.findIndex((t) => t.id === id);
-			if (i >= 0) app.tasks[i] = previous;
+			app.replace(
+				id,
+				await api.moveTask(id, {
+					project_id: project.id,
+					section_id: sectionId,
+					after_id: after?.id ?? ''
+				})
+			);
+		} catch {
+			app.replace(id, previous);
 			app.toast('Kunne ikke flytte opgaven.');
 		}
 	}
