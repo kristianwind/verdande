@@ -5,6 +5,16 @@ cache, no queue and no second process.
 
 ## Docker
 
+!!! warning "Log in to the registry first"
+    The package is private, and an anonymous pull fails with `No such image`
+    rather than with a permission error. Once per host:
+
+    ```bash
+    echo "$GHCR_TOKEN" | docker login ghcr.io -u kristianwind --password-stdin
+    ```
+
+    `GHCR_TOKEN` is a GitHub token with the `read:packages` scope.
+
 ```bash
 docker run -d --name verdande \
   --restart unless-stopped \

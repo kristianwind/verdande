@@ -1,7 +1,8 @@
 # verdande — overlevering
 
-Skrevet 17. august 2026. Alt i den oprindelige brief er bygget. Dette dokument er
-det, en ny session har brug for at vide, og som ikke kan læses ud af koden.
+Skrevet 17. august 2026, opdateret samme dag efter at hullerne blev lukket. Dette
+dokument er det, en ny session har brug for at vide, og som ikke kan læses ud af
+koden.
 
 Læs [README.md](README.md) for hvad projektet er, og [docs/](docs/) for hvordan man
 bruger det. Dette er noget andet: beslutningerne, hullerne og fælderne.
@@ -15,9 +16,31 @@ bruger det. Dette er noget andet: beslutningerne, hullerne og fælderne.
 | Repo | `kristianwind/verdande`, privat |
 | Lokal sti | `~/Documents/Code/verdande` |
 | Stack | Go 1.26, SQLite (modernc, ingen cgo), SvelteKit 5, én binary |
+| Udgivet | `v0.1.0` — `ghcr.io/kristianwind/verdande`, amd64 + arm64 |
 | Deployes som | Rune i Yggdrasil Panel; kører også som almindelig Docker |
-| CI | Go (fmt, vet, race-tests), Docker-build, MkDocs — alle grønne |
-| Omfang | ~21.000 linjer Go, ~3.700 linjer frontend, 557 tests, 17 pakker |
+| CI | Go (fmt, vet, race), OpenAPI-lint, Playwright, Docker-build, MkDocs |
+| Omfang | ~23.000 linjer Go, ~7.100 linjer frontend, 610 tests + 6 røgtests, 20 pakker |
+
+## Registret er privat
+
+Imaget ligger på GHCR, og **pakken er privat**. En anonym pull fejler med noget,
+der lyder som om imaget slet ikke findes:
+
+```
+create container: Error response from daemon:
+No such image: ghcr.io/kristianwind/verdande:latest
+```
+
+Det er en rettighedsfejl med forkert hat på. Docker-dæmonen **på Yggdrasil-værten**
+skal logge ind én gang, som den bruger der kører dæmonen:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u kristianwind --password-stdin
+```
+
+`GHCR_TOKEN` er et GitHub-token med `read:packages` og intet andet. Alternativet er
+at gøre pakken offentlig under **Packages → verdande → Package settings**; repoet
+kan sagtens forblive privat.
 
 ## Navnet
 
@@ -56,6 +79,12 @@ cd web && npm run build && cd .. && cp -r web/build cmd/verdande/webbuild && go 
 
 Frontenden embeddes bag build-taggen `embedweb`, så et rent checkout kompilerer
 uden Node installeret.
+
+Røgtestene bygger hele den kæde selv og starter den rigtige binary:
+
+```bash
+cd web && npm run test:e2e
+```
 
 ---
 
@@ -109,6 +138,34 @@ noget, uploaderen har valgt.
 alder. En container, der har været slukket en måned, må ikke komme tilbage og
 slette alle sine backups for at være for gamle.
 
+**Transaktioner starter med `BEGIN IMMEDIATE`** (`_txlock=immediate` i DSN'en).
+Med almindelig `BEGIN` begynder en skrivetransaktion som læser og beder om
+skrivelåsen undervejs — og den opgradering afviser SQLite med `SQLITE_BUSY`
+*øjeblikkeligt* uden at bruge `busy_timeout`. Timeouten så altså ud til at dække
+samtidige skrivere og dækkede ingen af dem: to mennesker, der gemte samtidig, fik
+en 500 efter to millisekunder. `internal/store` har en test, der fejler uden det.
+
+**Listen af opgaver ændres kun gennem `app.replace()` og `app.upsert()`**, som
+begge bygger et nyt array. `tasks[i] = ...` nåede ikke frem til visningerne: en
+opgave, man lukkede, beholdt sin række, og en ændring over websocket viste sig
+slet ikke, mens `push` og hel-array-tildeling begge virkede. Frem for at gætte på
+hvilke mutationer reaktiviteten kan se, laver hver skrivning et nyt array.
+
+**Den samme opgave ankommer to gange** — én gang som svar på requesten, der
+oprettede den, og én gang over websocket, som udsender til hele projektet
+inklusive den, der gjorde det. Derfor `upsert` frem for at tilføje: to rækker med
+samme id i et keyed `{#each}` er ikke en dublet, det er en kastet fejl, der
+stopper visningen.
+
+**API-tokens kan kun styres med en session.** En bearer-token får 403 på
+`/tokens`, selvom den accepteres alle andre steder. Ellers er en lækket token
+permanent: tyven udsteder nummer to, og at tilbagekalde den første ændrer intet.
+
+**En databasefejl er en 500, ikke en 401.** `authenticate()` kan ikke selv se
+forskel — begge dele kommer tilbage som en fejl fra sessionsopslaget. Svarer man
+401 på begge, viser en diskfejl sig som at alle bliver logget ud på én gang, og
+loggen fortæller om en bølge af mislykkede logins i stedet for om fejlen.
+
 ---
 
 ## Hvad der er testet, og hvad der ikke er
@@ -118,11 +175,25 @@ slette alle sine backups for at være for gamle.
 (inkl. SQL-injection), RRULE, ICS-formatet, Todoist-roundtrip, backup-integritet,
 auth-flowet, MCP-protokollen, CalDAV-verberne.
 
+**Røgtestene i `web/e2e/`** kører en rigtig browser mod den rigtige binary, med
+frontenden bygget og indlejret som en del af kørslen — så de aldrig tester en
+gammel frontend. Seks flows: log ind, hurtig tilføjelse, luk en opgave, klik hvert
+link i sidebjælken, hver fane under indstillinger, og at manifestets ikoner og
+service workeren faktisk findes. De fandt fire fejl, første gang de blev kørt.
+
+De er bevidst kun Chromium: en røgtest findes for at fange en build, der slet ikke
+virker, og at køre den i tre motorer finder den samme fejl tre gange.
+
+**`docs/openapi.yaml` tjekkes to steder:** CI validerer at det er et gyldigt
+OpenAPI-dokument, og `internal/httpapi/openapi_test.go` går routeren igennem og
+fejler både på en rute uden beskrivelse og på en beskrivelse uden rute.
+
 **Implementeret mod specifikation, men aldrig kørt mod den rigtige tjeneste:**
 
-- **Web Push** — krypteringen er skrevet direkte mod RFC 8291 og er ikke verificeret
-  mod en levende push-service. Hvis noget ikke virker, er det her, jeg ville
-  begynde.
+- **Web Push** — hele kæden findes nu, men er aldrig set virke: krypteringen er
+  skrevet direkte mod RFC 8291, og klientsiden er kun kørt i en headless browser,
+  hvor notifikationer er blokerede, så den ramte kun "browseren har sagt
+  nej"-grenen. Hvis noget ikke virker, er krypteringen stedet at begynde.
 - **Gmail API-kaldene** — OAuth-flowet er testet (PKCE, state, callback), men der er
   aldrig udvekslet et rigtigt token.
 - **AI-adapterne** — ingen nøgle i miljøet. Anthropic-, OpenAI- og Google-formerne
@@ -137,66 +208,49 @@ verificeret gennem CI, hvor det bygger med frontenden indeni.
 
 ---
 
-## Huller, i den rækkefølge jeg ville tage dem
+## Huller
 
-### 1. Frontenden mangler hele indstillingsfladen
+De syv, der stod her, er lukket på nær ét. Det, der er tilbage, kræver
+legitimationsoplysninger og rigtige tjenester — ikke kode.
 
-Det er det største hul. Følgende virker gennem API'et, men har **ingen UI**:
+### 1. Gmail mod en rigtig konto
 
-- Kommentarer og vedhæftninger på en opgave
-- Reminders
-- Templates (gem projekt som skabelon, opret fra skabelon)
-- Import og eksport
-- API-tokens
-- Gmail-forbindelsen, AI-indstillinger, kalenderfeed, mail-adresse
-- Notifikationer og update-beskeden
+Det eneste hul fra den oprindelige liste, der ikke er lukket. Registrér en
+OAuth-klient, sæt `VERDANDE_GMAIL_CLIENT_ID` og `_SECRET`, og kør flowet igennem
+fra **Indstillinger → Integrationer**. Den mest sandsynlige fejl er
+redirect-URI'en, som udledes af `VERDANDE_BASE_URL` og skal matche det
+registrerede *præcist*.
 
-Der findes ingen `/indstillinger`-rute overhovedet — Gmail-callbacket redirecter
-til den, og den giver 404 i dag. Det ville være det første, jeg lavede.
+### 2. Web Push mod en rigtig push-tjeneste
 
-### 2. Opgavedetalje-visning
+Klientsiden findes nu: `web/static/sw.js` viser beskeden, `web/src/lib/push.js`
+abonnerer, og **Indstillinger → Notifikationer** slår det til. Krypteringen på
+serveren er stadig kun skrevet mod RFC 8291 og aldrig set fra den anden side. Slå
+det til i en rigtig browser over HTTPS og få serveren til at sende én.
 
-`TaskRow` har en `onedit`-prop, som ingen bruger. Der er ingen måde at åbne en
-opgave og se dens beskrivelse, undertasks, kommentarer eller vedhæftninger på.
+Bemærk at det kræver HTTPS eller localhost — og at browseren kun spørger én gang.
+Har man sagt nej, kan siden ikke spørge igen; det skal laves om i browserens egne
+indstillinger. Fladen siger det, i stedet for at se ud som om knappen er i stykker.
 
-### 3. Drag-and-drop i listevisningen
+### 3. PNG-ikoner til PWA'en
 
-Board-visningen har det. Listevisningen har ikke — API'et (`POST /tasks/{id}/move`)
-er testet og virker.
+Manifestet peger stadig kun på `icon.svg`. Chrome og Firefox installerer fint på
+det; Safari vil have en PNG som `apple-touch-icon`. Der er ingen SVG-renderer på
+maskinen, så referencerne blev fjernet frem for at pege på filer, der ikke findes.
+Røgtesten tjekker at hvert ikon i manifestet faktisk kan hentes, så tilføjer man
+en reference uden filen, fejler CI.
 
-### 4. Gmail: verificér mod en rigtig konto
+### 4. AI-adapterne mod en rigtig nøgle
 
-Registrér en OAuth-klient, sæt `VERDANDE_GMAIL_CLIENT_ID` og `_SECRET`, og kør
-flowet igennem. Den mest sandsynlige fejl er redirect-URI'en, som udledes af
-`VERDANDE_BASE_URL` og skal matche det registrerede *præcist*.
+Anthropic-, OpenAI- og Google-formerne er skrevet efter deres dokumentation og
+aldrig kørt. **Indstillinger → AI** sætter dem op; sæt en nøgle ind og bed om et
+ugentligt overblik.
 
-### 5. Web Push mod en rigtig browser
+### 5. Sessionsliste i indstillinger
 
-Der er ingen service worker i frontenden endnu — `web/static/` har manifest og
-ikon, men ingen `sw.js`. Serverdelen er færdig.
-
-Manifestet peger kun på `icon.svg`. Chrome og Firefox installerer fint på det;
-Safari vil have en PNG som `apple-touch-icon`, men der er ingen SVG-renderer på
-maskinen, så referencerne til PNG-filer blev fjernet frem for at pege på filer,
-der ikke findes. Rendér dem, hvis PWA'en skal se rigtig ud på iOS.
-
-### 6. E2E-røgtests med Playwright
-
-Briefen bad om dem under "Definition of done". **De findes ikke.** Der er 557 tests,
-men alle er Go: ingen af dem åbner en browser.
-
-Det er ikke akademisk. Begge de fejl, der blev fundet allersidst — etiket-ruten
-skrevet uden for routes-træet, og et manifest der lovede ikoner, som aldrig blev
-genereret — overlevede netop fordi intet rører frontendens rutetræ. Go-testene
-kunne ikke have fanget nogen af dem.
-
-En røgtest på fire flows ville dække det meste: log ind, opret en opgave via quick
-add, luk den, og klik hvert link i sidebjælken.
-
-### 7. OpenAPI-specifikationen
-
-Briefen bad om en. `docs/api.md` er skrevet i hånden og er komplet, men der er ingen
-maskinlæsbar spec.
+`last_seen_at` skrives netop for at kunne vise "denne enhed, for 2 minutter
+siden", og der er ingen visning, der bruger det. Der er heller ikke noget endpoint
+— kun `store`-laget ved, at kolonnen findes.
 
 ---
 
@@ -221,12 +275,35 @@ hver i sin egen transaktion. Ret aldrig en migration, der er pushet.
 eget `--screenshot` kan ikke sætte en sessionscookie og fotograferer kun
 login-siden.
 
+**Frontenden i binaryen er en kopi.** `cmd/verdande/webbuild/` er hvad `-tags
+embedweb` indlejrer, og den bliver ikke opdateret af `npm run build`. Kører man en
+binary uden at kopiere først, tester man den frontend, der lå der sidst — hvilket
+under udvikling næsten altid er den forkerte. Røgtestene bygger og kopierer selv,
+netop derfor.
+
+**Playwright genindlæser sin config i hver worker.** Alt på modulniveau kører
+altså igen, mens serveren kører. En `rmSync` af datamappen der sletter databasen
+under den — og det fejler ikke højlydt: allerede åbne forbindelser bliver ved med
+at virke mod den slettede inode, så kun de requests, der har brug for en *ny*
+forbindelse, fejler. Det ligner en flaky auth-fejl. Vagten er
+`process.env.TEST_WORKER_INDEX === undefined`.
+
+**`svelte-check` er ikke i CI og fejler på hundredvis af linjer.** Det er en
+JS-kodebase uden typeannotationer, så næsten alt, den siger, er "implicit any".
+Brug den ikke som portvagt; `npm run build` og røgtestene er signalet.
+
 ---
 
 ## Publicering
 
-Repoet er privat. Alt til at gøre det offentligt ligger klar: MIT-licens,
-CONTRIBUTING, SECURITY, issue-skabeloner, dokumentation og landing page.
+Repoet er privat, og GHCR-pakken er det også — se [Registret er
+privat](#registret-er-privat). Alt til at gøre repoet offentligt ligger klar:
+MIT-licens, CONTRIBUTING, SECURITY, issue-skabeloner, dokumentation og landing
+page.
+
+Udgivelse sker ved at pushe et semver-tag; `release.yml` bygger og publicerer
+`{version}`, `{major}.{minor}`, `{major}` og `latest` for amd64 og arm64. En Rune
+pinned til `:0` får patches uden at krydse en major.
 
 Pages-deployment ligger bag `workflow_dispatch` — dokumentationen bygges ved hvert
 push, men intet publiceres, før du kører workflowet manuelt. Landing pagen i
@@ -239,12 +316,21 @@ blev valgt. De er ikke købt.
 
 ## Hvor denne session slap
 
-Sidste commit: `fix(web)` — etiket-ruten og PWA-ikonerne. CI grøn på Go, Docker og
-dokumentation.
+`v0.1.0` er tagget og publiceret. Hullerne fra den oprindelige overlevering er
+lukket på nær dem, der kræver rigtige tjenester — de står under
+[huller](#huller).
 
-Alt i den oprindelige brief er bygget, med de undtagelser, der står under
-[huller](#huller-i-den-rækkefølge-jeg-ville-tage-dem) — hvoraf frontendens
-indstillingsflade og Playwright-røgtestene er de to, jeg selv ville tage først.
+Fire fejl blev fundet undervejs, alle af røgtestene, og alle rettet: samtidige
+skrivninger gav `SQLITE_BUSY`, en opgave man lukkede beholdt sin række, den samme
+opgave kunne havne to gange i listen, og en databasefejl loggede folk ud i stedet
+for at fejle ærligt. De tre første var der fra begyndelsen; ingen af dem kunne ses
+fra en Go-test. Det er argumentet for at have røgtestene, sagt kortere end
+forgængeren sagde det.
 
-Ingen løse ender i arbejdstræet: `git status` er ren, og der ligger ikke halvfærdig
-kode nogen steder.
+Tilføjet ud over hullerne: `PATCH /auth/me` (navn, tidszone og sprog kunne ikke
+ændres nogen steder), og hele `/tokens`-fladen — `docs/api.md` henviste til
+&ldquo;Settings → API tokens&rdquo;, men der fandtes hverken UI eller endpoints,
+kun `store`-laget.
+
+Arbejdstræet er ikke committet. Der ligger ingen halvfærdig kode, men ændringerne
+fra denne session står som ucommittede filer.

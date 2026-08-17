@@ -63,6 +63,9 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | Sharing: invites, roles, members | Done, tested |
 | Live sync over WebSocket | Done |
 | Web interface: sign-in, views, quick add, ⌘K, shortcuts | Done |
+| Task detail: description, sub-tasks, comments, files, reminders | Done |
+| Settings: account, notifications, integrations, AI, tokens, data | Done |
+| Drag to reorder, in both the list and the board | Done |
 | Recurring tasks (RRULE, Danish + English) | Done, tested |
 | Reminders, absolute and relative | Done, tested |
 | Saved filters with a query language | Done, tested |
@@ -78,13 +81,17 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | AI layer (Anthropic/OpenAI/Google/local) | Built, degrades when unconfigured |
 | Gmail: OAuth2 with PKCE, polling, one-way to tasks | Done, tested |
 | Update notice for administrators | Done, tested |
+| Personal API tokens | Done, tested |
+| OpenAPI 3.1 spec, checked against the router | Done, tested |
+| End-to-end smoke tests (Playwright) | Done |
 | Documentation, landing page, licence | Done |
 
 **Not finished:** Web Push, the AI providers and the Gmail API calls are
-implemented against their specifications but have only been exercised there, not
-against live services. And the interface does not yet expose comments,
-attachments, reminders, templates, import/export or the settings pages — all of it
-works through the API.
+implemented against their specifications and have only ever been exercised there,
+not against live services. Everything else has an interface: opening a task shows
+its description, sub-tasks, comments, files and reminders, and the settings pages
+cover the account, notifications, integrations, AI, API tokens, import, export and
+templates.
 
 Search finds `grøn` when you type `gron`, because Unicode does not consider `ø` an
 accented `o` and a Danish-first app that cannot do this is broken for its own users.
@@ -118,6 +125,14 @@ and the manifest ships in this repository. It runs anywhere Docker does as well.
 5. Start it, open the URL, create the first account. That account is the admin.
 
 ### With Docker directly
+
+The package is private, and an anonymous pull fails with `No such image` rather
+than with a permission error. Log the host's Docker daemon in once, with a GitHub
+token carrying the `read:packages` scope:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u kristianwind --password-stdin
+```
 
 ```bash
 docker run -d --name verdande \

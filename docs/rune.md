@@ -3,6 +3,34 @@
 verdande ships with a Rune manifest for
 [Yggdrasil Panel](https://github.com/kristianwind/yggdrasil).
 
+## Before you start: the registry is private
+
+The image lives at `ghcr.io/kristianwind/verdande` and the package is **private**,
+so an anonymous pull fails with a message that reads as though the image does not
+exist at all:
+
+```
+create container: Error response from daemon:
+No such image: ghcr.io/kristianwind/verdande:latest
+```
+
+That is a permission error wearing the wrong hat. The Docker daemon **on the
+Yggdrasil host** has to be logged in once:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u kristianwind --password-stdin
+```
+
+`GHCR_TOKEN` is a GitHub personal access token with the **`read:packages`** scope
+and nothing else. The login is stored in `~/.docker/config.json` for whichever
+user runs the daemon — if Yggdrasil runs as root or through systemd, log in as
+that user, not as yourself.
+
+!!! tip "Or make the package public"
+    Under **Packages → verdande → Package settings → Change visibility**. The
+    repository can stay private; only the built image becomes readable. Then no
+    login is needed anywhere and this section stops applying.
+
 ## Installing
 
 1. **Runes → Carve a rune (upload)** and pick
