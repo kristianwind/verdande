@@ -699,12 +699,6 @@
 		gap: var(--s3);
 	}
 
-	.repeats {
-		margin: 0;
-		font-size: var(--text-sm);
-		color: var(--ink-muted);
-	}
-
 	section {
 		display: flex;
 		flex-direction: column;
