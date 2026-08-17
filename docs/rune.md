@@ -29,16 +29,27 @@ looks locally — then reports the image as missing.
 → *Change visibility*. The repository stays private; only the built image becomes
 readable, which is what the manifest and these pages have always assumed.
 
-To keep it private you have to put the image on the host yourself, before
-creating the server, and again after every release:
+Once it is public, press **Start** on the server you already have. There is no
+need to delete it and make another: the image reference is read from the rune at
+container-create time, and both Start and Restart recreate the container.
+
+To keep the package private you have to put the image on the host yourself,
+before creating the server, and again after every release:
 
 ```bash
-echo "$GHCR_TOKEN" | docker login ghcr.io -u kristianwind --password-stdin
-docker pull ghcr.io/kristianwind/verdande:latest
+sudo docker login ghcr.io -u kristianwind
+sudo docker pull ghcr.io/kristianwind/verdande:latest
 ```
 
-`GHCR_TOKEN` is a GitHub token with the `read:packages` scope. The panel's own
-pull still fails silently; it simply finds the image already there.
+Run it as the user the Docker daemon runs as — `sudo` if the panel does. The
+panel's own pull still fails silently; create simply finds the image already
+there.
+
+!!! danger "This hides updates"
+    The panel re-pulls on every recreate, fails quietly, and carries on with the
+    local image. A new release then *looks* like it rolled out and did not. For
+    something you intend to update, public is the right answer and host-pull is
+    the stopgap.
 
 ## Installing
 
@@ -48,6 +59,16 @@ pull still fails silently; it simply finds the image already there.
 2. Create a server from it.
 3. Fill in the settings below.
 4. Start it, open the URL, create the first account.
+
+!!! note "Updating the rune is a manual step"
+    A rune does not update itself when this manifest changes. The panel writes
+    the rune row from a UI action only — neither a restart nor a timer does it —
+    so pick up a new manifest with **Runes → verdande → Update**, or install it
+    again from Browse GitHub.
+
+    The catalogue list is cached in memory for ten minutes, so two attempts in a
+    row can both hand you the old version. Recent panel versions show the list's
+    age with a *fetch again* link.
 
 ## Settings
 
