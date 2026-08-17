@@ -12,16 +12,39 @@ conversation.
 
 ## Connecting it
 
-**Make a token.** **Settings → API tokens → New token**. It is shown once.
+**Make a token** under **Settings → API tokens**. The page then shows the
+connector address to go with it — token and all — which is the thing to copy:
 
-**Add the connector.** In Claude, add a custom connector with:
+```
+https://todo.example.dk/mcp?key=vrd_…
+```
 
-- **URL**: `https://todo.example.dk/api/v1/mcp`
-- **Authentication**: Bearer token, using the token you just made
+**Add the connector** in Claude with that address, and nothing else. The dialog
+asks for a name and a URL; leave the OAuth fields empty.
+
+!!! note "Why the key is in the address"
+    The dialog has no field for a bearer token — only OAuth client credentials —
+    so a header cannot be configured from it. The address *is* the credential
+    here, exactly as it is for the [calendar feed](caldav.md#subscribing-to-a-feed).
+    Treat it like a password: anyone holding it reaches what you reach. The
+    server logs request paths without their query strings, so it does not end up
+    in the log.
 
 !!! warning "It has to be reachable from the internet"
     Claude connects from Anthropic's side, not from your browser. An instance only
     reachable on your LAN or over a VPN cannot be used this way.
+
+### With a header instead
+
+Anything that *can* send a header should, and use the API path:
+
+```bash
+curl -H "Authorization: Bearer vrd_…" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+  https://todo.example.dk/api/v1/mcp
+```
+
+Both endpoints run the same server and reach the same things.
 
 ## What Claude can do
 

@@ -90,6 +90,18 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	// authenticated by the token in the recipient address.
 	r.Post("/inbound/mail", s.handleInboundMail)
 
+	// MCP with the token in the query string, for clients that cannot send a
+	// header. Claude's custom-connector dialog takes a URL and nothing else, so
+	// /api/v1/mcp — which wants Authorization: Bearer — cannot be configured from
+	// it at all. Same reasoning as the calendar feed above: a client that cannot
+	// be told to send a header means the token in the URL is the credential.
+	//
+	// Outside /api/v1 deliberately, because it must not be reachable with a
+	// session cookie. A cookie-authenticated POST with no CSRF check is a
+	// cross-site request waiting to happen; handleMCPWithKey accepts the key and
+	// nothing else.
+	r.Post("/mcp", s.handleMCPWithKey)
+
 	// Google sends the browser here after consent. Outside /api/v1 because it is a
 	// top-level navigation rather than a fetch, but still behind the session — the
 	// tokens it exchanges belong to whoever is signed in.

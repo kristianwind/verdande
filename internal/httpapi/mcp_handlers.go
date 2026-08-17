@@ -3,11 +3,13 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/kristianwind/verdande/internal/auth"
 	"github.com/kristianwind/verdande/internal/mcp"
 	"github.com/kristianwind/verdande/internal/quickadd"
 	"github.com/kristianwind/verdande/internal/store"
@@ -122,6 +124,42 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+// handleMCPWithKey is the same endpoint for a client that can only be given a
+// URL: `POST /mcp?key=vrd_…`.
+//
+// Claude's custom-connector dialog asks for a name, an address and — under
+// advanced settings — an OAuth client id and secret. There is no field for a
+// bearer token, so /api/v1/mcp cannot be configured from it however correct the
+// address is. The calendar feed already carries its credential in the URL for
+// the same reason, and the request logger records the path without the query, so
+// the key does not end up in the log.
+//
+// The key is the *only* thing accepted here. Reading a session cookie instead
+// would make this a state-changing POST outside the CSRF check — which is to say
+// a cross-site request that acts as whoever is signed in.
+func (s *Server) handleMCPWithKey(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("key")
+	if key == "" || !auth.IsAPIToken(key) {
+		// 401 rather than 404: unlike a task, the existence of this endpoint is
+		// not a secret — it is written in the documentation.
+		writeError(w, http.StatusUnauthorized, CodeUnauthorized,
+			"add ?key=<api token> to the URL")
+		return
+	}
+
+	user, err := s.db.UserByAPIToken(r.Context(), key)
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			s.internal(w, "mcp key", err)
+			return
+		}
+		writeError(w, http.StatusUnauthorized, CodeUnauthorized, "that key is not valid")
+		return
+	}
+
+	s.handleMCP(w, r.WithContext(withUser(r.Context(), user)))
 }
 
 // --- tool implementations ------------------------------------------------------------
