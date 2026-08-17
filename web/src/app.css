@@ -22,7 +22,10 @@
 
 	--ink: #e8ebe9;
 	--ink-muted: #9aa39e;
-	--ink-faint: #6b736f;
+	/* The quiet tier, and the one that decides whether the interface is
+	   readable: dates, counts and hints all live here. Lifted from #6b736f,
+	   which sat at 3.8:1 against the ground — under AA, and it showed. */
+	--ink-faint: #828a84;
 
 	/* Nordlys-grøn. One accent, used for the checkmark, focus rings, and the
 	   single primary action on a screen — and for nothing else, which is what
@@ -106,7 +109,10 @@
 
 	--ink: #e8ebe9;
 	--ink-muted: #9aa39e;
-	--ink-faint: #6b736f;
+	/* The quiet tier, and the one that decides whether the interface is
+	   readable: dates, counts and hints all live here. Lifted from #6b736f,
+	   which sat at 3.8:1 against the ground — under AA, and it showed. */
+	--ink-faint: #828a84;
 
 	--accent: #5fbf8f;
 	--accent-hover: #6fcf9f;
@@ -247,10 +253,12 @@
 
 	--ink: #1c201e;
 	--ink-muted: #5f6763;
-	--ink-faint: #8b918d;
+	/* Was #8b918d at 3.1:1 — the worst of the five, and the theme most likely
+	   to be read in daylight. */
+	--ink-faint: #6e756f;
 
-	--accent: #2f8f63;
-	--accent-hover: #277a54;
+	--accent: #257552;
+	--accent-hover: #1f6a49;
 	--accent-sunken: #e2f0e9;
 	--accent-ink: #ffffff;
 
