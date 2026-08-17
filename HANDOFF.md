@@ -16,7 +16,7 @@ bruger det. Dette er noget andet: beslutningerne, hullerne og fælderne.
 | Repo | `kristianwind/verdande`, privat |
 | Lokal sti | `~/Documents/Code/verdande` |
 | Stack | Go 1.26, SQLite (modernc, ingen cgo), SvelteKit 5, én binary |
-| Udgivet | `v0.2.0` — `ghcr.io/kristianwind/verdande`, amd64 + arm64 |
+| Udgivet | `v0.3.0` — `ghcr.io/kristianwind/verdande`, amd64 + arm64 |
 | Deployes som | Rune i Yggdrasil Panel; kører også som almindelig Docker |
 | CI | Go (fmt, vet, race), OpenAPI-lint, Playwright, Docker-build, MkDocs |
 | Omfang | ~23.000 linjer Go, ~7.100 linjer frontend, 610 tests + 6 røgtests, 20 pakker |
@@ -179,6 +179,23 @@ stopper visningen.
 **API-tokens kan kun styres med en session.** En bearer-token får 403 på
 `/tokens`, selvom den accepteres alle andre steder. Ellers er en lækket token
 permanent: tyven udsteder nummer to, og at tilbagekalde den første ændrer intet.
+
+**MCP findes to steder, og det ene tager nøglen i URL'en.** `/api/v1/mcp` vil
+have en `Authorization`-header. Claudes connector-dialog spørger om navn, adresse
+og OAuth-legitimation — der er intet felt til en bearer-token, så den sti kan slet
+ikke sættes op derfra. Derfor `POST /mcp?key=…`, med samme begrundelse som
+kalenderfeedet: en klient, man ikke kan bede om at sende en header, betyder at
+adressen *er* legitimationen. Loggeren skriver `r.URL.Path` uden query, så nøglen
+havner ikke i logfilerne.
+
+Den rute ligger uden for `/api/v1` med vilje og accepterer **kun** nøglen. Læste
+den også en sessionscookie, ville den være en tilstandsændrende POST uden for
+CSRF-checket — altså en cross-site-request, der handler som den, der er logget
+ind. Der er en test, der fejler, hvis det nogensinde bliver sandt.
+
+Fejlen, det kostede at finde: `/mcp` fandtes ikke, så SPA-fallbacken svarede
+**200 med app-skallen**. Connectoren meldte forbundet og fejlede så på at læse en
+HTML-side — hvilket ligner en i stykker klient frem for en manglende rute.
 
 **En databasefejl er en 500, ikke en 401.** `authenticate()` kan ikke selv se
 forskel — begge dele kommer tilbage som en fejl fra sessionsopslaget. Svarer man
