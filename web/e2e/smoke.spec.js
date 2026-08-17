@@ -473,6 +473,26 @@ test('et invitationslink opretter kontoen og giver adgang til projektet', async 
 	expect(inviteeTrouble.filter((t) => t !== 'GET /api/v1/auth/me → 401')).toEqual([]);
 	await context.close();
 
+	// The invitee opens the project. Nothing has ever driven this: the assertion
+	// above only proved the project reaches their *sidebar*, and a member's view
+	// of a project page is a different code path from an owner's — different role,
+	// different guards, and the page shows the same "findes ikke" message while it
+	// is still loading as it does when the load failed.
+	const inviteePage = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const member = await inviteePage.newPage();
+	const memberTrouble = watchForTrouble(member);
+	await member.goto('/');
+	await member.getByLabel('E-mail').fill('nabo@example.dk');
+	await member.getByLabel('Adgangskode').fill('et langt kodeord til test');
+	await member.getByRole('button', { name: 'Log ind' }).click();
+
+	const theirs = member.getByRole('navigation', { name: 'Hovedmenu' });
+	await theirs.getByRole('link', { name: /Fælleshuset/ }).click();
+	await expect(member.getByRole('heading', { name: 'Fælleshuset' })).toBeVisible();
+	await expect(member.getByText('findes ikke')).toHaveCount(0);
+	expect(memberTrouble.filter((t) => t !== 'GET /api/v1/auth/me → 401')).toEqual([]);
+	await inviteePage.close();
+
 	// Now that there is somebody to delegate to, the inviter can — and the view
 	// for it appears. It is hidden on an instance with one person, where it could
 	// never have anything in it.
