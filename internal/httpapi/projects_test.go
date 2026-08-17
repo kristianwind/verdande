@@ -81,3 +81,75 @@ func TestTheTrashIsPerOwner(t *testing.T) {
 		t.Errorf("status %d, want 404", resp.StatusCode)
 	}
 }
+
+func TestReorderProjectsWritesTheGivenOrder(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	var ids []string
+	for _, name := range []string{"Alfa", "Bravo", "Charlie"} {
+		_, body := ts.do(t, "POST", "/api/v1/projects", map[string]string{"name": name})
+		ids = append(ids, body["id"].(string))
+	}
+
+	// Back to front.
+	reversed := []string{ids[2], ids[1], ids[0]}
+	resp, _ := ts.do(t, "POST", "/api/v1/projects/reorder", map[string]any{"ids": reversed})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("reorder: status %d", resp.StatusCode)
+	}
+
+	_, list := ts.do(t, "GET", "/api/v1/projects", nil)
+	projects, _ := list["projects"].([]any)
+
+	var got []string
+	for _, raw := range projects {
+		p := raw.(map[string]any)
+		// The Inbox sorts ahead of everything by its own rule; it is not part of
+		// what was reordered.
+		if p["is_inbox"] == true {
+			continue
+		}
+		got = append(got, p["id"].(string))
+	}
+	if len(got) != 3 || got[0] != reversed[0] || got[1] != reversed[1] || got[2] != reversed[2] {
+		t.Errorf("order = %v, want %v", got, reversed)
+	}
+}
+
+// sort_order is a column on the project, not a per-viewer preference, so
+// reordering must not rearrange a project somebody else owns.
+func TestReorderProjectsLeavesSomebodyElsesAlone(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	other := ts.newUser(t, "anden@example.dk", "Anden")
+	_, theirs := other.do(t, "POST", "/api/v1/projects", map[string]string{"name": "Deres"})
+	theirID := theirs["id"].(string)
+
+	_, before := other.do(t, "GET", "/api/v1/projects", nil)
+	var wanted float64
+	for _, raw := range before["projects"].([]any) {
+		if p := raw.(map[string]any); p["id"] == theirID {
+			wanted = p["sort_order"].(float64)
+		}
+	}
+
+	// Ask, as somebody else, to put their project first.
+	resp, _ := ts.do(t, "POST", "/api/v1/projects/reorder", map[string]any{
+		"ids": []string{theirID},
+	})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("reorder: status %d", resp.StatusCode)
+	}
+
+	_, after := other.do(t, "GET", "/api/v1/projects", nil)
+	for _, raw := range after["projects"].([]any) {
+		if p := raw.(map[string]any); p["id"] == theirID {
+			if p["sort_order"] != wanted {
+				t.Errorf("sort_order changed from %v to %v — somebody else moved it",
+					wanted, p["sort_order"])
+			}
+		}
+	}
+}
