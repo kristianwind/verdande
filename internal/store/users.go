@@ -122,6 +122,47 @@ func (db *DB) scanUser(ctx context.Context, query string, args ...any) (*User, e
 	return &u, nil
 }
 
+// Person is the public half of a user: what somebody else is allowed to see when
+// their name has to appear next to a task. No address, no hash, no timezone.
+type Person struct {
+	ID          string
+	Name        string
+	AvatarColor string
+}
+
+// PeopleByIDs looks up several users at once.
+//
+// One query rather than a loop of UserByID, because the caller is resolving the
+// assignees of a list of tasks and a per-row lookup is a query per row. Unknown
+// ids are simply absent from the result; a user who has been deleted is not an
+// error for a view that is only trying to put a name on a row.
+func (db *DB) PeopleByIDs(ctx context.Context, ids []string) (map[string]Person, error) {
+	people := map[string]Person{}
+	if len(ids) == 0 {
+		return people, nil
+	}
+
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := db.QueryContext(ctx,
+		`SELECT id, name, avatar_color FROM users WHERE id IN (`+placeholders(len(ids))+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p Person
+		if err := rows.Scan(&p.ID, &p.Name, &p.AvatarColor); err != nil {
+			return nil, err
+		}
+		people[p.ID] = p
+	}
+	return people, rows.Err()
+}
+
 // UserCount is what decides whether the instance still needs its first admin.
 func (db *DB) UserCount(ctx context.Context) (int, error) {
 	var n int

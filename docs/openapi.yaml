@@ -1143,6 +1143,40 @@ paths:
                           type: array
                           items: { $ref: "#/components/schemas/Task" }
 
+  /api/v1/delegated:
+    get:
+      tags: [views]
+      summary: What you are waiting on other people for.
+      description: |
+        Everything assigned to somebody who is not you, in the projects you can
+        see, grouped by the person it is assigned to.
+
+        Grouped rather than flat because the question is about people, and a
+        client grouping it itself would need every assignee's name — which it has
+        no way to ask for. The names come back with the tasks, so one request is
+        one screen.
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 200, maximum: 500 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  people:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user_id: { type: string }
+                        name: { type: string }
+                        avatar_color: { type: string }
+                        tasks:
+                          type: array
+                          items: { $ref: "#/components/schemas/Task" }
+
   /api/v1/search:
     get:
       tags: [views]

@@ -37,12 +37,20 @@
 		api.listLabels().then((r) => (labels = r.labels)).catch(() => {});
 	});
 
-	let shared = $derived(app.projects.filter((p) => !p.is_inbox && p.shared));
+	// Split by who owns it, not by whether anybody else is in it.
+	//
+	// The two headings say "Projekter" and "Delt med mig", and the split used to be
+	// on `shared`, which only means the project has more than one member. So the
+	// moment you invited somebody to a project of your own it moved under "Delt med
+	// mig" — where it lost its place in the order, stopped being draggable, and
+	// could not be filed under a group. Sharing your own project is not the same
+	// event as somebody sharing theirs with you.
+	let shared = $derived(app.projects.filter((p) => !p.is_inbox && p.role !== 'owner'));
 	// Sorted here rather than relying on the order the server sent, so a drag
 	// settles the moment it is dropped instead of after the round trip.
 	let own = $derived(
 		app.projects
-			.filter((p) => !p.is_inbox && !p.shared)
+			.filter((p) => !p.is_inbox && p.role === 'owner')
 			.sort((a, b) => a.sort_order - b.sort_order)
 	);
 	let current = $derived($page.url.pathname);
@@ -303,6 +311,15 @@
 			<span class="dot" aria-hidden="true"></span>
 			Kommende
 		</a>
+		{#if app.projects.some((p) => p.shared)}
+			<!-- Only where delegating is possible at all. On an instance with one
+			     person this view can never have anything in it, and a permanent empty
+			     entry is a question the sidebar keeps asking and answering "no". -->
+			<a href="/uddelegeret" class:active={current === '/uddelegeret'} onclick={onnavigate}>
+				<span class="dot" aria-hidden="true"></span>
+				Venter på andre
+			</a>
+		{/if}
 		{#if app.inbox}
 			{@render projectRow(app.inbox, false)}
 		{/if}

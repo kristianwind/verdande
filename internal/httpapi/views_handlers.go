@@ -92,6 +92,79 @@ func (s *Server) handleUpcoming(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"days": out})
 }
 
+type delegatedPerson struct {
+	UserID      string     `json:"user_id"`
+	Name        string     `json:"name"`
+	AvatarColor string     `json:"avatar_color"`
+	Tasks       []taskJSON `json:"tasks"`
+}
+
+// handleDelegated is "waiting on others": everything assigned to somebody who is
+// not the caller, in the projects the caller can see.
+//
+// Grouped by person rather than returned flat, because the question this view
+// answers is about people — "what is Anders sitting on" — and a client grouping it
+// itself would need every assignee's name, which it has no way to ask for. The
+// names come back with the tasks, so one request is one screen.
+//
+// People are ordered by name, and their tasks by whatever the list query decided,
+// which puts the overdue and the soonest first.
+func (s *Server) handleDelegated(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+
+	tasks, err := s.db.ListTasks(r.Context(), user.ID, store.TaskFilter{
+		DelegatedBy: user.ID,
+		Limit:       parseLimit(r.URL.Query().Get("limit"), 200, 500),
+	})
+	if err != nil {
+		s.internal(w, "delegated", err)
+		return
+	}
+
+	byPerson := map[string][]taskJSON{}
+	ids := []string{}
+	for _, t := range tasks {
+		if _, seen := byPerson[t.AssigneeID]; !seen {
+			ids = append(ids, t.AssigneeID)
+		}
+		byPerson[t.AssigneeID] = append(byPerson[t.AssigneeID], toTaskJSON(t))
+	}
+
+	people, err := s.db.PeopleByIDs(r.Context(), ids)
+	if err != nil {
+		s.internal(w, "delegated people", err)
+		return
+	}
+
+	out := make([]delegatedPerson, 0, len(ids))
+	for _, id := range ids {
+		// A person who no longer has an account still has their id on the task.
+		// Naming them "Ukendt" beats dropping the tasks, which would make work
+		// disappear from the one view that exists to stop that happening.
+		p, ok := people[id]
+		if !ok {
+			p = store.Person{ID: id, Name: "Ukendt", AvatarColor: "#8a8f98"}
+		}
+		out = append(out, delegatedPerson{
+			UserID: p.ID, Name: p.Name, AvatarColor: p.AvatarColor, Tasks: byPerson[id],
+		})
+	}
+	sortByName(out)
+
+	writeJSON(w, http.StatusOK, map[string]any{"people": out})
+}
+
+// sortByName orders the groups the way a list of people reads. Insertion sort:
+// this is a handful of entries, and it keeps the package free of a dependency on
+// sort just for this.
+func sortByName(people []delegatedPerson) {
+	for i := 1; i < len(people); i++ {
+		for j := i; j > 0 && lower(people[j].Name) < lower(people[j-1].Name); j-- {
+			people[j], people[j-1] = people[j-1], people[j]
+		}
+	}
+}
+
 // handleSearch is what Cmd+K calls. It searches across every project the user can
 // see, which is the point — the thing you are looking for is usually somewhere you
 // were not looking.

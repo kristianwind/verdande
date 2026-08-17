@@ -419,6 +419,33 @@ test('et invitationslink opretter kontoen og giver adgang til projektet', async 
 	// screen appears at all.
 	expect(inviteeTrouble.filter((t) => t !== 'GET /api/v1/auth/me → 401')).toEqual([]);
 	await context.close();
+
+	// Now that there is somebody to delegate to, the inviter can — and the view
+	// for it appears. It is hidden on an instance with one person, where it could
+	// never have anything in it.
+	await page.reload();
+	await expect(sidebar.getByRole('link', { name: 'Venter på andre' })).toBeVisible();
+
+	// A project the inviter owns stays under "Projekter" after sharing it. It used
+	// to move to "Delt med mig" the moment somebody accepted, and lose its place in
+	// the order on the way.
+	await expect(
+		page.locator('.group').filter({ hasText: 'Projekter' }).getByText('Fælleshuset')
+	).toBeVisible();
+
+	await page.getByLabel('Ny opgave').fill('males inden fredag #Fælleshuset');
+	await page.getByLabel('Ny opgave').press('Enter');
+	await page.getByText('males inden fredag', { exact: true }).click();
+
+	const drawer = page.getByRole('complementary', { name: 'Opgave' });
+	await drawer.getByLabel('Ansvarlig').selectOption({ label: 'Nabo' });
+	await page.keyboard.press('Escape');
+
+	await sidebar.getByRole('link', { name: 'Venter på andre' }).click();
+	await expect(page.getByRole('heading', { name: 'Venter på andre' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Nabo' })).toBeVisible();
+	await expect(page.getByText('males inden fredag')).toBeVisible();
+
 	expect(trouble).toEqual([]);
 });
 

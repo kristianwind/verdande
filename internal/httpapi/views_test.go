@@ -1,6 +1,9 @@
 package httpapi
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+)
 
 // A label is how you find a task whose wording you have forgotten. Search
 // covered the text only, so "regnskab" found nothing even with the task
@@ -51,5 +54,102 @@ func TestSearchByLabelStaysWithinWhatYouCanSee(t *testing.T) {
 	_, body := ts.do(t, "GET", "/api/v1/search?q=regnskab", nil)
 	if tasks, _ := body["tasks"].([]any); len(tasks) != 0 {
 		t.Errorf("found somebody else's task: %v", tasks)
+	}
+}
+
+// "Waiting on others" is the other half of an assignee filter, and the half that
+// is easy to get backwards: what somebody has handed over, not what they have
+// been handed.
+func TestDelegatedListsWhatOtherPeopleAreSittingOn(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ts.newUser(t, "anders@example.dk", "Anders")
+
+	anders, err := ts.db.UserByEmail(t.Context(), "anders@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	me, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Delt"})
+	projectID := project["id"].(string)
+	ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites", map[string]any{
+		"email": "anders@example.dk", "role": "editor",
+	})
+
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "anders skriver rapporten", "project_id": projectID, "assignee_id": anders.ID,
+	})
+	// Mine, and unassigned: neither belongs in a view about other people.
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "jeg læser den", "project_id": projectID, "assignee_id": me.ID,
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "ingen har den", "project_id": projectID,
+	})
+
+	resp, body := ts.do(t, "GET", "/api/v1/delegated", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delegated: %d %v", resp.StatusCode, body)
+	}
+
+	people, _ := body["people"].([]any)
+	if len(people) != 1 {
+		t.Fatalf("want one person, got %v", people)
+	}
+	person := people[0].(map[string]any)
+	if person["name"] != "Anders" {
+		t.Errorf("name = %v — the view has to carry the name, or the client has no way to ask for it",
+			person["name"])
+	}
+	if person["avatar_color"] == nil || person["avatar_color"] == "" {
+		t.Errorf("no avatar colour: %v", person)
+	}
+
+	tasks, _ := person["tasks"].([]any)
+	if len(tasks) != 1 {
+		t.Fatalf("want one task, got %v", tasks)
+	}
+	if tasks[0].(map[string]any)["content"] != "anders skriver rapporten" {
+		t.Errorf("content = %v", tasks[0])
+	}
+}
+
+// The view is per person: Anders is not waiting on himself, and he cannot see
+// what somebody has delegated in a project he is not in.
+func TestDelegatedIsPerPersonAndRespectsAccess(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	anders := ts.newUser(t, "anders@example.dk", "Anders")
+
+	andersUser, err := ts.db.UserByEmail(t.Context(), "anders@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A project Anders is not a member of.
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Privat"})
+	projectID := project["id"].(string)
+	ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites", map[string]any{
+		"email": "anders@example.dk", "role": "editor",
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "anders gør det", "project_id": projectID, "assignee_id": andersUser.ID,
+	})
+
+	// It is assigned to him, so it is not something he is waiting on.
+	_, body := anders.do(t, "GET", "/api/v1/delegated", nil)
+	if people, _ := body["people"].([]any); len(people) != 0 {
+		t.Errorf("Anders is waiting on himself: %v", people)
+	}
+
+	// And somebody with no access to the project sees none of it.
+	other := ts.newUser(t, "tredje@example.dk", "Tredje")
+	_, third := other.do(t, "GET", "/api/v1/delegated", nil)
+	if people, _ := third["people"].([]any); len(people) != 0 {
+		t.Errorf("a task in a project they cannot see: %v", people)
 	}
 }

@@ -48,8 +48,14 @@ type TaskFilter struct {
 	// renders them nested under their parents rather than as separate rows.
 	TopLevelOnly bool
 	AssigneeID   string
-	LabelID      string
-	Priority     int
+	// DelegatedBy is the other side of AssigneeID: assigned, but not to this
+	// person. A second field rather than a magic value in AssigneeID, because the
+	// two are different questions — "what is on my plate" and "what have I handed
+	// over" — and one string that means an id most of the time and a sentinel the
+	// rest is the kind of field somebody eventually passes a real id to.
+	DelegatedBy string
+	LabelID     string
+	Priority    int
 
 	// DueBefore and DueFrom bound the calendar day, inclusive, as "YYYY-MM-DD".
 	DueBefore string
@@ -115,6 +121,10 @@ func (db *DB) ListTasks(ctx context.Context, userID string, f TaskFilter) ([]Tas
 	if f.AssigneeID != "" {
 		where = append(where, `t.assignee_id = ?`)
 		args = append(args, f.AssigneeID)
+	}
+	if f.DelegatedBy != "" {
+		where = append(where, `t.assignee_id IS NOT NULL AND t.assignee_id <> ?`)
+		args = append(args, f.DelegatedBy)
 	}
 	if f.Priority > 0 {
 		where = append(where, `t.priority = ?`)
