@@ -3,33 +3,42 @@
 verdande ships with a Rune manifest for
 [Yggdrasil Panel](https://github.com/kristianwind/yggdrasil).
 
-## Before you start: the registry is private
-
-The image lives at `ghcr.io/kristianwind/verdande` and the package is **private**,
-so an anonymous pull fails with a message that reads as though the image does not
-exist at all:
+## If the image will not pull
 
 ```
 create container: Error response from daemon:
 No such image: ghcr.io/kristianwind/verdande:latest
 ```
 
-That is a permission error wearing the wrong hat. The Docker daemon **on the
-Yggdrasil host** has to be logged in once:
+This message is a liar. It does not mean the tag is missing from the registry —
+it means the image is not on the host, and the panel's attempt to fetch it failed
+without saying so.
+
+The usual cause is a **private** GHCR package. Yggdrasil pulls anonymously: its
+`PullImage` calls the Docker SDK with no `RegistryAuth`, so a private image comes
+back 401. The pull error is discarded, and `ContainerCreate` — which only ever
+looks locally — then reports the image as missing.
+
+!!! warning "`docker login` on the host does not help"
+    `docker login` is client-side. The daemon stores no credentials; the CLI
+    sends them itself with each request. Yggdrasil is a different client and
+    sends none, so logging in changes nothing for the panel.
+
+**Make the package public.** Under
+[Packages → verdande → Package settings](https://github.com/users/kristianwind/packages/container/package/verdande)
+→ *Change visibility*. The repository stays private; only the built image becomes
+readable, which is what the manifest and these pages have always assumed.
+
+To keep it private you have to put the image on the host yourself, before
+creating the server, and again after every release:
 
 ```bash
 echo "$GHCR_TOKEN" | docker login ghcr.io -u kristianwind --password-stdin
+docker pull ghcr.io/kristianwind/verdande:latest
 ```
 
-`GHCR_TOKEN` is a GitHub personal access token with the **`read:packages`** scope
-and nothing else. The login is stored in `~/.docker/config.json` for whichever
-user runs the daemon — if Yggdrasil runs as root or through systemd, log in as
-that user, not as yourself.
-
-!!! tip "Or make the package public"
-    Under **Packages → verdande → Package settings → Change visibility**. The
-    repository can stay private; only the built image becomes readable. Then no
-    login is needed anywhere and this section stops applying.
+`GHCR_TOKEN` is a GitHub token with the `read:packages` scope. The panel's own
+pull still fails silently; it simply finds the image already there.
 
 ## Installing
 

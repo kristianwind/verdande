@@ -126,14 +126,6 @@ and the manifest ships in this repository. It runs anywhere Docker does as well.
 
 ### With Docker directly
 
-The package is private, and an anonymous pull fails with `No such image` rather
-than with a permission error. Log the host's Docker daemon in once, with a GitHub
-token carrying the `read:packages` scope:
-
-```bash
-echo "$GHCR_TOKEN" | docker login ghcr.io -u kristianwind --password-stdin
-```
-
 ```bash
 docker run -d --name verdande \
   -p 8080:8080 \
