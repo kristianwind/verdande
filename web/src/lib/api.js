@@ -167,6 +167,9 @@ export const api = {
 	totpSetup: () => post('/auth/totp/setup'),
 	totpConfirm: (code) => post('/auth/totp/confirm', { code }),
 	totpDisable: (password) => post('/auth/totp/disable', { password }),
+	listSessions: () => get('/auth/sessions'),
+	endSession: (id) => del(`/auth/sessions/${id}`),
+
 	recoveryCodes: () => get('/auth/recovery-codes'),
 	regenerateRecoveryCodes: (password) => post('/auth/recovery-codes', { password }),
 

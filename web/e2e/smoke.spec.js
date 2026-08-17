@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { USER } from './user.js';
 
 /**
  * The four flows a broken build must not survive: add a task, tick it off, reach
@@ -470,6 +471,47 @@ test('nulstillingslinket viser et felt til den nye adgangskode', async ({ browse
 	// And it says so rather than pretending: the token is not a real one.
 	await expect(page.getByRole('alert')).toBeVisible();
 	await context.close();
+});
+
+/**
+ * The device list, and ending one of them.
+ *
+ * `last_seen_at` has been written on every request since sessions existed — once
+ * a minute, deliberately, so this list could say "lige nu" — and until now
+ * nothing read it. A session you cannot see is a session you cannot end, which
+ * matters most in the one situation it exists for: somebody else has your cookie.
+ */
+test('enhedslisten viser denne enhed, og en anden kan logges ud', async ({ browser, page }) => {
+	const trouble = watchForTrouble(page);
+
+	// A second sign-in as the same person: a real second session, not a second tab
+	// sharing this one's cookie.
+	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const elsewhere = await context.newPage();
+	await elsewhere.goto('/');
+	await elsewhere.getByLabel('E-mail').fill(USER.email);
+	await elsewhere.getByLabel('Adgangskode').fill(USER.password);
+	await elsewhere.getByRole('button', { name: 'Log ind' }).click();
+	await expect(elsewhere.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+
+	await page.goto('/indstillinger');
+	const panel = page.locator('section.panel').filter({ hasText: 'Enheder' });
+	await expect(panel.getByText('denne enhed')).toBeVisible();
+	await expect(panel.locator('li')).toHaveCount(2);
+
+	// End the one that is not this browser — the row without the badge.
+	await panel.locator('li').filter({ hasNot: page.getByText('denne enhed') })
+		.getByRole('button', { name: 'Log ud' })
+		.click();
+	await expect(panel.locator('li')).toHaveCount(1);
+
+	// That session is really gone, and this one is untouched.
+	await elsewhere.reload();
+	await expect(elsewhere.getByText('Log ind for at fortsætte')).toBeVisible();
+	await context.close();
+
+	await expect(panel.getByText('denne enhed')).toBeVisible();
+	expect(trouble).toEqual([]);
 });
 
 /**

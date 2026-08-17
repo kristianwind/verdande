@@ -144,6 +144,54 @@
 			if (!Object.keys(totpErrors).length) app.toast(humanMessage(e));
 		}
 	}
+
+	// --- sessions --------------------------------------------------------------
+
+	let sessions = $state([]);
+
+	$effect(() => {
+		api.listSessions().then((r) => (sessions = r.sessions)).catch(() => {});
+	});
+
+	async function endSession(session) {
+		if (session.current) {
+			if (!confirm('Det er denne enhed. Du bliver logget ud.')) return;
+			await api.endSession(session.id);
+			// A full reload rather than clearing the store by hand: the session is
+			// gone, so every open socket and every cached answer in this tab is now
+			// about an account nobody is signed in to.
+			location.href = '/';
+			return;
+		}
+
+		const previous = sessions;
+		sessions = sessions.filter((s) => s.id !== session.id);
+		try {
+			await api.endSession(session.id);
+		} catch (e) {
+			sessions = previous;
+			app.toast(humanMessage(e));
+		}
+	}
+
+	/**
+	 * "for 2 minutter siden".
+	 *
+	 * Relative rather than a timestamp, because the question is "was that me, just
+	 * now?" and an absolute time makes the reader do the subtraction. Anything
+	 * older than a week gets its date instead: "for 23 dage siden" is a number
+	 * nobody can place.
+	 */
+	function ago(iso) {
+		const then = new Date(iso);
+		const seconds = Math.round((Date.now() - then) / 1000);
+
+		if (seconds < 60) return 'lige nu';
+		if (seconds < 3600) return `for ${Math.floor(seconds / 60)} min. siden`;
+		if (seconds < 86400) return `for ${Math.floor(seconds / 3600)} timer siden`;
+		if (seconds < 604800) return `for ${Math.floor(seconds / 86400)} dage siden`;
+		return then.toLocaleDateString('da-DK', { day: 'numeric', month: 'short', year: 'numeric' });
+	}
 </script>
 
 <section class="panel">
@@ -367,11 +415,92 @@
 	{/if}
 </section>
 
+<section class="panel">
+	<header>
+		<h2>Enheder</h2>
+		<p class="hint">
+			Hvor du er logget ind. Genkender du ikke en af dem, så log den ud og skift
+			adgangskode.
+		</p>
+	</header>
+
+	<ul class="sessions">
+		{#each sessions as session (session.id)}
+			<li>
+				<div class="what">
+					<span class="device">
+						{session.device}
+						{#if session.current}<span class="badge">denne enhed</span>{/if}
+					</span>
+					<!-- The address and the time, small: they are what settles "was that
+					     me?", and they are not what you read first. -->
+					<span class="when" title={session.user_agent}>
+						{ago(session.last_seen_at)}{#if session.ip}{' · ' + session.ip}{/if}
+					</span>
+				</div>
+				<button class="secondary" onclick={() => endSession(session)}>Log ud</button>
+			</li>
+		{/each}
+	</ul>
+</section>
+
 <style>
 	form {
 		display: flex;
 		flex-direction: column;
 		gap: var(--s4);
+	}
+
+	.sessions {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: var(--s1);
+	}
+
+	.sessions li {
+		display: flex;
+		align-items: center;
+		gap: var(--s3);
+		padding: var(--s2) 0;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.sessions li:last-child {
+		border-bottom: 0;
+	}
+
+	.what {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.device {
+		font-size: var(--text-sm);
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+	}
+
+	.badge {
+		font-size: var(--text-xs);
+		color: var(--accent);
+		border: 1px solid var(--accent);
+		border-radius: var(--radius-full);
+		padding: 0 var(--s2);
+	}
+
+	.when {
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.codes {

@@ -351,6 +351,44 @@ paths:
         "204": { description: Off. }
         "422": { $ref: "#/components/responses/Validation" }
 
+  /api/v1/auth/sessions:
+    get:
+      tags: [auth]
+      summary: Where you are signed in.
+      description: |
+        Most recently used first. `id` is the stored hash of the cookie and never
+        the cookie itself — it cannot be pasted into a browser, and it is what the
+        delete below takes.
+
+        Session only: an API token cannot list the devices of the person it was
+        stolen from.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/Session" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/auth/sessions/{sessionID}:
+    parameters:
+      - { name: sessionID, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [auth]
+      summary: Sign one device out.
+      description: |
+        Ending the current session is allowed and is simply logging out —
+        somebody clearing every device wants this one gone too.
+      responses:
+        "204": { description: Ended. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/v1/auth/recovery-codes:
     get:
       tags: [auth]
@@ -2231,6 +2269,27 @@ components:
         recovery_codes:
           type: array
           items: { type: string }
+
+    Session:
+      type: object
+      properties:
+        id: { type: string }
+        current:
+          type: boolean
+          description: The one making this request.
+        device:
+          type: string
+          description: |
+            A summary of the user agent — "Chrome på macOS". A handful of
+            substring tests rather than a parsing library: the question it
+            answers is "is one of these me?", and the raw string is sent beside
+            it so anything the summary gets wrong is still visible.
+          example: Chrome på macOS
+        user_agent: { type: string }
+        ip: { type: string }
+        created_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
 
     Task:
       type: object

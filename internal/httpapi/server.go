@@ -151,6 +151,15 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Post("/totp/disable", s.handleTOTPDisable)
 				r.Get("/recovery-codes", s.handleRecoveryCodesCount)
 				r.Post("/recovery-codes", s.handleRecoveryCodesRegenerate)
+
+				// Behind requireSession, like the API tokens and for the same
+				// reason: a leaked token must not be able to end the sessions of
+				// the person it was stolen from, or list their devices.
+				r.Group(func(r chi.Router) {
+					r.Use(s.requireSession)
+					r.Get("/sessions", s.handleListSessions)
+					r.Delete("/sessions/{sessionID}", s.handleDeleteSession)
+				})
 			})
 		})
 

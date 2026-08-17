@@ -123,6 +123,23 @@ func (db *DB) DeleteSession(ctx context.Context, sessionID string) error {
 	return err
 }
 
+// DeleteUserSession ends one session, and only if it belongs to the caller.
+//
+// Scoped in the statement rather than checked first: an id read and then deleted
+// in two steps is a window, and the whole point of this call is that somebody is
+// using it because they think another person is in their account.
+func (db *DB) DeleteUserSession(ctx context.Context, sessionID, userID string) error {
+	res, err := db.ExecContext(ctx,
+		`DELETE FROM sessions WHERE id = ? AND user_id = ?`, sessionID, userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (db *DB) DeleteUserSessions(ctx context.Context, userID string) error {
 	_, err := db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, userID)
 	return err

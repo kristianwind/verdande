@@ -7,11 +7,7 @@ import { test as setup, expect } from '@playwright/test';
  * or the app shell is broken, nothing below runs and the failure names this file.
  */
 
-export const USER = {
-	name: 'Kristian',
-	email: 'test@example.dk',
-	password: 'et langt kodeord til test'
-};
+import { USER } from './user.js';
 
 const AUTH_FILE = 'e2e/.auth/user.json';
 

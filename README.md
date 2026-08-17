@@ -68,6 +68,8 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | Web interface: sign-in, views, quick add, ⌘K, shortcuts | Done |
 | Task detail: description, sub-tasks, comments, files, reminders | Done |
 | Settings: account, notifications, integrations, AI, tokens, data | Done |
+| Device list: where you are signed in, and signing one out | Done, tested |
+| Invite and password-reset links that open the right page | Done, smoke-tested |
 | Drag to reorder, in both the list and the board | Done |
 | Drag a task to another project or another day | Done, smoke-tested |
 | Foldable project groups in the sidebar | Done, tested |

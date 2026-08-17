@@ -761,3 +761,137 @@ func TestUnknownSessionTokenIsUnauthorized(t *testing.T) {
 		t.Errorf("status %d, want 401", resp.StatusCode)
 	}
 }
+
+// last_seen_at has been written on every request since sessions existed, for
+// exactly this list, and nothing read it. A session you cannot see is a session
+// you cannot end.
+func TestSessionsCanBeListedAndEnded(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	// A second sign-in from "another device": same account, its own cookie jar.
+	other := &testServer{Server: ts.Server, db: ts.db, client: newJarClient(t)}
+	resp, _ := other.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": "kristian@example.dk", "password": "et langt kodeord",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("second login: status %d", resp.StatusCode)
+	}
+
+	resp, body := ts.do(t, "GET", "/api/v1/auth/sessions", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list sessions: %d %v", resp.StatusCode, body)
+	}
+	sessions, _ := body["sessions"].([]any)
+	if len(sessions) != 2 {
+		t.Fatalf("want two sessions, got %v", sessions)
+	}
+
+	// Exactly one is this one, or the interface cannot tell somebody which row is
+	// the browser they are reading it in.
+	current := ""
+	for _, raw := range sessions {
+		s := raw.(map[string]any)
+		if s["current"] == true {
+			if current != "" {
+				t.Fatal("two sessions both claim to be the current one")
+			}
+			current = s["id"].(string)
+		}
+		if s["device"] == "" {
+			t.Errorf("no device summary: %v", s)
+		}
+		if s["last_seen_at"] == nil {
+			t.Errorf("no last_seen_at, which is the whole reason the column is written: %v", s)
+		}
+	}
+	if current == "" {
+		t.Fatal("none of the sessions is marked as the current one")
+	}
+
+	// End the other one.
+	var otherID string
+	for _, raw := range sessions {
+		if s := raw.(map[string]any); s["id"] != current {
+			otherID = s["id"].(string)
+		}
+	}
+	if resp, _ := ts.do(t, "DELETE", "/api/v1/auth/sessions/"+otherID, nil); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete session: status %d", resp.StatusCode)
+	}
+
+	// That device is signed out, and this one is not.
+	if r, _ := other.do(t, "GET", "/api/v1/auth/me", nil); r.StatusCode != http.StatusUnauthorized {
+		t.Errorf("the ended session still works: status %d", r.StatusCode)
+	}
+	if r, _ := ts.do(t, "GET", "/api/v1/auth/me", nil); r.StatusCode != http.StatusOK {
+		t.Errorf("ending another session logged this one out: status %d", r.StatusCode)
+	}
+}
+
+// Somebody else's session is not yours to end, even with its id in hand.
+func TestASessionCanOnlyBeEndedByItsOwner(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	other := ts.newUser(t, "anden@example.dk", "Anden")
+
+	_, body := ts.do(t, "GET", "/api/v1/auth/sessions", nil)
+	mine := body["sessions"].([]any)[0].(map[string]any)["id"].(string)
+
+	if resp, _ := other.do(t, "DELETE", "/api/v1/auth/sessions/"+mine, nil); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status %d, want 404", resp.StatusCode)
+	}
+	// And it still works.
+	if r, _ := ts.do(t, "GET", "/api/v1/auth/me", nil); r.StatusCode != http.StatusOK {
+		t.Errorf("somebody else ended my session: status %d", r.StatusCode)
+	}
+}
+
+// An API token is accepted almost everywhere, and must not be accepted here: a
+// leaked token that could end its owner's sessions, or even list their devices,
+// turns a theft into a lockout.
+func TestSessionsAreNotReachableWithAToken(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	user, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := ts.apiToken(t, user.ID)
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/v1/auth/sessions", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestUserAgentsAreSummarisedForAPerson(t *testing.T) {
+	cases := []struct {
+		ua   string
+		want string
+	}{
+		{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36", "Chrome på macOS"},
+		// An iPhone's user agent says Mac OS X too, so the order of the tests is
+		// the whole correctness of this function.
+		{"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", "Safari på iPhone"},
+		// And Edge claims to be Chrome, which claims to be Safari.
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36 Edg/131.0", "Edge på Windows"},
+		{"Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0", "Firefox på Linux"},
+		{"", "Ukendt enhed"},
+		// Not a browser at all. Its own name beats a word that says the server
+		// gave up: a CalDAV client is a real session.
+		{"curl/8.4.0", "curl/8.4.0"},
+	}
+	for _, c := range cases {
+		if got := describeUserAgent(c.ua); got != c.want {
+			t.Errorf("describeUserAgent(%q) = %q, want %q", c.ua, got, c.want)
+		}
+	}
+}
