@@ -179,3 +179,21 @@ test('manifestet og service workeren findes, og ikonerne findes også', async ({
 	expect(worker.ok()).toBeTruthy();
 	expect(await worker.text()).toContain("addEventListener('push'");
 });
+
+/**
+ * The MCP connector address must not fall through to the app shell.
+ *
+ * It did: `/mcp` was not a route, so the SPA fallback answered 200 with a page
+ * of HTML. A connector pointed at it reported a successful connection and then
+ * failed to parse the response — which looks like a broken client rather than a
+ * missing route. A 401 in JSON is the honest answer.
+ */
+test('MCP-adressen svarer JSON, ikke app-skallen', async ({ request }) => {
+	const response = await request.post('/mcp', {
+		data: { jsonrpc: '2.0', id: 1, method: 'initialize' }
+	});
+
+	expect(response.status(), 'uden nøgle skal den afvise, ikke servere siden').toBe(401);
+	expect(response.headers()['content-type']).toContain('application/json');
+	expect((await response.json()).code).toBe('unauthorized');
+});
