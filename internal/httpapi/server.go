@@ -348,7 +348,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	// The version travels with the health check because this is the one endpoint
+	// that answers without a session. "Which version is actually running?" is
+	// otherwise a question you cannot ask from outside — and after a deploy it is
+	// the first question there is.
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 }
 
 // serveWeb serves the PWA, falling back to index.html so that client-side routes
