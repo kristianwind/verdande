@@ -31,5 +31,12 @@ node_modules/
 /web/build/
 /web/.svelte-kit/
 
+# End-to-end runs: the throwaway instance the suite starts, the saved session it
+# signs in with, and whatever a failure left behind.
+/web/.playwright-data/
+/web/e2e/.auth/
+/web/test-results/
+/web/playwright-report/
+
 # Built documentation
 /site_build/
