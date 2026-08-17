@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -57,7 +58,8 @@ func (s *Server) buildMCP() *mcp.Server {
 		InputSchema: mcp.Schema(map[string]any{
 			"text":        mcp.Str("The task as a sentence, parsed for date, time, priority, #project, @label and recurrence."),
 			"content":     mcp.Str("The task title, if not using `text`."),
-			"project_id":  mcp.Str("Which project. Defaults to the Inbox."),
+			"project_id":  mcp.Str("Which project. Defaults to the Inbox. Naming a project that does not exist is not an error — the task goes to the Inbox and the answer says so."),
+			"parent_id":   mcp.Str("Make this a sub-task of that task. It joins the parent's project. One level deep."),
 			"due_date":    mcp.Str("A date as YYYY-MM-DD."),
 			"priority":    mcp.Int("1 (highest) to 4 (none)."),
 			"description": mcp.Str("Longer notes on the task."),
@@ -253,6 +255,7 @@ func (s *Server) mcpCreateTask(ctx context.Context, userID string, args json.Raw
 		Text        string   `json:"text"`
 		Content     string   `json:"content"`
 		ProjectID   string   `json:"project_id"`
+		ParentID    string   `json:"parent_id"`
 		DueDate     string   `json:"due_date"`
 		Priority    int      `json:"priority"`
 		Description string   `json:"description"`
@@ -268,6 +271,11 @@ func (s *Server) mcpCreateTask(ctx context.Context, userID string, args json.Raw
 	task := &store.Task{CreatedBy: userID, Priority: 4}
 	labels := params.Labels
 
+	// Reported below rather than swallowed. "#Dekoration" used to vanish from the
+	// title while the task went to the Inbox, with nothing anywhere saying so —
+	// invisible in a chat, where nobody sees the row that was written.
+	unknownProject := ""
+
 	if text := strings.TrimSpace(params.Text); text != "" {
 		parsed := quickadd.Parse(text, time.Now().In(userLocation(user.Timezone)), user.Locale)
 		task.Content = parsed.Content
@@ -280,6 +288,8 @@ func (s *Server) mcpCreateTask(ctx context.Context, userID string, args json.Raw
 		if parsed.Project != "" && params.ProjectID == "" {
 			if id, err := s.db.ProjectByName(ctx, userID, parsed.Project); err == nil {
 				task.ProjectID = id
+			} else {
+				unknownProject = parsed.Project
 			}
 		}
 	}
@@ -305,6 +315,23 @@ func (s *Server) mcpCreateTask(ctx context.Context, userID string, args json.Raw
 	if params.ProjectID != "" {
 		task.ProjectID = params.ProjectID
 	}
+
+	// A sub-task belongs to its parent's project, whatever else was asked for:
+	// the two cannot disagree, and the parent is the more specific instruction.
+	// Without this the tools could not build a tree at all — an import of a
+	// parent with seven children arrived as eight unrelated tasks.
+	if params.ParentID != "" {
+		parent, err := s.db.GetTask(ctx, params.ParentID, userID)
+		if err != nil {
+			return nil, mcp.ArgError("no task with id %q to hang this under", params.ParentID)
+		}
+		if parent.ParentID != "" {
+			return nil, mcp.ArgError("sub-tasks are one level deep; %q is already a sub-task", params.ParentID)
+		}
+		task.ParentID = parent.ID
+		task.ProjectID = parent.ProjectID
+	}
+
 	if task.ProjectID == "" {
 		if task.ProjectID, err = s.db.InboxID(ctx, userID); err != nil {
 			return nil, err
@@ -319,10 +346,23 @@ func (s *Server) mcpCreateTask(ctx context.Context, userID string, args json.Raw
 	}
 
 	s.hub.Publish(task.ProjectID, "task.created", toTaskJSON(*task))
-	return map[string]any{
+
+	out := map[string]any{
 		"id": task.ID, "content": task.Content, "priority": task.Priority,
 		"due_date": task.DueDate, "project_id": task.ProjectID,
-	}, nil
+	}
+	if task.ParentID != "" {
+		out["parent_id"] = task.ParentID
+	}
+	if unknownProject != "" {
+		// Phrased for a model to relay: it says what happened and what to do,
+		// so the person is told rather than left with a task in the wrong place.
+		out["note"] = fmt.Sprintf(
+			"There is no project called %q, so this went to the Inbox. "+
+				"Create the project and move it, or say which project you meant.",
+			unknownProject)
+	}
+	return out, nil
 }
 
 func (s *Server) mcpUpdateTask(ctx context.Context, userID string, args json.RawMessage) (any, error) {
@@ -364,8 +404,11 @@ func (s *Server) mcpUpdateTask(ctx context.Context, userID string, args json.Raw
 	if params.Labels != nil {
 		update.SetLabels, update.Labels = true, *params.Labels
 	}
+	// Moved before the field update, and through the same helper the REST handler
+	// uses. This used to check the caller's rights on the destination and then
+	// drop the argument, so the task never moved and the answer still said OK.
 	if params.ProjectID != nil {
-		if _, err := store.RequireProjectRole(ctx, s.db, *params.ProjectID, userID, store.RoleEditor); err != nil {
+		if err := s.moveTaskToProject(ctx, params.TaskID, *params.ProjectID, userID); err != nil {
 			return nil, mcp.ArgError("no project with id %q that you can write to", *params.ProjectID)
 		}
 	}
@@ -379,9 +422,13 @@ func (s *Server) mcpUpdateTask(ctx context.Context, userID string, args json.Raw
 	}
 	s.hub.Publish(task.ProjectID, "task.updated", toTaskJSON(*task))
 
+	// project_id is in the answer because it is one of the things that can be
+	// changed here: a caller that asked for a move can see whether it happened
+	// rather than taking "OK" on trust.
 	return map[string]any{
 		"id": task.ID, "content": task.Content, "priority": task.Priority,
 		"due_date": task.DueDate, "labels": task.Labels,
+		"project_id": task.ProjectID,
 	}, nil
 }
 

@@ -533,7 +533,11 @@ paths:
                   type: string
                   description: Where it goes when the text names no project.
       responses:
-        "201": { $ref: "#/components/responses/Task" }
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuickAddResult" }
         "422": { $ref: "#/components/responses/Validation" }
 
   /api/v1/tasks/quick-add/preview:
@@ -2135,7 +2139,12 @@ components:
     TaskInput:
       type: object
       properties:
-        project_id: { type: string, description: "Omitted on create, the task goes to the Inbox." }
+        project_id:
+          type: string
+          description: |
+            Omitted on create, the task goes to the Inbox. On update it moves the
+            task — which needs editor rights on the destination.
+
         section_id: { type: string }
         parent_id: { type: string }
         content: { type: string }
@@ -2150,6 +2159,19 @@ components:
           type: array
           items: { type: string }
         sort_order: { type: number }
+
+    QuickAddResult:
+      allOf:
+        - $ref: "#/components/schemas/Task"
+        - type: object
+          properties:
+            unknown_project:
+              type: string
+              description: |
+                Present when the text named a `#project` that does not exist. The
+                task is still created, in the Inbox — a thought is not thrown away
+                over a typo — but the caller is told, because the alternative is
+                that the name vanishes from the title and nothing says why.
 
     ParsedTask:
       type: object
