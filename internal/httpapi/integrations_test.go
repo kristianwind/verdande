@@ -771,3 +771,112 @@ func TestUpdateNoticeIsForAdministratorsOnly(t *testing.T) {
 		t.Error("the current version is hidden from members")
 	}
 }
+
+// --- MCP with the key in the URL --------------------------------------------------
+
+// Claude's custom-connector dialog takes a URL and nothing else — no bearer
+// token — so this is the only shape that can be configured from it.
+func TestMCPAcceptsAKeyInTheQuery(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	var userID string
+	err := ts.db.QueryRowContext(t.Context(), `SELECT id FROM users LIMIT 1`).Scan(&userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := ts.apiToken(t, userID)
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	resp, err := http.Post(ts.URL+"/mcp?key="+key, "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200", resp.StatusCode)
+	}
+	var decoded map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		t.Fatalf("the response was not JSON-RPC: %v", err)
+	}
+	result, _ := decoded["result"].(map[string]any)
+	if result == nil || result["protocolVersion"] == nil {
+		t.Errorf("no protocol version was announced: %v", decoded)
+	}
+}
+
+// The endpoint that broke it: /mcp used not to exist, so it fell through to the
+// SPA fallback and answered 200 with the app shell. A connector pointed at it
+// reported success and then failed to parse a page of HTML.
+func TestMCPWithoutAKeyIsNotTheAppShell(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	for _, url := range []string{ts.URL + "/mcp", ts.URL + "/mcp?key=not-a-verdande-token"} {
+		resp, err := http.Post(url, "application/json", strings.NewReader(`{"jsonrpc":"2.0","id":1}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s: status %d, want 401", url, resp.StatusCode)
+		}
+		if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+			t.Errorf("%s: content-type %q — a connector cannot read that", url, ct)
+		}
+	}
+}
+
+// A revoked key stops working, like any other.
+func TestMCPKeyStopsWorkingWhenRevoked(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	var userID string
+	if err := ts.db.QueryRowContext(t.Context(), `SELECT id FROM users LIMIT 1`).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	key := ts.apiToken(t, userID)
+
+	var id string
+	if err := ts.db.QueryRowContext(t.Context(), `SELECT id FROM api_tokens LIMIT 1`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.db.DeleteAPIToken(t.Context(), userID, id); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := http.Post(ts.URL+"/mcp?key="+key, "application/json",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("a revoked key still works: status %d", resp.StatusCode)
+	}
+}
+
+// The session cookie must NOT work here. This route sits outside the CSRF check,
+// so a cookie-authenticated POST would be a cross-site request that acts as
+// whoever is signed in — the exact hole the key-only rule exists to close.
+func TestMCPWithKeyIgnoresTheSessionCookie(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	// ts.client holds the session from bootstrap. No key in the URL.
+	resp, err := ts.client.Post(ts.URL+"/mcp", "application/json",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("a signed-in cookie authenticated a POST outside the CSRF check: status %d",
+			resp.StatusCode)
+	}
+}

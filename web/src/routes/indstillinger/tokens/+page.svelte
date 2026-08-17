@@ -20,6 +20,10 @@
 	/** The plaintext of the token just minted. Held only in this variable. */
 	let fresh = $state(null);
 	let copied = $state(false);
+	let connectorCopied = $state(false);
+
+	/** What Claude's connector dialog needs, which is a URL and nothing else. */
+	let connectorURL = $derived(fresh ? `${location.origin}/mcp?key=${fresh.token}` : '');
 
 	$effect(() => {
 		api
@@ -55,6 +59,15 @@
 		} catch {
 			// Insecure context, or permission refused. The token is on screen and
 			// selectable, so this is a convenience that failed, not the feature.
+			app.toast('Kunne ikke kopiere — markér teksten i stedet.');
+		}
+	}
+
+	async function copyConnector() {
+		try {
+			await navigator.clipboard.writeText(connectorURL);
+			connectorCopied = true;
+		} catch {
 			app.toast('Kunne ikke kopiere — markér teksten i stedet.');
 		}
 	}
@@ -99,6 +112,22 @@
 				<button class="primary" onclick={copy}>Kopiér</button>
 				{#if copied}<span class="saved">Kopieret.</span>{/if}
 				<button class="secondary" onclick={() => (fresh = null)}>Færdig</button>
+			</div>
+
+			<!-- Shown here and nowhere else, because it contains the token, and the
+			     token exists only in this moment. Claude's connector dialog takes a
+			     URL and nothing else — there is no field for a header — so this is
+			     the form it has to be in. -->
+			<div class="also">
+				<p class="hint">
+					Skal du bruge den som <a href="/indstillinger/integrationer">MCP-forbindelse</a>
+					i Claude? Så er det denne adresse, dialogen skal have:
+				</p>
+				<p class="mono value">{connectorURL}</p>
+				<div class="row">
+					<button class="secondary" onclick={copyConnector}>Kopiér adressen</button>
+					{#if connectorCopied}<span class="saved">Kopieret.</span>{/if}
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -192,6 +221,18 @@
 		border-radius: var(--radius);
 		overflow-wrap: anywhere;
 		user-select: all;
+	}
+
+	.also {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s2);
+		padding-top: var(--s3);
+		border-top: 1px solid var(--accent);
+	}
+
+	.also a {
+		color: inherit;
 	}
 
 	.what {
