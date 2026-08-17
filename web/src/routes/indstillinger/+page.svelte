@@ -1,7 +1,7 @@
 <script>
 	/** Konto: who you are, your password, and the second factor. */
 	import { api, humanMessage } from '$lib/api.js';
-	import { app } from '$lib/stores.svelte.js';
+	import { app, theme, THEMES } from '$lib/stores.svelte.js';
 
 	// --- profile ---------------------------------------------------------------
 
@@ -206,6 +206,39 @@
 
 <section class="panel">
 	<header>
+		<h2>Udseende</h2>
+		<p class="hint">
+			Gemmes i denne browser. Det er en egenskab ved den skærm, du sidder ved —
+			en bærbar i solen og en skærm i et mørkt rum vil have hvert sit svar.
+		</p>
+	</header>
+
+	<div class="themes">
+		{#each THEMES as option (option.id)}
+			<button
+				class="theme-card"
+				class:chosen={theme.current === option.id}
+				onclick={() => theme.set(option.id)}
+				aria-pressed={theme.current === option.id}
+			>
+				<!-- data-theme goes on the swatch and not on the card: it redefines
+				     --ink too, and a card wearing a dark theme's ink on a light page
+				     has a name nobody can read. The swatch shows the colours; the
+				     label stays in the page's. -->
+				<span class="swatch" data-theme={option.id} aria-hidden="true">
+					<span class="swatch-line"></span>
+					<span class="swatch-line short"></span>
+					<span class="swatch-dot"></span>
+				</span>
+				<span class="theme-name">{option.name}</span>
+				<span class="theme-note">{option.note}</span>
+			</button>
+		{/each}
+	</div>
+</section>
+
+<section class="panel">
+	<header>
 		<h2>Adgangskode</h2>
 		<p class="hint">
 			At skifte den logger alle andre sessioner ud — hvilket for det meste er
@@ -351,6 +384,82 @@
 		background: var(--surface-sunken);
 		border: 1px solid var(--line);
 		border-radius: var(--radius);
+	}
+
+	.themes {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+		gap: var(--s3);
+	}
+
+	.theme-card {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--s1);
+		padding: var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		text-align: left;
+		transition: border-color var(--fast) var(--ease);
+	}
+
+	.theme-card:hover {
+		border-color: var(--line-strong);
+	}
+
+	.theme-card.chosen {
+		border-color: var(--accent);
+		box-shadow: inset 0 0 0 1px var(--accent);
+	}
+
+	/* Painted in the card's own theme rather than the page's — that is the whole
+	   point of putting data-theme on the button. */
+	.swatch {
+		width: 100%;
+		height: 54px;
+		border-radius: var(--radius-sm);
+		background: var(--ground);
+		border: 1px solid var(--line);
+		padding: var(--s2);
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+		justify-content: center;
+		position: relative;
+		margin-bottom: var(--s1);
+	}
+
+	.swatch-line {
+		height: 5px;
+		width: 70%;
+		border-radius: var(--radius-full);
+		background: var(--ink-muted);
+	}
+
+	.swatch-line.short {
+		width: 45%;
+		background: var(--ink-faint);
+	}
+
+	.swatch-dot {
+		position: absolute;
+		right: var(--s2);
+		top: var(--s2);
+		width: 12px;
+		height: 12px;
+		border-radius: var(--radius-full);
+		background: var(--accent);
+	}
+
+	.theme-name {
+		font-size: var(--text-sm);
+		color: var(--ink);
+	}
+
+	.theme-note {
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
 	}
 
 	.secret {
