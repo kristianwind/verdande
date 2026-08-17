@@ -686,3 +686,78 @@ func mustHash(t *testing.T, password string) string {
 	}
 	return hash
 }
+
+// A database that cannot be read must not look like a failed login.
+//
+// authenticate() cannot tell the two apart on its own: both come back as an error
+// from the session lookup. Answering 401 for both means a disk problem presents as
+// every session ending at once — the frontend clears its state and shows the
+// sign-in screen to everybody — and the logs record a wave of failed logins rather
+// than the fault. Found by the end-to-end suite, where a deleted database file
+// turned into exactly that.
+func TestDatabaseFailureIsNotALogout(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	// Still signed in, and the session cookie is in the jar.
+	resp, _ := ts.do(t, "GET", "/api/v1/auth/me", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("me: status %d", resp.StatusCode)
+	}
+
+	// Pull the database out from under the server. Every query now fails with
+	// something that is not "no such session".
+	if err := ts.db.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	resp, body := ts.do(t, "GET", "/api/v1/auth/me", nil)
+	if resp.StatusCode == http.StatusUnauthorized {
+		t.Fatal("a broken database signed the user out instead of reporting a fault")
+	}
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500", resp.StatusCode)
+	}
+	if body["code"] != CodeInternal {
+		t.Errorf("code = %v, want %q", body["code"], CodeInternal)
+	}
+}
+
+// The other half of the same contract: no cookie at all is still a plain 401.
+func TestMissingCredentialsAreStillUnauthorized(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	anonymous := &testServer{Server: ts.Server, db: ts.db, client: newJarClient(t)}
+	resp, body := anonymous.do(t, "GET", "/api/v1/auth/me", nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status %d, want 401", resp.StatusCode)
+	}
+	if body["code"] != CodeUnauthorized {
+		t.Errorf("code = %v, want %q", body["code"], CodeUnauthorized)
+	}
+}
+
+// And a cookie that is not a session is a 401 too, not a 500 — an unknown token is
+// a wrong credential, which is the client's problem and not the server's.
+func TestUnknownSessionTokenIsUnauthorized(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	req, err := http.NewRequest("GET", ts.URL+"/api/v1/auth/me", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(&http.Cookie{Name: "verdande_session", Value: "ikke-en-rigtig-token"})
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status %d, want 401", resp.StatusCode)
+	}
+}
