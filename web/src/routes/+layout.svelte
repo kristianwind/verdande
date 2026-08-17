@@ -13,6 +13,16 @@
 	let paletteOpen = $state(false);
 	let sidebarOpen = $state(false);
 
+	/**
+	 * The two pages that arrive by email, and are for somebody who is not signed in.
+	 *
+	 * They render on their own rather than inside the shell or behind the sign-in
+	 * screen. Without this the invite link showed a login form to a person who had
+	 * no account yet, and the reset link showed one to a person who had forgotten
+	 * the password it was asking for.
+	 */
+	let standalone = $derived(['/invite', '/reset'].includes($page.url.pathname));
+
 	$effect(() => {
 		app.load();
 	});
@@ -63,6 +73,8 @@
 	<!-- Deliberately blank. A spinner for a request that resolves in 30ms is a
 	     flash of anxiety, not feedback. -->
 	<div class="booting"></div>
+{:else if standalone}
+	{@render children()}
 {:else if !app.user}
 	<SignIn />
 {:else}

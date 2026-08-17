@@ -362,6 +362,90 @@ test('en opgave kan trækkes til en anden dag og videre til et projekt', async (
 });
 
 /**
+ * An invite link creates the account it was sent to.
+ *
+ * The server has emailed this URL since invites were built and nothing rendered
+ * for it: the SPA fallback served the shell, the shell found no session, and the
+ * recipient got a plain sign-in form for an account that did not exist yet. A 200
+ * all the way down — the same shape as `/mcp` and `/.well-known/`, and invisible
+ * to every test that does not open the link.
+ *
+ * A second browser context, because the invitee is a different person: inheriting
+ * the signed-in session would test the one case that never happens.
+ */
+test('et invitationslink opretter kontoen og giver adgang til projektet', async ({
+	browser,
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Fælleshuset');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Fælleshuset' })).toBeVisible();
+
+	await page.getByRole('button', { name: 'Del' }).click();
+	await page.getByLabel('Inviter via e-mail').fill('nabo@example.dk');
+	await page.getByRole('button', { name: 'Inviter' }).click();
+
+	// With no mail server the link is shown rather than swallowed, which is also
+	// the only way this test can get hold of it.
+	const link = await page.locator('.link-out code').textContent();
+	expect(link).toContain('/invite?token=');
+
+	// Explicitly empty, because a context made through the `browser` fixture picks
+	// up the project's storageState — and an invitee who is already signed in as
+	// the person who sent the invite is the one case that never happens.
+	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const invitee = await context.newPage();
+	const inviteeTrouble = watchForTrouble(invitee);
+	await invitee.goto(link);
+
+	await expect(invitee.getByText('Du er inviteret')).toBeVisible();
+	await invitee.getByLabel('Navn').fill('Nabo');
+	await invitee.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
+	await invitee.getByRole('button', { name: 'Opret konto' }).click();
+
+	// Signed in, with the project they were invited to.
+	await expect(invitee.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+	await expect(
+		invitee.getByRole('navigation', { name: 'Hovedmenu' }).getByRole('link', { name: /Fælleshuset/ })
+	).toBeVisible();
+
+	// One failure here is not trouble: the page loads before the account exists, so
+	// the shell's first `me()` is answered 401. That 401 is how the signed-out
+	// screen appears at all.
+	expect(inviteeTrouble.filter((t) => t !== 'GET /api/v1/auth/me → 401')).toEqual([]);
+	await context.close();
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * The reset link renders its own form.
+ *
+ * The token is nonsense, so this stops at the form — which is the part that did
+ * not exist. "Glemt adgangskode?" has always sent a link to this address and the
+ * API has always accepted the token; what the link opened was the sign-in screen,
+ * asking for the password the person had just said they had forgotten.
+ */
+test('nulstillingslinket viser et felt til den nye adgangskode', async ({ browser }) => {
+	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const page = await context.newPage();
+
+	await page.goto('/reset?token=ugyldigt');
+	await expect(page.getByText('Vælg en ny adgangskode')).toBeVisible();
+
+	await page.getByLabel(/adgangskode/i).fill('et langt kodeord til test');
+	await page.getByRole('button', { name: 'Gem adgangskoden' }).click();
+
+	// And it says so rather than pretending: the token is not a real one.
+	await expect(page.getByRole('alert')).toBeVisible();
+	await context.close();
+});
+
+/**
  * The MCP connector address must not fall through to the app shell.
  *
  * It did: `/mcp` was not a route, so the SPA fallback answered 200 with a page
