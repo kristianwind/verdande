@@ -584,5 +584,12 @@ export const en = {
 	'view.showDone': 'Show done',
 	'view.hideDone': 'Hide done',
 
-	'task.moveFailed': 'The task could not be moved.'
+	'task.moveFailed': 'The task could not be moved.',
+
+	'push.updatesOff': 'Updates are not being checked for.',
+	'push.updateOut': '{version} is out.',
+	'push.upToDate': 'No newer version found.',
+
+	'view.nothingMoreToday': 'Nothing more today.',
+	'project.roleFor': 'Role for {name}'
 };

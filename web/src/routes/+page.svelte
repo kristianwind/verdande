@@ -76,7 +76,7 @@
 			     like finishing, not like something is missing. -->
 			<p class="clear">
 				<span class="rune" aria-hidden="true">ᚹ</span>
-				Ikke mere i dag.
+				{t('view.nothingMoreToday')}
 			</p>
 		{/if}
 	</section>

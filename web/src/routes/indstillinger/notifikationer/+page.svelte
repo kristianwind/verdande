@@ -174,11 +174,11 @@
 		<p class="hint">
 			{t('push.running')} <span class="mono">{version.current}</span>.
 			{#if version.disabled}
-				Der bliver ikke set efter opdateringer.
+				{t('push.updatesOff')}
 			{:else if version.update_available}
-				<strong>{version.latest} er ude.</strong>
+				<strong>{t('push.updateOut', { version: version.latest })}</strong>
 			{:else if version.checked_at}
-				Ingen nyere version fundet.
+				{t('push.upToDate')}
 			{/if}
 		</p>
 

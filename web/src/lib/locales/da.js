@@ -589,5 +589,12 @@ export const da = {
 	'view.showDone': 'Vis færdige',
 	'view.hideDone': 'Skjul færdige',
 
-	'task.moveFailed': 'Kunne ikke flytte opgaven.'
+	'task.moveFailed': 'Kunne ikke flytte opgaven.',
+
+	'push.updatesOff': 'Der bliver ikke set efter opdateringer.',
+	'push.updateOut': '{version} er ude.',
+	'push.upToDate': 'Ingen nyere version fundet.',
+
+	'view.nothingMoreToday': 'Ikke mere i dag.',
+	'project.roleFor': 'Rolle for {name}'
 };

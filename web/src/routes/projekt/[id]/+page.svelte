@@ -493,7 +493,7 @@
 								<select
 									class="role-picker"
 									value={member.role}
-									aria-label="Rolle for {member.name}"
+									aria-label={t('project.roleFor', { name: member.name })}
 									onchange={(e) => setMemberRole(member, e.currentTarget.value)}
 								>
 									<option value="editor">{ROLES.editor}</option>

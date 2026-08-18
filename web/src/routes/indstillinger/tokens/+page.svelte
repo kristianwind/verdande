@@ -104,8 +104,8 @@
 	{#if fresh}
 		<div class="fresh">
 			<p class="hint">
-				<strong>{t('tokens.copyNow')}</strong> Den vises kun denne ene gang — serveren har
-				kun dens hash.
+				<strong>{t('tokens.copyNow')}</strong>
+				{t('tokens.onceOnly')}
 			</p>
 			<p class="mono value">{fresh.token}</p>
 			<div class="row">
