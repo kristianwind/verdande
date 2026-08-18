@@ -3,7 +3,7 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { page } from '$app/stores';
-	import { t } from '$lib/i18n.svelte.js';
+	import { t, plural } from '$lib/i18n.svelte.js';
 
 	// --- Gmail ------------------------------------------------------------------
 
@@ -115,7 +115,9 @@
 		try {
 			const result = await api.syncGmail();
 			app.toast(
-				result?.created ? `${result.created} opgave(r) hentet.` : 'Ingen nye beskeder.'
+				result?.created
+					? plural(result.created, 'int.gmailFetchedOne', 'int.gmailFetchedMany')
+					: t('int.gmailNothingNew')
 			);
 		} catch (e) {
 			app.toast(humanMessage(e));

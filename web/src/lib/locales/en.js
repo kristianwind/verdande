@@ -493,6 +493,9 @@ export const en = {
 	'int.server': 'Server',
 	'int.caldavAuth':
 		'The username is your email. The password is an API token — not your real password.',
+	'int.gmailFetchedOne': '{n} task fetched.',
+	'int.gmailFetchedMany': '{n} tasks fetched.',
+	'int.gmailNothingNew': 'No new messages.',
 	'int.gmailConnected': 'Gmail is connected.',
 	'int.gmailState': 'Google’s reply did not match the attempt that started here. Try again.',
 	'int.gmailExpired': 'The attempt expired on the way. Try again.',

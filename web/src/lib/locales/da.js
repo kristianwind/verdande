@@ -497,6 +497,9 @@ export const da = {
 	'int.server': 'Server',
 	'int.caldavAuth':
 		'Brugernavn er din e-mail. Adgangskoden er en API-token — ikke din rigtige adgangskode.',
+	'int.gmailFetchedOne': '{n} opgave hentet.',
+	'int.gmailFetchedMany': '{n} opgaver hentet.',
+	'int.gmailNothingNew': 'Ingen nye beskeder.',
 	'int.gmailConnected': 'Gmail er forbundet.',
 	'int.gmailState':
 		'Svaret fra Google passede ikke til det forsøg, der blev startet her. Prøv igen.',

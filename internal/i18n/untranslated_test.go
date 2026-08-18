@@ -28,11 +28,13 @@ import (
 // the app, which is the worst possible set to leave in one language, because it is
 // the text somebody reads in the half-second before they agree to lose something.
 func TestNoDanishProseInDialogsAndToasts(t *testing.T) {
-	// The argument of one of the three, quoted or backticked. Deliberately narrow:
-	// a general scan of every string literal in a Svelte script block would drown
-	// in class names, keys and query fragments.
-	call := regexp.MustCompile(`(?:confirm|alert|app\.toast)\(\s*['` + "`" + `]([^'` + "`" + `]{4,})['` + "`" + `]`)
-	danish := regexp.MustCompile(`(?i)\b(og|er|ikke|det|den|der|til|kan|som|har|med|af|en|et|du|din|dine|vises|ingen|nyere|fundet|ude|valgt|slettet|gemt|opgave|projekt|indstillinger|fjern|opret|vælg|luk|tilføj|ryd|gem|slet|omdøb|bliver|holder|alle)\b`)
+	// Every string literal in the argument list of one of the three, not just one
+	// sitting flush against the paren. A toast written as a ternary over two lines
+	// hid Danish from the earlier version of this guard for a whole release.
+	// Deliberately still narrow: a general scan of every literal in a script block
+	// would drown in class names, keys and query fragments.
+	call := regexp.MustCompile(`(?:confirm|alert|app\.toast)\(`)
+	danish := regexp.MustCompile(`(?i)\b(og|er|ikke|det|den|der|til|kan|som|har|med|af|en|et|du|din|dine|vises|ingen|nyere|fundet|ude|valgt|slettet|gemt|gemmes|hentet|hentes|beskeder|opgave|opgaver|projekt|indstillinger|fjern|opret|vælg|luk|tilføj|ryd|gem|slet|omdøb|bliver|holder|alle)\b`)
 
 	var found []string
 	root := filepath.Join("..", "..", "web", "src")
@@ -51,9 +53,12 @@ func TestNoDanishProseInDialogsAndToasts(t *testing.T) {
 			return err
 		}
 		rel, _ := filepath.Rel(root, path)
-		for _, m := range call.FindAllStringSubmatch(string(body), -1) {
-			if danish.MatchString(m[1]) {
-				found = append(found, rel+": "+m[1])
+		src := string(body)
+		for _, loc := range call.FindAllStringIndex(src, -1) {
+			for _, lit := range literalsInCall(src[loc[1]:]) {
+				if danish.MatchString(lit) {
+					found = append(found, rel+": "+lit)
+				}
 			}
 		}
 		return nil
@@ -68,6 +73,34 @@ func TestNoDanishProseInDialogsAndToasts(t *testing.T) {
 			"English interface shows them in Danish:\n  %s",
 			len(found), strings.Join(found, "\n  "))
 	}
+}
+
+// literalsInCall returns the string literals in one argument list, given the text
+// just past its opening paren. It stops at the matching close paren so the next
+// statement's strings are somebody else's problem.
+func literalsInCall(src string) []string {
+	var out []string
+	depth := 1
+	for i := 0; i < len(src); i++ {
+		switch c := src[i]; c {
+		case '(':
+			depth++
+		case ')':
+			if depth--; depth == 0 {
+				return out
+			}
+		case '\'', '"', '`':
+			end := strings.IndexByte(src[i+1:], c)
+			if end < 0 {
+				return out
+			}
+			if lit := src[i+1 : i+1+end]; len(lit) >= 4 {
+				out = append(out, lit)
+			}
+			i += end + 1
+		}
+	}
+	return out
 }
 
 func TestNoDanishProseOutsideTheDictionaries(t *testing.T) {
