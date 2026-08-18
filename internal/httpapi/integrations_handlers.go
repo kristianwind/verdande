@@ -288,7 +288,7 @@ func (s *Server) handleAISplit(w http.ResponseWriter, r *http.Request) {
 	subtasks, err := ai.New(cfg).SplitIntoSubtasks(ctx, task.Content, task.Description, user.Locale)
 	if err != nil {
 		s.log.Warn("ai split", "err", err)
-		writeError(w, http.StatusBadGateway, CodeInternal, err.Error())
+		writeError(w, StatusUpstreamRefused, CodeInternal, err.Error())
 		return
 	}
 
@@ -352,7 +352,7 @@ func (s *Server) handleAISummary(w http.ResponseWriter, r *http.Request) {
 	summary, err := ai.New(cfg).WeeklySummary(ctx, lines, user.Locale)
 	if err != nil {
 		s.log.Warn("ai summary", "err", err)
-		writeError(w, http.StatusBadGateway, CodeInternal, err.Error())
+		writeError(w, StatusUpstreamRefused, CodeInternal, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"summary": summary})

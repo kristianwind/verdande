@@ -45,7 +45,7 @@ func TestAGmailFailureSaysWhatGmailSaidAndIsRecorded(t *testing.T) {
 	}
 
 	resp, body := ts.do(t, "POST", "/api/v1/gmail/sync", nil)
-	if resp.StatusCode != http.StatusBadGateway {
+	if resp.StatusCode != StatusUpstreamRefused {
 		t.Fatalf("sync: status %d, want 502 — this is Gmail saying no, not this server breaking",
 			resp.StatusCode)
 	}
@@ -68,7 +68,7 @@ func TestAGmailFailureSaysWhatGmailSaidAndIsRecorded(t *testing.T) {
 	if row["what"] != "sync gmail" {
 		t.Errorf("what = %v, want \"sync gmail\"", row["what"])
 	}
-	if row["status"] != float64(http.StatusBadGateway) {
+	if row["status"] != float64(StatusUpstreamRefused) {
 		t.Errorf("status = %v, want 502", row["status"])
 	}
 }
@@ -143,7 +143,7 @@ func TestASlowMailboxDoesNotHangTheRequest(t *testing.T) {
 		t.Errorf("the sync took %s; the budget is not being applied",
 			took.Round(time.Second))
 	}
-	if resp.StatusCode >= 500 && resp.StatusCode != http.StatusBadGateway {
+	if resp.StatusCode >= 500 && resp.StatusCode != StatusUpstreamRefused {
 		t.Errorf("status %d — a slow mailbox is not this server breaking", resp.StatusCode)
 	}
 	t.Logf("came back in %s with %d", took.Round(time.Millisecond), resp.StatusCode)

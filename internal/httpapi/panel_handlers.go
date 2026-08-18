@@ -96,7 +96,7 @@ func (s *Server) handleRestartFromPanel(w http.ResponseWriter, r *http.Request) 
 
 	if resp.StatusCode >= 400 {
 		s.log.Error("panel refused the restart", "status", resp.StatusCode)
-		writeError(w, http.StatusBadGateway, CodeInternal,
+		writeError(w, StatusUpstreamRefused, CodeInternal,
 			fmt.Sprintf("the panel refused: HTTP %d — check VERDANDE_PANEL_TOKEN has control of this server", resp.StatusCode))
 		return
 	}

@@ -68,7 +68,7 @@ func TestAPanelThatRefusesSaysSoAsJSON(t *testing.T) {
 	ts.bootstrap(t)
 
 	resp, body := ts.do(t, "POST", "/api/v1/panel/restart", nil)
-	if resp.StatusCode != http.StatusBadGateway {
+	if resp.StatusCode != StatusUpstreamRefused {
 		t.Errorf("status %d, want 502: %s", resp.StatusCode, body)
 	}
 	if msg, _ := body["error"].(string); !strings.Contains(msg, "403") {

@@ -585,6 +585,15 @@ func inboxName(locale string) string {
 // sync that has been failing for a week is invisible otherwise. The background job
 // writes a log line the next restart erases, and nobody is watching the one screen
 // that would have said so.
+// StatusUpstreamRefused is what this server answers when a service it depends on
+// says no. Not 502, though that is what it means: a proxy is entitled to replace
+// the body of an origin 5xx with a page of its own, and Cloudflare does. That
+// swallowed every explanation this server produced — "gmail: 403 Forbidden",
+// "the panel refused: HTTP 401" — and left the interface with nothing to show but
+// "something went wrong". A 4xx passes through untouched, and the truth reaching
+// the person who has to act on it beats the tidier status code.
+const StatusUpstreamRefused = http.StatusUnprocessableEntity
+
 func (s *Server) upstream(w http.ResponseWriter, r *http.Request, code, what string, err error) {
 	s.log.Warn(what, "err", err)
 
@@ -593,12 +602,12 @@ func (s *Server) upstream(w http.ResponseWriter, r *http.Request, code, what str
 		userID = u.ID
 	}
 	s.db.RecordError(r.Context(), store.ServerError{
-		Method: r.Method, Path: r.URL.Path, Status: http.StatusBadGateway,
+		Method: r.Method, Path: r.URL.Path, Status: StatusUpstreamRefused,
 		What: what, Message: err.Error(), UserID: userID,
 		RequestID: middleware.GetReqID(r.Context()),
 	})
 
-	writeError(w, http.StatusBadGateway, code, err.Error())
+	writeError(w, StatusUpstreamRefused, code, err.Error())
 }
 
 func (s *Server) internal(w http.ResponseWriter, r *http.Request, what string, err error) {
