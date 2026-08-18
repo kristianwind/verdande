@@ -1337,6 +1337,62 @@ test('projektets navn brydes ikke midt i et ord', async ({ page }) => {
 });
 
 /**
+ * A task can be written straight into a section, two ways.
+ *
+ * The box at the top of the page puts things in the project with no section, which
+ * is right for capturing — but a project has sections because the work belongs
+ * somewhere, and dragging every new task down into the right one is a second
+ * gesture for something you already knew when you typed it.
+ *
+ * The field at the foot of a section passes the section it sits in. The sigil is
+ * for the box at the top, and for Today and Upcoming, where you are not standing
+ * in a section at all.
+ */
+test('en opgave kan skrives direkte i en sektion @forms', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Risteriet');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Risteriet' })).toBeVisible();
+
+	// A section whose name contains the sigil, because that is the one that would
+	// break: the bare form has to be greedy enough to swallow the whole name.
+	await page.getByRole('button', { name: '+ Tilføj sektion' }).click();
+	await page.getByLabel('Ny sektion').fill('Kunder/Ordrer');
+	await page.getByLabel('Ny sektion').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Kunder/Ordrer' })).toBeVisible();
+
+	const section = page.locator('section').filter({
+		has: page.getByRole('heading', { name: 'Kunder/Ordrer' })
+	});
+
+	// The field at the foot of the section. No sigil — standing there is enough.
+	await section.getByRole('button', { name: '+ Tilføj opgave' }).click();
+	const field = page.getByLabel('Ny opgave i Kunder/Ordrer');
+	await field.fill('Karpenhøj bestilling i morgen p1');
+	await field.press('Enter');
+
+	const landed = section.locator('.row').filter({ hasText: 'Karpenhøj bestilling' });
+	await expect(landed).toBeVisible();
+	// It went through quick add, so the date and the priority were read as well.
+	await expect(landed.getByText('I morgen')).toBeVisible();
+
+	// And the sigil, from the box at the top, which is not standing anywhere.
+	await page.getByLabel('Ny opgave').fill('nye poser /Kunder/Ordrer');
+	await page.getByLabel('Ny opgave').press('Enter');
+	await expect(section.locator('.row').filter({ hasText: 'nye poser' })).toBeVisible();
+	// The sigil is consumed, not left in the title.
+	await expect(section.getByText('/Kunder/Ordrer')).toHaveCount(0);
+
+	await expect(section.locator('.row')).toHaveCount(2);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * The sidebar never scrolls sideways.
  *
  * It grew a horizontal scrollbar on an ordinary desktop, under the whole menu.

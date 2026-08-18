@@ -475,6 +475,10 @@ type quickAddRequest struct {
 	// ProjectID is the view the user was looking at. A "#project" in the text
 	// wins over it: what somebody typed beats where they happened to be standing.
 	ProjectID string `json:"project_id,omitempty"`
+	// SectionID is the section the box was opened in, for the field that sits at
+	// the foot of one. Same rule as the project: a "/section" in the text wins,
+	// because typing it is a choice and standing there is a circumstance.
+	SectionID string `json:"section_id,omitempty"`
 }
 
 func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
@@ -518,9 +522,31 @@ func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolved after the project, because a section belongs to one project and the
+	// same name can exist in several. A name that matches nothing is reported the
+	// same way an unknown project is: the task is still created, in the project
+	// without a section, and the caller is told which word did not land.
+	sectionID, unknownSection := "", ""
+	// The section the box belongs to, unless the text names one. Checked against
+	// the project the task actually landed in, so a "#project" that moved it
+	// elsewhere cannot drag a section id from another project along with it.
+	if req.SectionID != "" {
+		if belongs, err := s.db.SectionInProject(r.Context(), req.SectionID, projectID); err == nil && belongs {
+			sectionID = req.SectionID
+		}
+	}
+	if parsed.Section != "" {
+		if id, err := s.db.SectionByName(r.Context(), projectID, parsed.Section); err == nil {
+			sectionID = id
+		} else {
+			unknownSection = parsed.Section
+		}
+	}
+
 	t := &store.Task{
-		ProjectID: projectID, Content: parsed.Content, Priority: parsed.Priority,
-		CreatedBy: user.ID, DueDate: parsed.DueDate, RecurrenceRule: parsed.Recurrence,
+		ProjectID: projectID, SectionID: sectionID, Content: parsed.Content,
+		Priority: parsed.Priority, CreatedBy: user.ID, DueDate: parsed.DueDate,
+		RecurrenceRule: parsed.Recurrence,
 	}
 	if parsed.DueDate != "" {
 		_, when, err := resolveDue(parsed.DueDate, parsed.DueTime, user.Timezone)
@@ -537,13 +563,14 @@ func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
 	s.activity(r, t.ProjectID, t.ID, "task.created", map[string]any{"content": t.Content})
 	s.publish(t.ProjectID, "task.created", toTaskJSON(*t))
 
-	if unknownProject != "" {
+	if unknownProject != "" || unknownSection != "" {
 		// Alongside the task rather than instead of it: the task was created, and
 		// this says what could not be honoured while creating it.
 		writeJSON(w, http.StatusCreated, struct {
 			taskJSON
-			UnknownProject string `json:"unknown_project"`
-		}{toTaskJSON(*t), unknownProject})
+			UnknownProject string `json:"unknown_project,omitempty"`
+			UnknownSection string `json:"unknown_section,omitempty"`
+		}{toTaskJSON(*t), unknownProject, unknownSection})
 		return
 	}
 	writeJSON(w, http.StatusCreated, toTaskJSON(*t))

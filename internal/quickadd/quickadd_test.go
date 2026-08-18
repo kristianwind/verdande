@@ -560,3 +560,46 @@ func TestRecurrenceIsHighlighted(t *testing.T) {
 		t.Error("no span of kind repeat")
 	}
 }
+
+// A section, and the three shapes a slash takes in ordinary text.
+//
+// The sigil is the one that needed thinking about: '#' and '@' never occur in a
+// Danish task line by accident, and '/' occurs constantly. What keeps it apart is
+// that the slash must follow whitespace and the name must follow the slash with
+// nothing in between — which "km/t", "3/4" and "20 kr / stk" all fail.
+func TestASectionIsWrittenWithASlash(t *testing.T) {
+	for _, c := range []struct {
+		in      string
+		section string
+		content string
+	}{
+		{"ring til Karpenhøj /Produktion", "Produktion", "ring til Karpenhøj"},
+		{"/Produktion ring til Karpenhøj", "Produktion", "ring til Karpenhøj"},
+		// A real section name with a slash in it. The bare form is greedy, so the
+		// whole thing comes across rather than stopping at the second slash.
+		{"nye poser /Kunder/Ordrer", "Kunder/Ordrer", "nye poser"},
+		{`nye poser /"Kunder og ordrer"`, "Kunder og ordrer", "nye poser"},
+		// Retyping is a correction, not two sections.
+		{"nye poser /Drift /Produktion", "Produktion", "nye poser"},
+		// And alongside everything else.
+		{"betal moms i morgen kl 10 p1 #Firma /Bogholderi", "Bogholderi", "betal moms"},
+
+		// The ways a slash shows up when nobody meant a section. None of them may
+		// produce one: the slash has to follow whitespace, and the name has to
+		// follow the slash with nothing between.
+		{"kør 80 km/t forbi", "", "kør 80 km/t forbi"},
+		{"20 kr / stk hos grossisten", "", "20 kr / stk hos grossisten"},
+		// "3/4" is a section to nobody and a date to a Dane — the 3rd of April —
+		// and the date parser is right to claim it. What matters here is only that
+		// it did not become a section.
+		{"læs 3/4 af rapporten", "", "læs af rapporten"},
+	} {
+		got := Parse(c.in, ref(t), "da")
+		if got.Section != c.section {
+			t.Errorf("Parse(%q).Section = %q, want %q", c.in, got.Section, c.section)
+		}
+		if got.Content != c.content {
+			t.Errorf("Parse(%q).Content = %q, want %q", c.in, got.Content, c.content)
+		}
+	}
+}

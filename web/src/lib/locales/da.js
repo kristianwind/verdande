@@ -601,5 +601,9 @@ export const da = {
 	'project.more': 'Flere handlinger',
 	'project.removeMember': 'Fjern {name}',
 
-	'nav.closeMenu': 'Luk menu'
+	'nav.closeMenu': 'Luk menu',
+
+	'view.addTask': '+ Tilføj opgave',
+	'view.addTaskHere': 'Skriv en opgave — dato, p1 og @etiket virker her også',
+	'view.addTaskIn': 'Ny opgave i {name}'
 };

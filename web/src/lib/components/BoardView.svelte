@@ -28,6 +28,23 @@
 	let adding = $state(false);
 	let name = $state('');
 
+	/** Same as the list view's: through quick add, so a date or a p1 still parses. */
+	let addingIn = $state(null);
+	let newInSection = $state('');
+
+	async function addToSection(event, sectionId) {
+		event.preventDefault();
+		const text = newInSection.trim();
+		if (!text) return;
+		newInSection = '';
+		addingIn = null;
+		try {
+			app.upsert(await api.quickAdd(text, project.id, sectionId));
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
 	async function addSection(event) {
 		event.preventDefault();
 		const trimmed = name.trim();
@@ -147,6 +164,35 @@
 					<p class="empty">{t('view.emptySection')}</p>
 				{/if}
 			</div>
+
+			<!-- At the foot of the column, where the next card would go. A board's
+			     columns *are* the sections, so this is the one place where "add a
+			     task here" needs no explanation at all. -->
+			{#if canEdit}
+				<!-- `column`, which is what the each binds. The unsectioned column has
+				     an empty id, and that is exactly what quick add wants for "in this
+				     project, no section". -->
+				{#if addingIn === column.id}
+					<form class="add-task" onsubmit={(e) => addToSection(e, column.id)}>
+						<input
+							bind:value={newInSection}
+							use:focusOnMount
+							placeholder={t('view.addTaskHere')}
+							aria-label={t('view.addTaskIn', { name: column.name })}
+							onblur={() => !newInSection.trim() && (addingIn = null)}
+							onkeydown={(e) => e.key === 'Escape' && (addingIn = null)}
+						/>
+					</form>
+				{:else}
+					<button
+						class="add-task-open"
+						onclick={() => {
+							addingIn = column.id;
+							newInSection = '';
+						}}>{t('view.addTask')}</button
+					>
+				{/if}
+			{/if}
 		</section>
 	{/each}
 
@@ -303,6 +349,36 @@
 
 	.card :global(.row:hover) {
 		background: transparent;
+	}
+
+	.add-task-open {
+		align-self: flex-start;
+		padding: var(--s2);
+		font-size: var(--text-sm);
+		color: var(--ink-faint);
+		opacity: 0;
+		transition: opacity var(--fast) var(--ease);
+	}
+
+	.column:hover .add-task-open,
+	.add-task-open:focus-visible {
+		opacity: 1;
+	}
+
+	.add-task-open:hover {
+		color: var(--ink-muted);
+	}
+
+	.add-task input {
+		width: 100%;
+		padding: var(--s2);
+		background: var(--ground);
+		border: 1px solid var(--accent);
+		border-radius: var(--radius);
+		font: inherit;
+		font-size: var(--text-sm);
+		color: var(--ink);
+		outline: none;
 	}
 
 	.empty {

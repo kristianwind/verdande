@@ -630,3 +630,36 @@ func (db *DB) ReorderProjects(ctx context.Context, userID string, ids []string) 
 		return nil
 	})
 }
+
+// SectionByName resolves a "/name" from quick add within one project.
+//
+// Case-insensitive, and scoped to the project the task is landing in — a section
+// belongs to exactly one project, so the name cannot be looked up before that is
+// decided. Two projects may both have a "Produktion" and they are different
+// sections; asking without the project would be asking the wrong question.
+func (db *DB) SectionByName(ctx context.Context, projectID, name string) (string, error) {
+	var id string
+	err := db.QueryRowContext(ctx, `
+		SELECT id FROM sections
+		WHERE project_id = ? AND lower(name) = lower(?) AND deleted_at IS NULL
+		ORDER BY sort_order
+		LIMIT 1`, projectID, name).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return id, err
+}
+
+// SectionInProject reports whether a section id belongs to the given project.
+//
+// Quick add takes a section id from the client — the field at the foot of a
+// section passes the one it sits in — and a "#project" in the same line can move
+// the task somewhere else entirely. Without this the id would follow it, and the
+// task would land in a section belonging to a project it is not in.
+func (db *DB) SectionInProject(ctx context.Context, sectionID, projectID string) (bool, error) {
+	var n int
+	err := db.QueryRowContext(ctx,
+		`SELECT count(*) FROM sections WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
+		sectionID, projectID).Scan(&n)
+	return n == 1, err
+}

@@ -277,6 +277,36 @@
 	let renamingSection = $state(null);
 	let sectionName = $state('');
 
+	/**
+	 * A task written straight into a section.
+	 *
+	 * The quick-add box at the top of the page puts things in the project with no
+	 * section, which is right for "capture it now" — but a project with sections has
+	 * them because the work belongs somewhere, and dragging every new task down into
+	 * the right one is a second gesture for something you already knew when you
+	 * typed it.
+	 *
+	 * It goes through quick add rather than createTask, so a line written here still
+	 * parses its dates, priorities and labels. The section is passed rather than
+	 * written, so `/Produktion` is not needed when you are already standing in it.
+	 */
+	let addingIn = $state(null);
+	let newInSection = $state('');
+
+	async function addToSection(event, sectionId) {
+		event.preventDefault();
+		const text = newInSection.trim();
+		if (!text) return;
+		newInSection = '';
+		addingIn = null;
+		try {
+			const created = await api.quickAdd(text, project.id, sectionId);
+			app.upsert(created);
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
 	async function addSection(event) {
 		event.preventDefault();
 		const name = sectionName.trim();
@@ -683,6 +713,29 @@
 					<TaskList {tasks} projectId={project.id} sectionId={section.id} {canEdit} />
 					{#if !tasks.length}
 						<p class="empty">{t('view.emptySection')}</p>
+					{/if}
+
+					{#if canEdit}
+						{#if addingIn === section.id}
+							<form class="add-task" onsubmit={(e) => addToSection(e, section.id)}>
+								<input
+									bind:value={newInSection}
+									use:focusOnMount
+									placeholder={t('view.addTaskHere')}
+									aria-label={t('view.addTaskIn', { name: section.name })}
+									onblur={() => !newInSection.trim() && (addingIn = null)}
+									onkeydown={(e) => e.key === 'Escape' && (addingIn = null)}
+								/>
+							</form>
+						{:else}
+							<button
+								class="add-task-open"
+								onclick={() => {
+									addingIn = section.id;
+									newInSection = '';
+								}}>{t('view.addTask')}</button
+							>
+						{/if}
 					{/if}
 				</section>
 			{/each}
@@ -1265,6 +1318,38 @@
 	.section-head input:focus,
 	.add-section input:focus {
 		border-color: var(--accent);
+	}
+
+	/* Quiet until wanted. A section that is not being added to should read as a
+	   heading and its rows, not as a form. */
+	.add-task-open {
+		align-self: flex-start;
+		padding: var(--s2) 0 var(--s2) var(--s2);
+		font-size: var(--text-sm);
+		color: var(--ink-faint);
+		opacity: 0;
+		transition: opacity var(--fast) var(--ease);
+	}
+
+	section:hover .add-task-open,
+	.add-task-open:focus-visible {
+		opacity: 1;
+	}
+
+	.add-task-open:hover {
+		color: var(--ink-muted);
+	}
+
+	.add-task input {
+		width: 100%;
+		padding: var(--s2);
+		background: transparent;
+		border: 0;
+		border-bottom: 1px solid var(--accent);
+		font: inherit;
+		font-size: var(--text-sm);
+		color: var(--ink);
+		outline: none;
 	}
 
 	.add-section {

@@ -596,5 +596,9 @@ export const en = {
 	'project.more': 'More actions',
 	'project.removeMember': 'Remove {name}',
 
-	'nav.closeMenu': 'Close menu'
+	'nav.closeMenu': 'Close menu',
+
+	'view.addTask': '+ Add a task',
+	'view.addTaskHere': 'Write a task — a date, p1 and @label work here too',
+	'view.addTaskIn': 'New task in {name}'
 };

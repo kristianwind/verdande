@@ -267,7 +267,8 @@ export const api = {
 	reopenTask: (id) => post(`/tasks/${id}/reopen`),
 	moveTask: (id, data) => post(`/tasks/${id}/move`, data),
 
-	quickAdd: (text, projectId) => post('/tasks/quick-add', { text, project_id: projectId }),
+	quickAdd: (text, projectId, sectionId) =>
+		post('/tasks/quick-add', { text, project_id: projectId, section_id: sectionId }),
 	quickAddPreview: (text, signal) =>
 		get(`/tasks/quick-add/preview?text=${encodeURIComponent(text)}`, { signal }),
 

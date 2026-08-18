@@ -34,6 +34,7 @@ const (
 	KindTime     Kind = "time"
 	KindPriority Kind = "priority"
 	KindProject  Kind = "project"
+	KindSection  Kind = "section"
 	KindLabel    Kind = "label"
 	KindRepeat   Kind = "repeat"
 )
@@ -52,7 +53,11 @@ type Result struct {
 	Content string `json:"content"`
 	// Project is the name written after '#', not an id: the caller resolves it
 	// against the user's projects and decides what to do when it matches nothing.
-	Project string   `json:"project,omitempty"`
+	Project string `json:"project,omitempty"`
+	// Section is the name written after '/', resolved by the caller against the
+	// sections of whichever project the task lands in. A section belongs to one
+	// project, so it cannot be looked up until the project is known.
+	Section string   `json:"section,omitempty"`
 	Labels  []string `json:"labels,omitempty"`
 	// Priority is 1 (highest) to 4. 4 is both the default and "none stated".
 	Priority int `json:"priority"`
@@ -81,6 +86,7 @@ func Parse(input string, now time.Time, locale string) Result {
 	// Sigils first. '#' and '@' are unambiguous, and consuming them stops a project
 	// called "Fredag" from later being read as a weekday.
 	res.Project, spans = extractProject(input, spans)
+	res.Section, spans = extractSection(input, spans)
 	res.Labels, spans = extractLabels(input, spans)
 	res.Priority, spans = extractPriority(input, spans)
 
@@ -144,6 +150,16 @@ func Parse(input string, now time.Time, locale string) Result {
 var (
 	reProject = regexp.MustCompile(`(?:^|\s)#(?:"([^"]+)"|([\p{L}\p{N}_/-]+))`)
 	reLabel   = regexp.MustCompile(`(?:^|\s)@(?:"([^"]+)"|([\p{L}\p{N}_/-]+))`)
+	// A section, written '/Produktion' or '/"Kunder og ordrer"'.
+	//
+	// The name may itself contain a slash — "Kunder/Ordrer" is a real section
+	// name — so the bare form is greedy and swallows the lot.
+	//
+	// The leading `(?:^|\s)` is what keeps this out of ordinary text. A slash
+	// inside a word never matches, so "km/t" and "3/4" are safe, and the name has
+	// to start immediately after the slash, so "20 kr / stk" is safe too. Those
+	// three are the shapes a slash actually takes in a Danish task line.
+	reSection = regexp.MustCompile(`(?:^|\s)/(?:"([^"]+)"|([\p{L}\p{N}_/-]+))`)
 )
 
 func extractProject(input string, spans []Span) (string, []Span) {
@@ -156,6 +172,20 @@ func extractProject(input string, spans []Span) (string, []Span) {
 	for _, m := range all {
 		name = submatch(input, m)
 		spans = append(spans, sigilSpan(input, m, KindProject))
+	}
+	return name, spans
+}
+
+// Last one wins, as with the project: retyping is a correction, not two sections.
+func extractSection(input string, spans []Span) (string, []Span) {
+	all := reSection.FindAllStringSubmatchIndex(input, -1)
+	if len(all) == 0 {
+		return "", spans
+	}
+	var name string
+	for _, m := range all {
+		name = submatch(input, m)
+		spans = append(spans, sigilSpan(input, m, KindSection))
 	}
 	return name, spans
 }

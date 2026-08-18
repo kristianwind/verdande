@@ -1682,3 +1682,98 @@ func TestNotifications(t *testing.T) {
 		t.Errorf("unread = %v after marking everything read", after["unread"])
 	}
 }
+
+// Quick add can put a task straight into a section.
+//
+// A section belongs to one project, so the name is resolved after the project is
+// decided — and two projects may both have a "Produktion", which are different
+// sections. A name that matches nothing is reported the way an unknown project is:
+// the task is still created, and the caller is told which word did not land.
+func TestQuickAddPutsATaskInASection(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Risteriet"})
+	projectID := project["id"].(string)
+	_, section := ts.do(t, "POST", "/api/v1/projects/"+projectID+"/sections",
+		map[string]any{"name": "Kunder/Ordrer"})
+	sectionID := section["id"].(string)
+
+	// The section name has a slash in it, which is also the sigil. The bare form is
+	// greedy, so the whole name comes across.
+	resp, task := ts.do(t, "POST", "/api/v1/tasks/quick-add",
+		map[string]any{"text": "Karpenhøj kaffe bestilling #Risteriet /Kunder/Ordrer"})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: status %d, body %v", resp.StatusCode, task)
+	}
+	if task["section_id"] != sectionID {
+		t.Errorf("section_id = %v, want %v", task["section_id"], sectionID)
+	}
+	if task["content"] != "Karpenhøj kaffe bestilling" {
+		t.Errorf("content = %v — the sigils should be gone", task["content"])
+	}
+
+	// Case-insensitive, like the project sigil.
+	_, lower := ts.do(t, "POST", "/api/v1/tasks/quick-add",
+		map[string]any{"text": `nye poser #Risteriet /"kunder/ordrer"`})
+	if lower["section_id"] != sectionID {
+		t.Errorf("a differently-cased name did not resolve: %v", lower["section_id"])
+	}
+
+	// A name that matches nothing still creates the task, and says so.
+	_, missing := ts.do(t, "POST", "/api/v1/tasks/quick-add",
+		map[string]any{"text": "noget andet #Risteriet /Findesikke"})
+	if missing["section_id"] != nil && missing["section_id"] != "" {
+		t.Errorf("an unknown section should leave the task unsectioned: %v", missing["section_id"])
+	}
+	if missing["unknown_section"] != "Findesikke" {
+		t.Errorf("unknown_section = %v, want Findesikke", missing["unknown_section"])
+	}
+	if missing["content"] != "noget andet" {
+		t.Errorf("content = %v", missing["content"])
+	}
+
+	// A section in another project is a different section, and must not be found.
+	_, other := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Andet"})
+	ts.do(t, "POST", "/api/v1/projects/"+other["id"].(string)+"/sections",
+		map[string]any{"name": "Egen"})
+	_, crossed := ts.do(t, "POST", "/api/v1/tasks/quick-add",
+		map[string]any{"text": "forkert sted #Risteriet /Egen"})
+	if crossed["unknown_section"] != "Egen" {
+		t.Errorf("a section from another project was found: %v", crossed["section_id"])
+	}
+}
+
+// The field at the foot of a section passes the section it sits in, and a
+// "#project" in the same line can move the task out from under it.
+func TestQuickAddSectionIDIsCheckedAgainstTheProject(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, here := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Her"})
+	hereID := here["id"].(string)
+	_, section := ts.do(t, "POST", "/api/v1/projects/"+hereID+"/sections",
+		map[string]any{"name": "Produktion"})
+	sectionID := section["id"].(string)
+
+	// Standing in the section is enough; no sigil needed.
+	_, plain := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "male gavlen", "project_id": hereID, "section_id": sectionID,
+	})
+	if plain["section_id"] != sectionID {
+		t.Errorf("section_id = %v, want %v", plain["section_id"], sectionID)
+	}
+
+	// A "#project" that moves the task must not drag the section id with it: that
+	// section belongs to the project being left behind.
+	ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Andetsted"})
+	_, moved := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "male gavlen #Andetsted", "project_id": hereID, "section_id": sectionID,
+	})
+	if moved["section_id"] != nil && moved["section_id"] != "" {
+		t.Errorf("the section came along to another project: %v", moved["section_id"])
+	}
+	if moved["content"] != "male gavlen" {
+		t.Errorf("content = %v", moved["content"])
+	}
+}
