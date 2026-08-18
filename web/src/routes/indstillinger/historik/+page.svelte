@@ -14,7 +14,7 @@
 	 * audit log must not have.
 	 */
 	import { api, humanMessage } from '$lib/api.js';
-	import { app } from '$lib/stores.svelte.js';
+	import { app, projectName } from '$lib/stores.svelte.js';
 	import { eventName, eventDetail } from '$lib/events.js';
 	import { t } from '$lib/i18n.svelte.js';
 	import { ago } from '$lib/when.js';
@@ -130,7 +130,7 @@
 			<select bind:value={filterProject}>
 				<option value="">{t('history.all')}</option>
 				{#each projects as project (project.id)}
-					<option value={project.id}>{project.name}</option>
+					<option value={project.id}>{projectName(project)}</option>
 				{/each}
 			</select>
 		</label>

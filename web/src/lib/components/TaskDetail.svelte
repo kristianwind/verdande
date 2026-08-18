@@ -11,7 +11,7 @@
 	 * necessarily the last one sent.
 	 */
 	import { api, humanMessage } from '$lib/api.js';
-	import { app } from '$lib/stores.svelte.js';
+	import { app, projectName } from '$lib/stores.svelte.js';
 	import { focusOnMount } from '$lib/focus.js';
 	import { t } from '$lib/i18n.svelte.js';
 
@@ -436,7 +436,7 @@
 				<label for="project">{t('detail.project')}</label>
 				<select id="project" bind:value={projectId} onchange={saveProject}>
 					{#each app.projects as project (project.id)}
-						<option value={project.id}>{project.name}</option>
+						<option value={project.id}>{projectName(project)}</option>
 					{/each}
 				</select>
 			</div>

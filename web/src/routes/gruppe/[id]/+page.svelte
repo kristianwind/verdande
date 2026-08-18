@@ -13,7 +13,7 @@
 	 */
 	import { page } from '$app/stores';
 	import { api, humanMessage } from '$lib/api.js';
-	import { app } from '$lib/stores.svelte.js';
+	import { app, projectName } from '$lib/stores.svelte.js';
 	import { colorVar } from '$lib/colors.js';
 	import { focusOnMount } from '$lib/focus.js';
 	import { t } from '$lib/i18n.svelte.js';
@@ -165,7 +165,7 @@
 							<a href="/projekt/{project.id}">
 								<span class="dot" style="background: {colorVar(project.color)}" aria-hidden="true"
 								></span>
-								{project.name}
+								{projectName(project)}
 								<!-- Counted by the server in the same request. Open tasks, not all
 								     of them: "12" beside a project finished last year is a number
 								     that means nothing. -->

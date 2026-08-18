@@ -1,5 +1,5 @@
 <script>
-	import { app, sidebar } from '$lib/stores.svelte.js';
+	import { app, sidebar, projectName } from '$lib/stores.svelte.js';
 	import { api } from '$lib/api.js';
 	import { TASK, PROJECT, GROUP, startDrag, carries, dragged, accept } from '$lib/dnd.js';
 	import { COLORS, colorVar } from '$lib/colors.js';
@@ -410,7 +410,7 @@
 			ondrop={(e) => (carries(e, TASK) ? onTaskDrop(e, project) : sortable && onDrop(e, project))}
 		>
 			<span class="dot" style="background: {colorVar(project.color)}" aria-hidden="true"></span>
-			{project.name}
+			{projectName(project)}
 			{#if project.shared}
 				<span class="count">{project.member_count}</span>
 			{/if}

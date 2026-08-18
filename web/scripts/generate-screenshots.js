@@ -51,6 +51,9 @@ const SHOTS = [
 	{ name: 'upcoming', path: '/upcoming', theme: 'dark', prepare: showMonth },
 	{ name: 'week', path: '/upcoming', theme: 'dark', prepare: showWeek },
 	{ name: 'board', path: (ids) => `/projekt/${ids.work}`, theme: 'dark' },
+	// The same project as a list, which is where sections read as bands rather than
+	// as columns — and the shape most people actually work in.
+	{ name: 'sections', path: (ids) => `/projekt/${ids.work}`, theme: 'dark', prepare: showList },
 	{ name: 'detail', path: '/', theme: 'dark', prepare: openFirstTask },
 	{ name: 'settings', path: '/indstillinger/integrationer', theme: 'dark' },
 	{ name: 'themes', path: '/indstillinger', theme: 'dark' },
@@ -58,6 +61,11 @@ const SHOTS = [
 	{ name: 'history', path: '/indstillinger/historik', theme: 'dark' },
 	{ name: 'delegated', path: '/uddelegeret', theme: 'dark' }
 ];
+
+async function showList(page) {
+	await page.getByRole('button', { name: 'Liste', exact: true }).click();
+	await page.waitForTimeout(600);
+}
 
 async function showMonth(page) {
 	await page.getByRole('button', { name: 'Måned', exact: true }).click();

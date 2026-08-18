@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { api, humanMessage } from '$lib/api.js';
-	import { app, completedView } from '$lib/stores.svelte.js';
+	import { app, completedView, projectName } from '$lib/stores.svelte.js';
 	import { COLORS, colorVar } from '$lib/colors.js';
 	import { eventName, eventDetail } from '$lib/events.js';
 	import { TASK, carries, dragged, accept } from '$lib/dnd.js';
@@ -434,10 +434,10 @@
 				<h1 class:renameable={isOwner}>
 					{#if isOwner}
 						<button onclick={() => (editing = true)} title={t('project.clickToRename')}>
-							{project.name}
+							{projectName(project)}
 						</button>
 					{:else}
-						{project.name}
+						{projectName(project)}
 					{/if}
 				</h1>
 			{/if}
@@ -1273,19 +1273,39 @@
 		margin-bottom: var(--s2);
 	}
 
+	/* A band rather than a rule.
+	 *
+	 * Small uppercase text over a hairline is a heading you have to look for. A
+	 * project with four sections is four groups, and the eye should be able to
+	 * count them without reading a word — so the heading gets a ground of its own,
+	 * and the rows below sit against the page.
+	 *
+	 * `--surface`, not a tint of the accent: the colour on this page belongs to the
+	 * project, and a section is not a second thing to colour. What is wanted is
+	 * separation, and a step in lightness gives that in all five themes without
+	 * anybody measuring anything.
+	 */
 	.section-head {
 		display: flex;
 		align-items: baseline;
 		gap: var(--s3);
-		border-bottom: 1px solid var(--line);
-		margin-bottom: var(--s2);
+		background: var(--surface);
+		border-radius: var(--radius);
+		padding: var(--s2) var(--s3);
+		margin-bottom: var(--s1);
+		/* Pulled out to the padding of the rows below, so the band lines up with the
+		   text it heads rather than with the rows' own inset. */
+		margin-left: calc(var(--s2) * -1);
+		margin-right: calc(var(--s2) * -1);
 	}
 
 	.section-head h2 {
 		border-bottom: 0;
 		margin-bottom: 0;
+		padding: 0;
 		flex: 1;
 		min-width: 0;
+		color: var(--ink-muted);
 	}
 
 	/* Hidden until the section is hovered or something in it has focus: a heading

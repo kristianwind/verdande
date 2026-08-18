@@ -1157,8 +1157,13 @@ test('kontoens sprog skifter hele fladen, ikke kun parseren', async ({ page }) =
 		/januar|februar|marts|maj|juni|juli|oktober|december/i
 	);
 
-	// The Inbox keeps its name: it is a project row created at signup, not a
-	// string in the interface, and the person can rename it like any other.
+	// The Inbox is named by the server at account creation, before anybody has seen
+	// a settings page — so it is the one project name nobody chose, and it follows
+	// the language like a label. Rename it and that becomes your name for it in
+	// every language, the same rule as any other project.
+	await expect(
+		page.getByRole('navigation', { name: 'Main menu' }).getByRole('link', { name: 'Inbox' })
+	).toBeVisible();
 
 	// Danish again, for everything that runs after this.
 	await page.goto('/indstillinger');

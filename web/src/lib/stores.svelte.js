@@ -620,6 +620,28 @@ class AppState {
 	}
 }
 
+/**
+ * What to call a project on screen.
+ *
+ * Almost always its own name — somebody wrote it and it is theirs. The Inbox is the
+ * exception: the server names it at account creation, before anybody has seen a
+ * settings page, so it is the one project name nobody chose. Leaving it as stored
+ * meant an account created in Danish said "Indbakke" in an English interface, which
+ * reads as a string somebody forgot to translate. It was.
+ *
+ * Only while it still carries a name the server gave it. Rename it and that is your
+ * name for it, in every language — the same rule as any other project.
+ */
+const SYSTEM_INBOX_NAMES = new Set(['indbakke', 'inbox']);
+
+export function projectName(project) {
+	if (!project) return '';
+	if (project.is_inbox && SYSTEM_INBOX_NAMES.has(project.name.trim().toLowerCase())) {
+		return t('nav.inbox');
+	}
+	return project.name;
+}
+
 /** Enough of a task's title to recognise it, without a toast the width of the page. */
 function truncate(text, max = 40) {
 	const trimmed = text.trim();
