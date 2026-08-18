@@ -179,15 +179,27 @@ func (s *Server) handleGmailCallback(w http.ResponseWriter, r *http.Request) {
 	delete(settings, "pkce_state")
 	delete(settings, "pkce_expires")
 
-	settings["refresh_token"] = token.RefreshToken
-	settings["access_token"] = token.AccessToken
-	settings["expires_at"] = token.ExpiresAt.Unix()
-	settings["email"] = email
-	if _, ok := settings["trigger"]; !ok {
-		settings["trigger"] = "starred"
+	if err := s.db.SetUserSettings(r.Context(), user.ID, "gmail", settings); err != nil {
+		s.internal(w, r, "clear gmail handshake", err)
+		return
 	}
 
-	if err := s.db.SetUserSettings(r.Context(), user.ID, "gmail", settings); err != nil {
+	// The mailbox itself, kept beside the ones read over IMAP. Connecting again
+	// writes the same row: Gmail is one per person, because the OAuth flow is.
+	box, err := s.db.MailboxOfKind(r.Context(), user.ID, "gmail")
+	if err != nil {
+		s.internal(w, r, "read gmail mailbox", err)
+		return
+	}
+	if box == nil {
+		box = &store.Mailbox{UserID: user.ID, Kind: "gmail", Trigger: "starred"}
+	}
+	box.Name = email
+	box.Username = email
+	box.RefreshToken = token.RefreshToken
+	box.AccessToken = token.AccessToken
+	box.ExpiresAt = token.ExpiresAt
+	if err := s.db.SaveMailbox(r.Context(), box); err != nil {
 		s.internal(w, r, "save gmail tokens", err)
 		return
 	}
@@ -240,36 +252,30 @@ func (s *Server) handleGmailSyncNow(w http.ResponseWriter, r *http.Request) {
 // Returns how many were made. Also used by the background job, which is why it
 // takes a context and a user rather than a request.
 func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
-	settings, err := s.db.UserSettings(ctx, user.ID, "gmail")
+	box, err := s.db.MailboxOfKind(ctx, user.ID, "gmail")
 	if err != nil {
 		return 0, err
 	}
-	str := func(key string) string {
-		v, _ := settings[key].(string)
-		return v
-	}
-
-	refresh := str("refresh_token")
-	if refresh == "" {
+	if box == nil || box.RefreshToken == "" {
 		return 0, nil // not connected; nothing to do and nothing to complain about
 	}
-	query := gmail.Query(str("trigger"), str("label"))
+	query := gmail.Query(box.Trigger, box.Label)
 	if query == "" {
 		return 0, nil // connected but no trigger chosen
 	}
+	refresh := box.RefreshToken
 
 	// The access token is refreshed only when it has actually expired.
-	access := str("access_token")
-	expires, _ := settings["expires_at"].(float64)
-	if access == "" || int64(expires) <= time.Now().Unix() {
+	access := box.AccessToken
+	if access == "" || box.ExpiresAt.Before(time.Now()) {
 		token, err := s.gmailConfig(ctx).Refresh(ctx, refresh)
 		if err != nil {
 			return 0, err
 		}
 		access = token.AccessToken
-		settings["access_token"] = access
-		settings["expires_at"] = token.ExpiresAt.Unix()
-		if err := s.db.SetUserSettings(ctx, user.ID, "gmail", settings); err != nil {
+		box.AccessToken = access
+		box.ExpiresAt = token.ExpiresAt
+		if err := s.db.SaveMailbox(ctx, box); err != nil {
 			return 0, err
 		}
 	}
@@ -281,7 +287,7 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 			// The person revoked access, or changed their password. Forget the
 			// tokens rather than retrying every ten minutes forever.
 			s.log.Info("gmail access was revoked; disconnecting", "user", user.ID)
-			_ = s.db.SetUserSettings(ctx, user.ID, "gmail", map[string]any{})
+			_ = s.db.DeleteMailbox(ctx, user.ID, box.ID)
 		}
 		return 0, err
 	}
@@ -290,19 +296,15 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 	// rather than as a table: it is bounded by the query's own 30-day window, and
 	// a table would be one more thing to migrate for a feature this small.
 	seen := map[string]bool{}
-	if raw, ok := settings["seen"].([]any); ok {
-		for _, v := range raw {
-			if id, ok := v.(string); ok {
-				seen[id] = true
-			}
-		}
+	for _, id := range box.Seen {
+		seen[id] = true
 	}
 
 	inbox, err := s.db.InboxID(ctx, user.ID)
 	if err != nil {
 		return 0, err
 	}
-	projectID := str("project_id")
+	projectID := box.ProjectID
 	if projectID == "" {
 		projectID = inbox
 	} else if _, err := store.RequireProjectRole(ctx, s.db, projectID, user.ID, store.RoleEditor); err != nil {
@@ -352,15 +354,15 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 	if created > 0 {
 		// Only the ids Gmail still returns are kept, so the list cannot grow
 		// without bound as messages fall out of the 30-day window.
-		keep := make([]any, 0, len(ids))
+		keep := make([]string, 0, len(ids))
 		for _, id := range ids {
 			if seen[id] {
 				keep = append(keep, id)
 			}
 		}
-		settings["seen"] = keep
-		settings["last_sync"] = time.Now().Unix()
-		if err := s.db.SetUserSettings(ctx, user.ID, "gmail", settings); err != nil {
+		box.Seen = keep
+		box.LastSyncAt = time.Now()
+		if err := s.db.SaveMailbox(ctx, box); err != nil {
 			return created, err
 		}
 	}
@@ -483,30 +485,25 @@ func (s *Server) handleSetGmailClient(w http.ResponseWriter, r *http.Request) {
 // natural place to learn the address, and it is also the one moment that cannot be
 // retried — so the status endpoint asks again when it finds nothing, and the answer
 // corrects itself on the next look.
-func (s *Server) gmailProfile(ctx context.Context, user *store.User, settings map[string]any) (string, error) {
-	str := func(key string) string {
-		v, _ := settings[key].(string)
-		return v
-	}
-
-	access := str("access_token")
-	expires, _ := settings["expires_at"].(float64)
-	if access == "" || int64(expires) <= time.Now().Unix() {
-		token, err := s.gmailConfig(ctx).Refresh(ctx, str("refresh_token"))
+func (s *Server) gmailProfile(ctx context.Context, box *store.Mailbox) (string, error) {
+	access := box.AccessToken
+	if access == "" || box.ExpiresAt.Before(time.Now()) {
+		token, err := s.gmailConfig(ctx).Refresh(ctx, box.RefreshToken)
 		if err != nil {
 			return "", err
 		}
 		access = token.AccessToken
-		settings["access_token"] = access
-		settings["expires_at"] = token.ExpiresAt.Unix()
+		box.AccessToken = access
+		box.ExpiresAt = token.ExpiresAt
 	}
 
 	email, err := s.gmailClient(access).Profile(ctx)
 	if err != nil {
 		return "", err
 	}
-	settings["email"] = email
-	if err := s.db.SetUserSettings(ctx, user.ID, "gmail", settings); err != nil {
+	box.Name = email
+	box.Username = email
+	if err := s.db.SaveMailbox(ctx, box); err != nil {
 		return "", err
 	}
 	return email, nil

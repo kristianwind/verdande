@@ -1,12 +1,9 @@
--- NOT A MIGRATION YET. Deliberately outside the .sql glob so it cannot run.
+-- Gmail's rows move in beside the ones read over IMAP.
 --
--- This is the data move for task #23. It must not be applied until the Gmail
--- handlers read the mailboxes table instead of user_settings: it empties the
--- settings row, and running it early would disconnect a working mailbox.
+-- Held back until now on purpose: this empties the settings row, and running it
+-- while the handlers still read that row would have disconnected a working
+-- mailbox. internal/httpapi now reads the mailboxes table, so the move is safe.
 --
--- Rename to 0016_gmail_is_a_mailbox.sql when internal/httpapi/gmail_handlers.go
--- has been rewritten.
-
 -- The values move across still sealed. Both tables seal with the same key and
 -- store the same string, so copying the ciphertext verbatim is not a shortcut
 -- around the encryption — it is the encryption, untouched. That also means this
@@ -18,7 +15,7 @@
 -- one.
 INSERT INTO mailboxes (
     id, user_id, kind, name, host, username, password, folder,
-    refresh_token, access_token, expires_at, label, trigger_kind, seen,
+    refresh_token, access_token, expires_at, label, trigger_kind, seen, project_id,
     last_uid, last_sync_at, created_at
 )
 SELECT
@@ -36,6 +33,7 @@ SELECT
     COALESCE(json_extract(s.values_json, '$.label'), ''),
     COALESCE(json_extract(s.values_json, '$.trigger'), 'starred'),
     COALESCE(json_extract(s.values_json, '$.seen'), '[]'),
+    COALESCE(json_extract(s.values_json, '$.project_id'), ''),
     0,
     0,
     unixepoch()

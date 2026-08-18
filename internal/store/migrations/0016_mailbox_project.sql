@@ -1,0 +1,12 @@
+-- Where a mailbox's tasks land.
+--
+-- Gmail carried this as `project_id` in its settings blob. It belongs to the
+-- mailbox, and it is worth having for the ones read over IMAP too: a work mailbox
+-- filing into the work project is the obvious thing to want, and the alternative
+-- is everything landing in the inbox to be moved by hand.
+--
+-- Empty means the person's inbox, which is also what an id that no longer names a
+-- project they can write to falls back to. Not a foreign key for that reason: a
+-- deleted project should quietly stop being the destination, not refuse the delete
+-- or take the mailbox down with it.
+ALTER TABLE mailboxes ADD COLUMN project_id TEXT NOT NULL DEFAULT '';

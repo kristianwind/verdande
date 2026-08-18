@@ -2,9 +2,12 @@ package store
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kristianwind/verdande/internal/secret"
 )
 
 func TestAMailboxIsStoredSealedAndComesBackWhole(t *testing.T) {
@@ -170,4 +173,92 @@ func TestDisconnectingKeepsTheTasks(t *testing.T) {
 	if len(list) != 0 {
 		t.Errorf("the mailbox is still connected")
 	}
+}
+
+// The migration that this whole move stands or falls on: a Gmail connected before
+// there was a mailboxes table must come out the other side still connected, with
+// its token readable and its settings intact. Nobody should have to reconnect
+// because the server tidied up.
+func TestAGmailConnectedBeforeTheMoveSurvivesIt(t *testing.T) {
+	dir := t.TempDir()
+	box, err := secret.Open("", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A database at the state before 0017, with a sealed token written the way the
+	// settings table wrote them.
+	db, userID := storeAt(t, dir, box)
+	sealed, err := box.Seal("1//0-the-original-refresh-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := `{"refresh_token":"` + sealed + `","trigger":"label","label":"Verdande",` +
+		`"email":"kw@nolimit.dk","seen":["abc","def"],"project_id":"p-1"}`
+	if _, err := db.ExecContext(context.Background(), `
+		INSERT INTO user_settings (user_id, scope, values_json, updated_at)
+		VALUES (?, 'gmail', ?, 0)
+		ON CONFLICT (user_id) DO UPDATE SET scope = 'gmail', values_json = excluded.values_json`,
+		userID, values); err != nil {
+		t.Fatal(err)
+	}
+	// 0017 has already run on this database, so the row is moved by hand here in
+	// the same statement the migration uses. What is being tested is the shape it
+	// lands in and that the ciphertext survived the copy.
+	if _, err := db.ExecContext(context.Background(), `
+		INSERT INTO mailboxes (id, user_id, kind, name, host, username, password, folder,
+			refresh_token, access_token, expires_at, label, trigger_kind, seen, project_id,
+			last_uid, last_sync_at, created_at)
+		SELECT lower(hex(randomblob(16))), s.user_id, 'gmail',
+			json_extract(s.values_json, '$.email'), '', json_extract(s.values_json, '$.email'),
+			'', 'INBOX', json_extract(s.values_json, '$.refresh_token'), '', 0,
+			json_extract(s.values_json, '$.label'), json_extract(s.values_json, '$.trigger'),
+			json_extract(s.values_json, '$.seen'), json_extract(s.values_json, '$.project_id'),
+			0, 0, unixepoch()
+		FROM user_settings s WHERE s.scope = 'gmail'`); err != nil {
+		t.Fatal(err)
+	}
+
+	moved, err := db.MailboxOfKind(context.Background(), userID, "gmail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved == nil {
+		t.Fatal("the Gmail connection did not come across")
+	}
+	// The whole point: the token was copied as ciphertext and still opens.
+	if moved.RefreshToken != "1//0-the-original-refresh-token" {
+		t.Errorf("the token came out as %q", moved.RefreshToken)
+	}
+	if moved.Trigger != "label" || moved.Label != "Verdande" {
+		t.Errorf("the trigger came out as %q/%q", moved.Trigger, moved.Label)
+	}
+	if moved.Username != "kw@nolimit.dk" {
+		t.Errorf("the address came out as %q", moved.Username)
+	}
+	if moved.ProjectID != "p-1" {
+		t.Errorf("the destination project came out as %q", moved.ProjectID)
+	}
+	// And the seen list, or every mail in the window becomes a task again.
+	if len(moved.Seen) != 2 || moved.Seen[0] != "abc" {
+		t.Errorf("the seen list came out as %v", moved.Seen)
+	}
+}
+
+// storeAt opens a database in a named directory with a given key, so a test can
+// keep the key while the database is reopened.
+func storeAt(t *testing.T, dir string, box *secret.Box) (*DB, string) {
+	t.Helper()
+	db, err := Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	db.UseSecrets(box)
+
+	user := &User{Email: "kristian@example.dk", Name: "Kristian"}
+	if err := db.CreateUser(context.Background(), user, "Indbakke"); err != nil {
+		t.Fatal(err)
+	}
+	return db, user.ID
 }

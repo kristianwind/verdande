@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"github.com/kristianwind/verdande/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -38,8 +39,8 @@ func TestAGmailFailureSaysWhatGmailSaidAndIsRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Connected, with a refresh token that will be refused.
-	if err := ts.db.SetUserSettings(t.Context(), user.ID, "gmail", map[string]any{
-		"refresh_token": "spent", "trigger": "starred",
+	if err := ts.db.SaveMailbox(t.Context(), &store.Mailbox{
+		UserID: user.ID, Kind: "gmail", RefreshToken: "spent", Trigger: "starred",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -111,9 +112,9 @@ func TestASlowMailboxDoesNotHangTheRequest(t *testing.T) {
 	}
 	// A token that has not expired, so the run goes straight to the message list
 	// rather than stopping at a refresh.
-	if err := ts.db.SetUserSettings(t.Context(), user.ID, "gmail", map[string]any{
-		"refresh_token": "r", "access_token": "a", "trigger": "starred",
-		"expires_at": time.Now().Add(time.Hour).Unix(),
+	if err := ts.db.SaveMailbox(t.Context(), &store.Mailbox{
+		UserID: user.ID, Kind: "gmail", RefreshToken: "r", AccessToken: "a",
+		Trigger: "starred", ExpiresAt: time.Now().Add(time.Hour),
 	}); err != nil {
 		t.Fatal(err)
 	}

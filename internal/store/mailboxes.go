@@ -24,7 +24,11 @@ type Mailbox struct {
 	AccessToken  string    `json:"-"`
 	ExpiresAt    time.Time `json:"-"`
 	Label        string    `json:"label,omitempty"`
-	Trigger      string    `json:"trigger,omitempty"` // "starred" or "label"
+
+	// ProjectID is where this mailbox's tasks land. Empty means the inbox, and so
+	// does an id the person can no longer write to.
+	ProjectID string `json:"project_id,omitempty"`
+	Trigger   string `json:"trigger,omitempty"` // "starred" or "label"
 
 	// Seen is the message ids Gmail has already turned into tasks. IMAP does not
 	// need it — uids are monotonic, so LastUID says the same in one number — but
@@ -37,7 +41,7 @@ type Mailbox struct {
 }
 
 const mailboxColumns = `id, user_id, kind, name, host, username, password, folder,
-	refresh_token, access_token, expires_at, label, trigger_kind, seen,
+	refresh_token, access_token, expires_at, label, trigger_kind, seen, project_id,
 	last_uid, last_sync_at, created_at`
 
 // Mailboxes returns everything one person has connected, oldest first.
@@ -65,6 +69,21 @@ func (db *DB) Mailboxes(ctx context.Context, userID string) ([]Mailbox, error) {
 func (db *DB) Mailbox(ctx context.Context, userID, id string) (*Mailbox, error) {
 	row := db.QueryRowContext(ctx,
 		`SELECT `+mailboxColumns+` FROM mailboxes WHERE id = ? AND user_id = ?`, id, userID)
+	m, err := db.scanMailbox(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// MailboxOfKind returns a person's mailbox of one kind, or nil. Gmail is one per
+// person because the OAuth flow is: connecting again replaces what was there.
+func (db *DB) MailboxOfKind(ctx context.Context, userID, kind string) (*Mailbox, error) {
+	row := db.QueryRowContext(ctx,
+		`SELECT `+mailboxColumns+` FROM mailboxes WHERE user_id = ? AND kind = ?`, userID, kind)
 	m, err := db.scanMailbox(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -113,7 +132,7 @@ func (db *DB) SaveMailbox(ctx context.Context, m *Mailbox) error {
 
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO mailboxes (`+mailboxColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 		    name = excluded.name,
 		    host = excluded.host,
@@ -126,10 +145,11 @@ func (db *DB) SaveMailbox(ctx context.Context, m *Mailbox) error {
 		    label = excluded.label,
 		    trigger_kind = excluded.trigger_kind,
 		    seen = excluded.seen,
+		    project_id = excluded.project_id,
 		    last_uid = excluded.last_uid,
 		    last_sync_at = excluded.last_sync_at`,
 		m.ID, m.UserID, m.Kind, m.Name, m.Host, m.Username, password, m.Folder,
-		refresh, access, unixOrZero(m.ExpiresAt), m.Label, m.Trigger, string(seen),
+		refresh, access, unixOrZero(m.ExpiresAt), m.Label, m.Trigger, string(seen), m.ProjectID,
 		m.LastUID, unixOrZero(m.LastSyncAt), m.CreatedAt.Unix())
 	return err
 }
@@ -179,7 +199,7 @@ func (db *DB) scanMailbox(row scanner) (Mailbox, error) {
 	var seen string
 	err := row.Scan(&m.ID, &m.UserID, &m.Kind, &m.Name, &m.Host, &m.Username,
 		&m.Password, &m.Folder, &m.RefreshToken, &m.AccessToken, &expires,
-		&m.Label, &m.Trigger, &seen, &m.LastUID, &lastSync, &created)
+		&m.Label, &m.Trigger, &seen, &m.ProjectID, &m.LastUID, &lastSync, &created)
 	if err != nil {
 		return m, err
 	}

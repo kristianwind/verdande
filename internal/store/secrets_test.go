@@ -84,22 +84,23 @@ func TestATokenWrittenBeforeTheKeyStillWorks(t *testing.T) {
 	}
 }
 
-// UsersWithGmail finds people by the presence of the key, not its value, so it
-// must keep working now that the value is ciphertext.
+// The sweep finds people by the presence of a mailbox, so it must keep working
+// now that the credential in it is ciphertext.
 func TestTheSweepStillFindsAConnectedMailbox(t *testing.T) {
 	db, userID := sealedStore(t)
 	ctx := context.Background()
 
-	if err := db.SetUserSettings(ctx, userID, "gmail",
-		map[string]any{"refresh_token": "1//0-token"}); err != nil {
+	if err := db.SaveMailbox(ctx, &Mailbox{
+		UserID: userID, Kind: "gmail", RefreshToken: "1//0-token",
+	}); err != nil {
 		t.Fatal(err)
 	}
-	users, err := db.UsersWithGmail(ctx)
+	users, err := db.UsersWithMailboxes(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(users) != 1 {
-		t.Fatalf("the sweep found %d connected mailboxes, want 1", len(users))
+		t.Fatalf("the sweep found %d people with mailboxes, want 1", len(users))
 	}
 }
 

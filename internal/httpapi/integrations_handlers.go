@@ -370,27 +370,28 @@ type gmailSettings struct {
 }
 
 func (s *Server) handleGetGmail(w http.ResponseWriter, r *http.Request) {
-	values, err := s.db.UserSettings(r.Context(), userFrom(r.Context()).ID, "gmail")
+	user := userFrom(r.Context())
+	box, err := s.db.MailboxOfKind(r.Context(), user.ID, "gmail")
 	if err != nil {
-		s.internal(w, r, "gmail settings", err)
+		s.internal(w, r, "gmail mailbox", err)
 		return
 	}
-	str := func(key string) string {
-		v, _ := values[key].(string)
-		return v
+	if box == nil {
+		writeJSON(w, http.StatusOK, gmailSettings{})
+		return
 	}
+
 	// The mailbox address, fetched again if it is missing.
 	//
-	// It is stored at connect time, and the call that fetches it can fail — a
-	// slow token, a scope Google had not applied yet. That failure used to be a
-	// log line and an empty string, so the page said "an unknown account" and went
-	// on saying it forever: the only way back was to disconnect and reconnect,
-	// which nobody would guess. Asking again here costs one request on a page
-	// nobody opens often, and it means the wrong answer lasts until the next look
-	// rather than until somebody reconnects.
-	email := str("email")
-	if email == "" && str("refresh_token") != "" {
-		if fetched, err := s.gmailProfile(r.Context(), userFrom(r.Context()), values); err == nil {
+	// It is stored at connect time, and the call that fetches it can fail — a slow
+	// token, a scope Google had not applied yet. That failure used to be a log line
+	// and an empty string, so the page said "an unknown account" and went on saying
+	// it forever: the only way back was to disconnect and reconnect, which nobody
+	// would guess. Asking again here costs one request on a page nobody opens
+	// often, and it means the wrong answer lasts until the next look.
+	email := box.Username
+	if email == "" && box.RefreshToken != "" {
+		if fetched, err := s.gmailProfile(r.Context(), box); err == nil {
 			email = fetched
 		} else {
 			s.log.Warn("gmail profile", "err", err)
@@ -398,10 +399,10 @@ func (s *Server) handleGetGmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, gmailSettings{
-		Connected: str("refresh_token") != "",
+		Connected: box.RefreshToken != "",
 		Email:     email,
-		Trigger:   str("trigger"),
-		Label:     str("label"),
+		Trigger:   box.Trigger,
+		Label:     box.Label,
 	})
 }
 
@@ -412,26 +413,41 @@ func (s *Server) handleSetGmail(w http.ResponseWriter, r *http.Request) {
 	}
 	user := userFrom(r.Context())
 
-	values, err := s.db.UserSettings(r.Context(), user.ID, "gmail")
+	box, err := s.db.MailboxOfKind(r.Context(), user.ID, "gmail")
 	if err != nil {
-		s.internal(w, r, "gmail settings", err)
+		s.internal(w, r, "gmail mailbox", err)
 		return
 	}
-	values["trigger"] = req.Trigger
-	values["label"] = req.Label
+	if box == nil {
+		// Choosing what makes a task before connecting is allowed, and the choice is
+		// kept: the row is the mailbox with no credential in it yet, which reads as
+		// not connected everywhere that asks and is skipped by the sweep.
+		box = &store.Mailbox{UserID: user.ID, Kind: "gmail"}
+	}
+	box.Trigger = req.Trigger
+	box.Label = req.Label
 
-	if err := s.db.SetUserSettings(r.Context(), user.ID, "gmail", values); err != nil {
+	if err := s.db.SaveMailbox(r.Context(), box); err != nil {
 		s.internal(w, r, "save gmail settings", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleDisconnectGmail forgets the connection, tokens and all.
+// handleDisconnectGmail forgets the connection, tokens and all. The tasks it made
+// stay: they are the person's work now, not the mailbox's.
 func (s *Server) handleDisconnectGmail(w http.ResponseWriter, r *http.Request) {
-	if err := s.db.SetUserSettings(r.Context(), userFrom(r.Context()).ID, "gmail", map[string]any{}); err != nil {
-		s.internal(w, r, "disconnect gmail", err)
+	user := userFrom(r.Context())
+	box, err := s.db.MailboxOfKind(r.Context(), user.ID, "gmail")
+	if err != nil {
+		s.internal(w, r, "gmail mailbox", err)
 		return
+	}
+	if box != nil {
+		if err := s.db.DeleteMailbox(r.Context(), user.ID, box.ID); err != nil {
+			s.internal(w, r, "disconnect gmail", err)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -64,7 +64,6 @@ func (r *Runner) Start(ctx context.Context) {
 	// need a public webhook and a Cloud Pub/Sub topic, which is a lot of Google
 	// account for a to-do app. Ten minutes is fast enough for something somebody
 	// starred and slow enough not to look like abuse.
-	r.every(ctx, "gmail", 10*time.Minute, r.syncGmailAccounts)
 	r.every(ctx, "mailboxes", 10*time.Minute, r.syncMailboxes)
 }
 
@@ -252,37 +251,13 @@ func rotateBackups(cfg *config.Config, log *slog.Logger) error {
 
 // --- gmail ---------------------------------------------------------------------------
 
-// syncGmailAccounts polls every connected mailbox.
+// syncMailboxes polls every connected mailbox, Gmail and IMAP alike.
 //
-// One at a time, and a failure on one account does not stop the others: a revoked
-// token or an expired refresh is a problem for that person alone.
-func (r *Runner) syncGmailAccounts(ctx context.Context) error {
-	if r.SyncGmail == nil {
-		return nil
-	}
-	users, err := r.db.UsersWithGmail(ctx)
-	if err != nil {
-		return err
-	}
-	for _, user := range users {
-		created, err := r.SyncGmail(ctx, &user)
-		if err != nil {
-			r.log.Warn("gmail sync", "err", err, "user", user.ID)
-			continue
-		}
-		if created > 0 {
-			r.log.Info("tasks created from gmail", "user", user.ID, "count", created)
-		}
-	}
-	return nil
-}
-
-// syncMailboxes polls every connected IMAP mailbox.
-//
-// Nobody is waiting, so no budget of its own — the request handler has one because
-// a person is watching a spinner. A host that has gone quiet costs this run its
-// own dial timeout and nothing else: the loop moves on, per mailbox and per
-// person, so one bad password does not stop everybody else's mail.
+// One sweep rather than two, now that both live in the same table. Nobody is
+// waiting, so no budget of its own — the request handler has one because a person
+// is watching a spinner. A host that has gone quiet costs this run its own dial
+// timeout and nothing else: the loop moves on, per mailbox and per person, so one
+// bad password does not stop everybody else's mail.
 func (r *Runner) syncMailboxes(ctx context.Context) error {
 	if r.SyncMailbox == nil {
 		return nil
@@ -302,13 +277,26 @@ func (r *Runner) syncMailboxes(ctx context.Context) error {
 			continue
 		}
 		for i := range boxes {
-			created, err := r.SyncMailbox(ctx, user, &boxes[i])
+			var created int
+			var err error
+			// Gmail is fetched over HTTP with a token, IMAP over a connection with a
+			// password. Which one is a property of the row, not of the loop.
+			if boxes[i].Kind == "gmail" {
+				if r.SyncGmail == nil {
+					continue
+				}
+				created, err = r.SyncGmail(ctx, user)
+			} else {
+				created, err = r.SyncMailbox(ctx, user, &boxes[i])
+			}
 			if err != nil {
-				r.log.Warn("mailbox sync", "err", err, "user", id, "mailbox", boxes[i].ID)
+				r.log.Warn("mailbox sync", "err", err, "user", id,
+					"kind", boxes[i].Kind, "mailbox", boxes[i].ID)
 				continue
 			}
 			if created > 0 {
-				r.log.Info("tasks created from a mailbox", "user", id, "count", created)
+				r.log.Info("tasks created from a mailbox", "user", id,
+					"kind", boxes[i].Kind, "count", created)
 			}
 		}
 	}
