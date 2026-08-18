@@ -118,8 +118,15 @@ accented `o` and a Danish-first app that cannot do this is broken for its own us
 |---|---|
 | ![Board view](site/screenshots/board.png) | ![Light theme](site/screenshots/today-light.png) |
 | Board view — one column per section. | The light theme. |
+| ![A week on Upcoming](site/screenshots/week.png) | ![A task, opened](site/screenshots/detail.png) |
+| A week at a time, so a task can be dragged across a month boundary. | A task, opened. |
+| ![The five themes](site/screenshots/themes.png) | ![Instance history](site/screenshots/history.png) |
+| Five themes, all measured for contrast. | What has been done on the server. |
 
-Regenerate these with `go run ./tools/shots` against a running instance.
+Regenerate these with `node scripts/generate-screenshots.js` from `web/`. It starts
+the real binary, creates its own account, fills it with demo data and photographs
+eleven surfaces — nothing to set up and nothing to remember. (`go run ./tools/shots`
+still works, and is the way to photograph an instance that is already running.)
 
 ## Running it
 
