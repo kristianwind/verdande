@@ -407,6 +407,32 @@ button {
 	}
 }
 
+/* Form fields are 16px on a touch device, whatever the component asked for.
+ *
+ * Below 16px, iOS Safari zooms the page in when a field takes focus — and it does
+ * not zoom back out when the field is blurred. The person is left with the whole
+ * interface too large and has to pinch it back themselves, once per field they
+ * tap. The type scale here tops out at 15px, so every input in the app did it:
+ * quick add, the sign-in form, and the task drawer worst of all, which is four
+ * fields deep.
+ *
+ * `!important` on purpose. This is a browser workaround that has to beat every
+ * component's own typography, and each of those is a scoped class that outranks
+ * any selector this file could write. Narrowing it further would mean editing the
+ * sixty-nine places that set a field's font size and adding a rule none of them
+ * can be allowed to break.
+ *
+ * Touch rather than a width: an iPad in Safari does the same thing at a width no
+ * phone breakpoint would catch.
+ */
+@media (hover: none) and (pointer: coarse) {
+	input,
+	textarea,
+	select {
+		font-size: 16px !important;
+	}
+}
+
 .visually-hidden {
 	position: absolute;
 	width: 1px;

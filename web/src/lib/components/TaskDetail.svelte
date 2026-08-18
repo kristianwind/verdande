@@ -12,6 +12,7 @@
 	 */
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
+	import { focusOnMount } from '$lib/focus.js';
 
 	let { task, onclose } = $props();
 
@@ -96,8 +97,21 @@
 			.catch(() => {});
 	});
 
-	/** Sends a patch through the store, so the row behind the drawer updates too. */
+	/**
+	 * Sends a patch through the store, so the row behind the drawer updates too.
+	 *
+	 * `task` can be null by the time this runs. The three fields below save on
+	 * blur, and closing the drawer *is* a blur — the input is being unmounted, and
+	 * the browser fires blur on the way out. If the task left `app.tasks` in the
+	 * same moment (it was completed, it was moved, another browser deleted it),
+	 * `app.detailTask` is already null and this is a handler for a task that is no
+	 * longer there.
+	 *
+	 * It threw `Cannot read properties of null` and stopped the page. Nothing to
+	 * save is not an error; it is the ordinary end of an edit nobody made.
+	 */
 	async function save(patch) {
+		if (!task) return;
 		await app.update(task.id, patch);
 	}
 
@@ -114,6 +128,7 @@
 	 * worse than one that does nothing.
 	 */
 	async function saveContent() {
+		if (!task) return;
 		const trimmed = content.trim();
 		if (!trimmed || trimmed === task.content) {
 			content = task.content;
@@ -181,11 +196,12 @@
 	}
 
 	function saveDescription() {
-		if (description === (task.description ?? '')) return;
+		if (!task || description === (task.description ?? '')) return;
 		save({ description });
 	}
 
 	function saveLabels() {
+		if (!task) return;
 		const list = labels
 			.split(',')
 			.map((l) => l.trim())
@@ -358,9 +374,9 @@
 
 	<div class="scroll">
 		<div class="field">
-			<!-- svelte-ignore a11y_autofocus -->
 			<input
 				class="title"
+				use:focusOnMount
 				bind:value={content}
 				onblur={saveContent}
 				aria-label="Opgavens tekst"

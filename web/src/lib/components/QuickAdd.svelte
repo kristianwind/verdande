@@ -14,7 +14,6 @@
 	 */
 	import { api } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
-
 	let { projectId = undefined, onadded = undefined, autofocus = false } = $props();
 
 	let text = $state('');

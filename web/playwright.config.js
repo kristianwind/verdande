@@ -65,6 +65,32 @@ export default defineConfig({
 			name: 'chromium',
 			use: { ...devices['Desktop Chrome'], storageState: 'e2e/.auth/user.json' },
 			dependencies: ['setup']
+		},
+		/**
+		 * A short WebKit pass over the forms, and nothing else.
+		 *
+		 * The rest of this suite is Chromium only on purpose: a smoke test exists to
+		 * catch a build that does not work, and running it in three engines finds the
+		 * same bug three times. Focus is the exception, and it cost a real report to
+		 * learn it. Safari ignores the `autofocus` attribute on anything inserted
+		 * after the page has loaded — so every inline form in this app opened with no
+		 * cursor in it, and what you typed went nowhere. It does not look like a bug;
+		 * it looks like the feature does not work. "Sections have no function,
+		 * because you cannot create more than one" was this.
+		 *
+		 * One test, not four. The engines share this server and this database, so a
+		 * second pass over tests that create projects by name collides with what the
+		 * first pass already made — which fails as a name that is suddenly ambiguous
+		 * rather than as anything about WebKit. The sections test is the one that
+		 * earns the second engine, because it is the one the focus bug broke.
+		 *
+		 * WebKit here is the same engine Safari is, which is the whole point.
+		 */
+		{
+			name: 'webkit-forms',
+			grep: /@forms/,
+			use: { ...devices['Desktop Safari'], storageState: 'e2e/.auth/user.json' },
+			dependencies: ['setup']
 		}
 	],
 

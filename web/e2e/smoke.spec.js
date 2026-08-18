@@ -156,6 +156,7 @@ test('hver fane under indstillinger renderer', async ({ page }) => {
 		// Only an administrator sees these two, and the account these tests run as
 		// is the first account, which is one.
 		'Brugere',
+		'Historik',
 		'Fejl',
 		'Data og skabeloner'
 	]) {
@@ -263,8 +264,8 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	await sidebar.getByLabel('Gruppens navn').fill('Arbejde');
 	await sidebar.getByLabel('Gruppens navn').press('Enter');
 
-	// `exact`, because the heading's colour dot is a button too and its label is
-	// "Farve på Arbejde" — and Playwright matches an accessible name by substring
+	// `exact`, because a group's name is a user-chosen word that can turn up inside
+	// another button's name — Playwright matches an accessible name by substring
 	// unless told otherwise.
 	const heading = sidebar.getByRole('button', { name: 'Arbejde', exact: true });
 	await expect(heading).toBeVisible();
@@ -311,15 +312,33 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	);
 	await sidebar.getByRole('button', { name: 'Arbejde', exact: true }).click();
 
-	// Colour, and indentation. The dot is the control as well as the preview, so
-	// the thing you press is the thing you are about to change.
-	await sidebar.getByRole('button', { name: 'Farve på Arbejde' }).click();
+	// Colour, which is chosen while renaming rather than from the row. Both are
+	// edits to the same thing, and a heading carrying four controls crowded the
+	// name it exists to show.
+	await sidebar.getByRole('button', { name: 'Omdøb' }).click();
 	await sidebar.getByRole('button', { name: 'Petrol' }).click();
+	// Still open: picking a colour must not close the form under the pointer, which
+	// is what a plain blur-to-cancel does in the two browsers that do not focus a
+	// button on click.
+	await expect(sidebar.getByLabel('Gruppens navn')).toBeVisible();
+	await sidebar.getByLabel('Gruppens navn').press('Enter');
 
-	const painted = await sidebar.locator('.folder-head .group-dot').evaluate((el) =>
-		getComputedStyle(el).backgroundColor
-	);
+	const painted = await sidebar
+		.locator('.folder-head .group-dot')
+		.evaluate((el) => getComputedStyle(el).backgroundColor);
 	expect(painted, 'gruppens prik fik ikke sin farve').not.toBe('rgba(0, 0, 0, 0)');
+
+	// The heading itself is *not* indented — only what is filed under it. A heading
+	// that starts further in than the rows above it says the heading is inside
+	// something, which it is not.
+	const headLeft = await sidebar
+		.locator('.folder-head')
+		.evaluate((el) => el.getBoundingClientRect().left + parseFloat(getComputedStyle(el).paddingLeft));
+	const looseLeft = await sidebar
+		.locator('.views a')
+		.first()
+		.evaluate((el) => el.getBoundingClientRect().left + parseFloat(getComputedStyle(el).paddingLeft));
+	expect(headLeft, 'gruppehovedet er rykket ind').toBeLessThanOrEqual(looseLeft);
 
 	// A project inside a group starts further in than a row outside one. Measured
 	// rather than asserted on a class, because indentation is a fact about where
@@ -465,7 +484,7 @@ test('en opgave kan trækkes til en anden dag og videre til et projekt', async (
 	// browser is pinned to Europe/Copenhagen and this process is not, and for two
 	// hours of every day they disagree about what today is.
 	await page.goto('/upcoming');
-	await page.getByRole('button', { name: 'Kalender' }).click();
+	await page.getByRole('button', { name: 'Måned', exact: true }).click();
 
 	const chip = page.locator('.chip').filter({ hasText: 'hent pakken' });
 	await expect(chip).toBeVisible();
@@ -805,6 +824,139 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 });
 
 /**
+ * A task dragged across a month boundary.
+ *
+ * The month grid could not do this. It is anchored to a month, so the two days on
+ * either side of its edge sit in different grids, and getting from one to the other
+ * means paging — which cannot be done mid-drag, because a drag in flight swallows
+ * the click that would page it. The week view exists for exactly this: a week that
+ * straddles the 31st and the 1st has both days in the same row.
+ *
+ * The dates are worked out in the browser, not here. Playwright pins the page to
+ * Europe/Copenhagen and this process is not pinned to anything, so for two hours of
+ * every day the two disagree about what today is.
+ */
+test('en opgave kan trækkes hen over et månedsskifte i uge-visningen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	// The first day, starting tomorrow, whose next day is in another month *and* in
+	// the same Monday-to-Sunday week. Such a pair exists at every month boundary
+	// except one that falls between a Sunday and a Monday, so searching forward
+	// finds one within about two months whatever today is.
+	const { from, to } = await page.evaluate(() => {
+		const iso = (d) =>
+			`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+				d.getDate()
+			).padStart(2, '0')}`;
+		const monday = (d) => {
+			const m = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+			m.setDate(m.getDate() - ((m.getDay() + 6) % 7));
+			return iso(m);
+		};
+		const day = new Date();
+		for (let i = 0; i < 90; i++) {
+			day.setDate(day.getDate() + 1);
+			const next = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+			if (day.getMonth() !== next.getMonth() && monday(day) === monday(next)) {
+				return { from: iso(day), to: iso(next) };
+			}
+		}
+		throw new Error('no month boundary inside a week in the next 90 days');
+	});
+
+	const box = page.getByLabel('Ny opgave');
+	await box.fill(`skifte dæk ${from}`);
+	await box.press('Enter');
+	// Not asserted here: this is the Today view and the task is dated weeks out, so
+	// it is correctly absent. The week grid below is where it has to turn up.
+	await expect(box).toHaveValue('');
+
+	await page.goto('/upcoming');
+	await page.getByRole('button', { name: 'Uge', exact: true }).click();
+
+	// Forward a week at a time until the row is the one holding that date. Bounded,
+	// because a loop that pages forever on a broken button is a timeout with no
+	// explanation in it.
+	const cell = page.locator(`[data-date="${from}"]`);
+	const next = page.getByRole('button', { name: 'Næste uge' });
+	for (let i = 0; i < 15 && (await cell.count()) === 0; i++) {
+		await next.click();
+	}
+	await expect(cell, `uge-visningen nåede aldrig frem til ${from}`).toBeVisible();
+
+	// The claim the view is for: both sides of the month boundary, in one row.
+	await expect(page.locator(`[data-date="${to}"]`)).toBeVisible();
+	expect(from.slice(0, 7), 'de to dage skulle ligge i hver sin måned').not.toEqual(to.slice(0, 7));
+
+	const chip = page.locator('.chip').filter({ hasText: 'skifte dæk' });
+	await expect(chip).toBeVisible();
+	await chip.dragTo(page.locator(`[data-date="${to}"]`));
+
+	await expect(page.locator(`[data-date="${to}"]`).getByText('skifte dæk')).toBeVisible();
+	await expect(page.locator(`[data-date="${from}"]`).getByText('skifte dæk')).toBeHidden();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * The instance-wide history.
+ *
+ * The per-project panel has shown the same rows for a while; this is the question
+ * it cannot answer, which is what happened in a project the administrator is not a
+ * member of. The test uses a second person's own project for exactly that reason —
+ * asserting against a project the admin can already see would pass with the old
+ * per-project endpoint behind it.
+ */
+test('historik-siden viser hændelser fra et projekt, administratoren ikke er med i', async ({
+	browser,
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+
+	// A second account, with a project of its own. storageState is spelled out:
+	// a "fresh" context inherits the signed-in one otherwise, which is the single
+	// case this test is not about.
+	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const theirs = await context.newPage();
+	const email = `historik-${Date.now()}@example.dk`;
+
+	await page.goto('/indstillinger/brugere');
+	await page.getByLabel('E-mailadresse').fill(email);
+	await page.getByRole('button', { name: 'Send invitation' }).click();
+	const link = await page.locator('.link-out').textContent();
+	expect(link).toContain('/invite?token=');
+
+	await theirs.goto(link);
+	await theirs.getByLabel('Navn').fill('Sigrid');
+	await theirs.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
+	await theirs.getByRole('button', { name: 'Opret konto' }).click();
+	await expect(theirs.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+
+	const sidebar = theirs.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Sigrids eget');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(sidebar.getByRole('link', { name: 'Sigrids eget' })).toBeVisible();
+
+	// The administrator cannot open that project, and can still see that it happened.
+	await page.goto('/indstillinger/historik');
+	const rows = page.locator('.rows li').filter({ hasText: 'Sigrids eget' });
+	await expect(rows.first()).toBeVisible();
+	await expect(rows.first().getByText('oprettede projektet')).toBeVisible();
+	// `exact`, or this matches the project name "Sigrids eget" in the same row.
+	await expect(rows.first().getByText('Sigrid', { exact: true })).toBeVisible();
+
+	// And the filters narrow it rather than emptying it.
+	await page.getByLabel('Hændelse').selectOption('project.created');
+	await expect(page.locator('.rows li').filter({ hasText: 'Sigrids eget' }).first()).toBeVisible();
+	await page.getByRole('button', { name: 'Ryd' }).click();
+
+	await context.close();
+	expect(trouble).toEqual([]);
+});
+
+/**
  * The project page on a phone.
  *
  * Every other test here runs at desktop width, and this is what that misses: the
@@ -851,6 +1003,175 @@ test('projektsiden er brugbar på en telefon', async ({ page }) => {
 	await expect(page.getByRole('complementary', { name: 'Opgave' })).toBeVisible();
 	expect(await sideways(), 'opgaveruden skubber siden sidelæns').toBeLessThanOrEqual(1);
 
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * The sidebar never scrolls sideways.
+ *
+ * It grew a horizontal scrollbar on an ordinary desktop, under the whole menu.
+ * The cause was one flex item: the account name had `overflow: hidden` and no
+ * `min-width: 0`, so it refused to shrink below its content and pushed the row
+ * past the column — and `overflow-y: auto` on the sidebar resolves to `auto` on
+ * the other axis too, which turned "a row that is too wide" into a scrollbar.
+ *
+ * Asserted with a long name, because the name is the part that varies and a short
+ * one hides the whole class of bug. The mobile test measures the *document*; this
+ * measures the sidebar itself, which is a different box and was never checked.
+ */
+test('sidebjælken kan ikke scrolles vandret', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/indstillinger');
+
+	// A name long enough to overflow the column at its default width.
+	await page.getByLabel('Navn').fill('Kristian Vinterberg-Skovgaard');
+	await page.getByRole('button', { name: 'Gem' }).first().click();
+	await expect(page.getByText('Kristian Vinterberg-Skovgaard').first()).toBeVisible();
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	const sideways = await sidebar.evaluate((el) => el.scrollWidth - el.clientWidth);
+	expect(sideways, 'sidebjælken kan scrolles vandret').toBeLessThanOrEqual(1);
+
+	// And the whole page, for the same reason at a different scale.
+	const page_sideways = await page.evaluate(
+		() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+	);
+	expect(page_sideways, 'siden kan scrolles vandret').toBeLessThanOrEqual(1);
+
+	// Put the name back, so the tests after this one see the account they expect.
+	await page.getByLabel('Navn').fill(USER.name);
+	await page.getByRole('button', { name: 'Gem' }).first().click();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * A project can have more than one section.
+ *
+ * Reported from use: sections "have no function, because you cannot create more
+ * than one". The API makes as many as you ask for — there is a Go test that makes
+ * three — so whatever this is, it is in the page. Every other test here makes
+ * exactly one section, which is the shape of test that cannot see it.
+ */
+test('et projekt kan have flere sektioner @forms', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Ombygning');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Ombygning' })).toBeVisible();
+
+	for (const name of ['Planlægning', 'I gang', 'Til gennemsyn']) {
+		await page.getByRole('button', { name: '+ Tilføj sektion' }).click();
+		const field = page.getByLabel('Ny sektion');
+		await expect(field, `feltet kom ikke frem for "${name}"`).toBeVisible();
+		await field.fill(name);
+		await field.press('Enter');
+		await expect(
+			page.getByRole('heading', { name, exact: true }),
+			`sektionen "${name}" kom ikke på siden`
+		).toBeVisible();
+	}
+
+	// All three at once, still there — an each-block that threw would have stopped
+	// rendering at the one that broke it.
+	for (const name of ['Planlægning', 'I gang', 'Til gennemsyn']) {
+		await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+	}
+
+	// And they survive a reload, which is the difference between "the page kept up"
+	// and "the server took it".
+	await page.reload();
+	for (const name of ['Planlægning', 'I gang', 'Til gennemsyn']) {
+		await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+	}
+
+	// The board is where somebody actually looks for a section, because a column on
+	// a board *is* one — and it had no way to make one at all. Reported as
+	// "sections have no function: there is no way to create them", which from
+	// inside a board was exactly true.
+	await page.getByRole('button', { name: 'Board', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Uden sektion' })).toBeVisible();
+	await page.getByRole('button', { name: '+ Tilføj sektion' }).click();
+	const field = page.getByLabel('Ny sektion');
+	await expect(field, 'boardet har ingen måde at lave en sektion på').toBeVisible();
+	await field.fill('Afsluttet');
+	await field.press('Enter');
+	await expect(page.getByRole('heading', { name: 'Afsluttet', exact: true })).toBeVisible();
+
+	await page.reload();
+	await expect(page.getByRole('heading', { name: 'Afsluttet', exact: true })).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * Form fields on a touch device are at least 16px.
+ *
+ * Not a matter of taste. Below 16px, iOS Safari zooms the page in when a field
+ * takes focus and does not zoom back out when it is blurred — so the person is
+ * left with the whole interface too large and has to pinch it back by hand, once
+ * per field they tap. The type scale tops out at 15px, so every input in the app
+ * did it; the task drawer worst, being four fields deep.
+ *
+ * Chromium cannot reproduce the zoom, but it can be asked the question that causes
+ * it, which is what this checks. A touch context rather than a narrow viewport:
+ * the rule is keyed on `(hover: none) and (pointer: coarse)`, because an iPad does
+ * the same thing at a width no phone breakpoint would catch.
+ */
+test('felter er mindst 16px, så iOS ikke zoomer ind og bliver der', async ({ browser }) => {
+	const phone = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
+
+	const tooSmall = async (page, where) => {
+		const bad = await page.evaluate(() =>
+			[...document.querySelectorAll('input, textarea, select')]
+				.filter((el) => el.getClientRects().length)
+				.map((el) => ({
+					what: el.tagName.toLowerCase() + (el.type ? `[type=${el.type}]` : ''),
+					size: parseFloat(getComputedStyle(el).fontSize)
+				}))
+				.filter((f) => f.size < 16)
+		);
+		expect(bad, `for små felter på ${where}`).toEqual([]);
+	};
+
+	// The sign-in form, in a context with the session spelled out as empty —
+	// newContext inherits the project's storageState, so a "fresh" browser is
+	// otherwise already signed in and the form never renders.
+	const signedOut = await browser.newContext({
+		...phone,
+		storageState: { cookies: [], origins: [] }
+	});
+	const anon = await signedOut.newPage();
+	await anon.goto('/');
+	await expect(anon.getByRole('button', { name: 'Log ind' })).toBeVisible();
+	await tooSmall(anon, 'login-siden');
+	await signedOut.close();
+
+	const context = await browser.newContext(phone);
+	const page = await context.newPage();
+	const trouble = watchForTrouble(page);
+
+	await page.goto('/');
+	await expect(page.getByLabel('Ny opgave')).toBeVisible();
+	await tooSmall(page, 'I dag');
+
+	// The task drawer, which is where it was worst: four fields deep. Dated today,
+	// or it goes to the Inbox and is correctly absent from the view being looked at.
+	await page.getByLabel('Ny opgave').fill('slibe gulvet i dag');
+	await page.getByLabel('Ny opgave').press('Enter');
+	await page.getByText('slibe gulvet', { exact: true }).click();
+	await expect(page.getByRole('complementary', { name: 'Opgave' })).toBeVisible();
+	await tooSmall(page, 'opgavedetaljer');
+
+	// And the settings pages, which are almost entirely fields.
+	await page.goto('/indstillinger');
+	await expect(page.locator('section.panel').first()).toBeVisible();
+	await tooSmall(page, 'indstillinger');
+
+	await context.close();
 	expect(trouble).toEqual([]);
 });
 

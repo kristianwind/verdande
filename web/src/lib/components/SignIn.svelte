@@ -18,6 +18,7 @@
 	import { goto } from '$app/navigation';
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
+	import { focusOnMount } from '$lib/focus.js';
 
 	// loading | login | setup | totp | forgot | sent | invite | reset | done
 	let mode = $state('loading');
@@ -168,10 +169,9 @@
 
 			<label>
 				Kode
-				<!-- svelte-ignore a11y_autofocus -->
 				<input
 					bind:value={code}
-					autofocus
+					use:focusOnMount
 					inputmode="numeric"
 					autocomplete="one-time-code"
 					placeholder="123456"

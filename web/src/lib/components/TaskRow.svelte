@@ -83,7 +83,7 @@
 			<span class="description">{task.description}</span>
 		{/if}
 
-		{#if assignee || due || task.labels?.length || task.recurrence_text}
+		{#if assignee || due || task.labels?.length || task.recurrence_text || task.subtask_count || task.attachment_count}
 			<span class="meta">
 				{#if assignee}
 					<!-- First in the row, because "who" changes what the rest of the line
@@ -110,6 +110,36 @@
 							<path d="M21 13v2a4 4 0 01-4 4H3" />
 						</svg>
 						{task.recurrence_text}
+					</span>
+				{/if}
+				<!-- What is underneath, said as a fraction rather than a total: "3" tells
+				     you there is something there, "1/3" tells you whether there is
+				     anything left to do, which is the question the list is for. -->
+				{#if task.subtask_count}
+					<span
+						class="badge"
+						class:all-done={task.subtask_done === task.subtask_count}
+						title="{task.subtask_done} af {task.subtask_count} undertasks er lukket"
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M9 6h11" />
+							<path d="M9 12h11" />
+							<path d="M9 18h11" />
+							<path d="M4 6l1 1 2-2" />
+							<path d="M4 12l1 1 2-2" />
+							<path d="M4 18l1 1 2-2" />
+						</svg>
+						{task.subtask_done}/{task.subtask_count}
+					</span>
+				{/if}
+				{#if task.attachment_count}
+					<span class="badge" title="{task.attachment_count} vedhæftet">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path
+								d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"
+							/>
+						</svg>
+						{task.attachment_count}
 					</span>
 				{/if}
 				{#each task.labels ?? [] as label}
@@ -289,6 +319,32 @@
 		font-weight: 560;
 		color: #fff;
 		flex: none;
+	}
+
+	/* A mark, not a chip: it sits in the same row as the date and the labels and
+	   must not out-shout them. The task's own text is the thing being read. */
+	.badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		color: var(--ink-faint);
+		flex: none;
+	}
+
+	.badge svg {
+		width: 12px;
+		height: 12px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	/* Everything underneath is closed. Worth saying, because "3/3" and "1/3" are
+	   the two answers you actually look for and only one of them is good news. */
+	.badge.all-done {
+		color: var(--accent);
 	}
 
 	.label {

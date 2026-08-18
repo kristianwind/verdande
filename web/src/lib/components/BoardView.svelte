@@ -9,11 +9,36 @@
 	 * them — and it gives keyboard users the browser's own behaviour for free.
 	 */
 	import { app } from '$lib/stores.svelte.js';
-	import { api } from '$lib/api.js';
+	import { api, humanMessage } from '$lib/api.js';
 	import { TASK, startDrag, carries, accept } from '$lib/dnd.js';
+	import { focusOnMount } from '$lib/focus.js';
 	import TaskRow from './TaskRow.svelte';
 
-	let { project, sections, canEdit } = $props();
+	let { project, sections, canEdit, onsectionadded } = $props();
+
+	// --- adding a column ------------------------------------------------------------
+	//
+	// A column on a board *is* a section, so this is where somebody looks for one.
+	// It was only in the list view, which meant a board — the view whose entire
+	// shape is its sections — had no way to grow one. Reported as "sections have no
+	// function: there is no way to create them", which from inside a board is
+	// exactly true.
+
+	let adding = $state(false);
+	let name = $state('');
+
+	async function addSection(event) {
+		event.preventDefault();
+		const trimmed = name.trim();
+		if (!trimmed) return;
+		adding = false;
+		name = '';
+		try {
+			onsectionadded?.(await api.createSection(project.id, trimmed));
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
 
 	let draggingId = $state(null);
 	let overColumn = $state(null);
@@ -123,6 +148,31 @@
 			</div>
 		</section>
 	{/each}
+
+	{#if canEdit}
+		<section class="column adder">
+			{#if adding}
+				<form onsubmit={addSection}>
+					<input
+						bind:value={name}
+						use:focusOnMount
+						placeholder="Sektionens navn"
+						aria-label="Ny sektion"
+						onblur={() => !name.trim() && (adding = false)}
+						onkeydown={(e) => e.key === 'Escape' && (adding = false)}
+					/>
+				</form>
+			{:else}
+				<button
+					class="add"
+					onclick={() => {
+						adding = true;
+						name = '';
+					}}>+ Tilføj sektion</button
+				>
+			{/if}
+		</section>
+	{/if}
 </div>
 
 <style>
@@ -135,6 +185,43 @@
 		/* Columns snap as you swipe on a phone, so a half-column never sits at
 		   the edge looking like a rendering fault. */
 		scroll-snap-type: x proximity;
+	}
+
+	/* Narrower than a real column and without its background: it is an invitation
+	   at the end of the row, not a column with nothing in it. */
+	.adder {
+		background: none;
+		border: 1px dashed var(--line);
+		min-width: 180px;
+		padding: var(--s2);
+	}
+
+	.adder .add {
+		width: 100%;
+		padding: var(--s2);
+		font-size: var(--text-sm);
+		color: var(--ink-faint);
+		border-radius: var(--radius);
+		text-align: left;
+	}
+
+	.adder .add:hover {
+		color: var(--ink);
+		background: var(--surface);
+	}
+
+	.adder input {
+		width: 100%;
+		padding: var(--s2);
+		background: var(--surface-sunken);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		font-size: var(--text-sm);
+		outline: none;
+	}
+
+	.adder input:focus {
+		border-color: var(--accent);
 	}
 
 	.column {
