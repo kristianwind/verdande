@@ -365,3 +365,59 @@ func TestAProjectCanBeCreatedIntoAGroup(t *testing.T) {
 		t.Errorf("the stored project has group_id = %v, want %q", found["group_id"], groupID)
 	}
 }
+
+// A section holds as many tasks as you put in it.
+//
+// Reported from use: "sections can only have one task". Driven through the same
+// endpoint the interface uses, with the same `after_id` the drop handler sends —
+// the second task goes after the first, which is the case that would fail if
+// positioning inside a section were wrong.
+func TestASectionHoldsMoreThanOneTask(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Skovvænget"})
+	projectID := project["id"].(string)
+	_, section := ts.do(t, "POST", "/api/v1/projects/"+projectID+"/sections",
+		map[string]any{"name": "Håndværker"})
+	sectionID := section["id"].(string)
+
+	var previous string
+	for _, content := range []string{"knager på badeværelset", "plade på opvaskemaskine", "fuge om vinduet"} {
+		_, created := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+			"content": content, "project_id": projectID,
+		})
+		id := created["id"].(string)
+
+		resp, moved := ts.do(t, "POST", "/api/v1/tasks/"+id+"/move", map[string]any{
+			"project_id": projectID, "section_id": sectionID, "after_id": previous,
+		})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("move %q: status %d, body %v", content, resp.StatusCode, moved)
+		}
+		if moved["section_id"] != sectionID {
+			t.Fatalf("%q did not land in the section: %v", content, moved["section_id"])
+		}
+		previous = id
+	}
+
+	_, listed := ts.do(t, "GET", "/api/v1/tasks?project_id="+projectID, nil)
+	tasks, _ := listed["tasks"].([]any)
+	inSection := []string{}
+	for _, raw := range tasks {
+		task := raw.(map[string]any)
+		if task["section_id"] == sectionID {
+			inSection = append(inSection, task["content"].(string))
+		}
+	}
+	if len(inSection) != 3 {
+		t.Fatalf("the section holds %d tasks, want 3: %v", len(inSection), inSection)
+	}
+	// And in the order they were placed, since each went after the one before it.
+	want := []string{"knager på badeværelset", "plade på opvaskemaskine", "fuge om vinduet"}
+	for i, content := range want {
+		if inSection[i] != content {
+			t.Errorf("position %d is %q, want %q — the whole list: %v", i, inSection[i], content, inSection)
+		}
+	}
+}

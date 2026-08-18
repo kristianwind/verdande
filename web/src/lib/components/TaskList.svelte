@@ -12,8 +12,9 @@
 	 * drawn where the row would land.
 	 */
 	import { app } from '$lib/stores.svelte.js';
+	import { t } from '$lib/i18n.svelte.js';
 	import { api } from '$lib/api.js';
-	import { TASK, startDrag, carries, accept } from '$lib/dnd.js';
+	import { TASK, startDrag, carries, dragged, accept } from '$lib/dnd.js';
 	import TaskRow from './TaskRow.svelte';
 
 	let { tasks, projectId, sectionId = '', canEdit = true } = $props();
@@ -33,7 +34,12 @@
 	}
 
 	function onDragOver(event, task) {
-		if (!canEdit || !carries(event, TASK) || !draggingId || draggingId === task.id) return;
+		// `carries` rather than `draggingId`: a task dragged from another list — the
+		// unsectioned rows above, or another section — never called this component's
+		// own dragstart, so its `draggingId` is null. Refusing on that made every
+		// list reject everything that came from outside it, which is the whole point
+		// of dragging between them.
+		if (!canEdit || !carries(event, TASK) || draggingId === task.id) return;
 		accept(event);
 
 		// Which half of the row the pointer is in decides the gap. Comparing against
@@ -54,13 +60,22 @@
 		// gesture and for sections with no rows to aim at. A drop that landed on a
 		// row has already said exactly where it goes, so it stops here.
 		event.stopPropagation();
-		const id = draggingId;
+		// From the drag itself, not from `draggingId`, which is only set when the
+		// drag *started* in this list. A task dragged in from the unsectioned rows
+		// or another section left it null, so this returned early — and it had
+		// already called stopPropagation, so the section around it never got the
+		// drop either. The result: a task could only be dropped into a section with
+		// no rows in it to aim at, which made every section look like it could hold
+		// exactly one task.
+		const id = dragged(event, TASK) || draggingId;
 		const below = overBelow;
 		draggingId = null;
 		overId = null;
 		if (!id || !canEdit || id === target.id) return;
 
 		const ordered = [...tasks].sort((a, b) => a.sort_order - b.sort_order);
+		// The dragged task may not be in this list at all — that is the cross-list
+		// case — so `without` is "this list minus it" either way.
 		const without = ordered.filter((t) => t.id !== id);
 		const at = without.findIndex((t) => t.id === target.id);
 		if (at < 0) return;
@@ -101,7 +116,7 @@
 			);
 		} catch {
 			app.replace(id, previous);
-			app.toast('Kunne ikke flytte opgaven.');
+			app.toast(t('task.moveFailed'));
 		}
 	}
 

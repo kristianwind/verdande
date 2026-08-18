@@ -1204,6 +1204,75 @@ test('færdige opgaver kan vises og skjules igen', async ({ page }) => {
 });
 
 /**
+ * A section holds more than one task, and stops being highlighted afterwards.
+ *
+ * Both reported from use, and both the same root cause. TaskList read the dragged
+ * task from its *own* `draggingId`, which is only set when the drag started in
+ * that list — so a task dragged in from the unsectioned rows arrived as null and
+ * the handler returned early. It had already called `stopPropagation`, so the
+ * section around it never got the drop either.
+ *
+ * The result was a section you could only drop into while it was empty, because
+ * an empty one has no rows to aim at. Put one task in, and there was no way to add
+ * a second: it looked exactly like a section that holds one task.
+ *
+ * The same `stopPropagation` left the section's frame lit, since the handler that
+ * clears it never ran.
+ */
+test('en sektion kan rumme flere opgaver, og rammen forsvinder bagefter @forms', async ({
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Badeværelset');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Badeværelset' })).toBeVisible();
+
+	await page.getByRole('button', { name: '+ Tilføj sektion' }).click();
+	await page.getByLabel('Ny sektion').fill('Håndværker');
+	await page.getByLabel('Ny sektion').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Håndværker' })).toBeVisible();
+
+	for (const what of ['knager op', 'fuge om vinduet']) {
+		await page.getByLabel('Ny opgave').fill(what);
+		await page.getByLabel('Ny opgave').press('Enter');
+		await expect(page.getByText(what, { exact: true })).toBeVisible();
+	}
+
+	const section = page.locator('section').filter({
+		has: page.getByRole('heading', { name: 'Håndværker' })
+	});
+	const row = (what) => page.locator('.row').filter({ hasText: what });
+
+	// The first goes in while the section is empty — the only drop that used to
+	// work, because there was no row in the way to swallow it.
+	await row('knager op').dragTo(section);
+	await expect(section.getByText('knager op', { exact: true })).toBeVisible();
+
+	// And the second, aimed at the row that is now in there. This is the one that
+	// did nothing at all.
+	await row('fuge om vinduet').dragTo(section.getByText('knager op', { exact: true }));
+	await expect(section.getByText('fuge om vinduet', { exact: true })).toBeVisible();
+	await expect(section.locator('.row')).toHaveCount(2);
+
+	// The frame is a drop target being offered, not a state. Once the drag is over
+	// it has nothing left to say.
+	await expect(section).not.toHaveClass(/\bover\b/);
+
+	// It survives a reload, so this is the server's answer and not the page's.
+	await page.reload();
+	const after = page.locator('section').filter({
+		has: page.getByRole('heading', { name: 'Håndværker' })
+	});
+	await expect(after.locator('.row')).toHaveCount(2);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * The sidebar never scrolls sideways.
  *
  * It grew a horizontal scrollbar on an ordinary desktop, under the whole menu.

@@ -587,5 +587,7 @@ export const da = {
 
 	'view.done': 'Færdige',
 	'view.showDone': 'Vis færdige',
-	'view.hideDone': 'Skjul færdige'
+	'view.hideDone': 'Skjul færdige',
+
+	'task.moveFailed': 'Kunne ikke flytte opgaven.'
 };

@@ -197,6 +197,24 @@
 	 */
 	let overSection = $state(null);
 
+	/**
+	 * Clears the highlight when the drag ends, however it ends.
+	 *
+	 * `dragleave` and the section's own `ondrop` are not enough. A drop on a *row*
+	 * inside a section is handled by TaskList, which stops propagation — so the
+	 * section never sees the drop and its frame stayed lit afterwards. A drag
+	 * abandoned with Escape has the same shape: no drop at all, and the frame kept
+	 * standing until the next one.
+	 *
+	 * `dragend` fires exactly once per drag, on the source, and bubbles to the
+	 * window — so it is the one place that is true for every way a drag can finish.
+	 */
+	$effect(() => {
+		const clear = () => (overSection = null);
+		window.addEventListener('dragend', clear);
+		return () => window.removeEventListener('dragend', clear);
+	});
+
 	function onSectionDragOver(event, sectionId) {
 		if (!canEdit || !carries(event, TASK)) return;
 		accept(event);

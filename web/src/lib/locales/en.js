@@ -582,5 +582,7 @@ export const en = {
 
 	'view.done': 'Done',
 	'view.showDone': 'Show done',
-	'view.hideDone': 'Hide done'
+	'view.hideDone': 'Hide done',
+
+	'task.moveFailed': 'The task could not be moved.'
 };
