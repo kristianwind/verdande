@@ -192,8 +192,19 @@ class AppState {
 
 	// --- tasks ------------------------------------------------------------------
 
+	/**
+	 * Loads a slice of tasks into the store.
+	 *
+	 * Closed ones come along when the view is showing them — asked for here rather
+	 * than at every call site, so a view added later cannot forget and quietly
+	 * ignore the setting. A caller that genuinely wants only what is open passes
+	 * `completed: 'exclude'`.
+	 */
 	async loadTasks(params) {
-		const { tasks } = await api.listTasks(params);
+		const { tasks } = await api.listTasks({
+			completed: completedView.shown ? 'include' : undefined,
+			...params
+		});
 		this.tasks = tasks;
 		return tasks;
 	}
@@ -660,6 +671,37 @@ function read() {
 }
 
 export const upcomingView = new UpcomingView();
+
+/**
+ * Whether the lists show what has already been finished.
+ *
+ * In localStorage rather than on the account, like the sidebar's width and unlike
+ * a folded group. It is a way of *looking* rather than a statement about the work:
+ * somebody reviewing what they got done this week wants it on for ten minutes, and
+ * a setting that followed them to every device would be a setting they had to turn
+ * off twice.
+ *
+ * Off by default, and deliberately. A task list is what is left to do; a list that
+ * opens full of things already done is a list that has to be read past before it
+ * can be used.
+ */
+class CompletedView {
+	shown = $state(
+		typeof localStorage !== 'undefined' && localStorage.getItem('verdande:completed') === 'show'
+	);
+
+	toggle() {
+		this.shown = !this.shown;
+		try {
+			localStorage.setItem('verdande:completed', this.shown ? 'show' : 'hide');
+		} catch {
+			// Private browsing; the choice simply will not persist.
+		}
+	}
+}
+
+export const completedView = new CompletedView();
+
 
 /**
  * The themes on offer.

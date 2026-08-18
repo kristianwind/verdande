@@ -583,5 +583,9 @@ export const da = {
 	'push.deniedByBrowser':
 		'Browseren har blokeret notifikationer for dette site. Det skal slås til i browserens indstillinger.',
 	'push.notEnabled': 'Notifikationer blev ikke slået til.',
-	'push.noVapidKey': 'Serveren har ingen VAPID-nøgle.'
+	'push.noVapidKey': 'Serveren har ingen VAPID-nøgle.',
+
+	'view.done': 'Færdige',
+	'view.showDone': 'Vis færdige',
+	'view.hideDone': 'Skjul færdige'
 };

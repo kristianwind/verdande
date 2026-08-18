@@ -4,6 +4,7 @@
 	import { app } from '$lib/stores.svelte.js';
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
+	import { t, tag } from '$lib/i18n.svelte.js';
 
 	let loaded = $state(false);
 
@@ -36,16 +37,18 @@
 	);
 	let liveToday = $derived(app.tasks.filter((t) => !t.completed && t.due_date === isoToday));
 
-	let date = new Date().toLocaleDateString('da-DK', {
-		weekday: 'long',
-		day: 'numeric',
-		month: 'long'
-	});
+	let date = $derived(
+		new Date().toLocaleDateString(tag(), {
+			weekday: 'long',
+			day: 'numeric',
+			month: 'long'
+		})
+	);
 </script>
 
 <div class="view">
 	<header>
-		<h1>I dag</h1>
+		<h1>{t('nav.today')}</h1>
 		<p>{date}</p>
 	</header>
 

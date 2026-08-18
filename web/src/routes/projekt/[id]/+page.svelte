@@ -3,11 +3,12 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { api, humanMessage } from '$lib/api.js';
-	import { app } from '$lib/stores.svelte.js';
+	import { app, completedView } from '$lib/stores.svelte.js';
 	import { COLORS, colorVar } from '$lib/colors.js';
 	import { eventName, eventDetail } from '$lib/events.js';
 	import { TASK, carries, dragged, accept } from '$lib/dnd.js';
 	import TaskList from '$lib/components/TaskList.svelte';
+	import TaskRow from '$lib/components/TaskRow.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
 	import BoardView from '$lib/components/BoardView.svelte';
 	import CalendarView from '$lib/components/CalendarView.svelte';
@@ -115,6 +116,27 @@
 		app.tasks.filter((t) => !t.completed && !t.parent_id && t.project_id === project?.id)
 	);
 	let unsectioned = $derived(open.filter((t) => !t.section_id));
+
+	/**
+	 * What has been finished here, newest first.
+	 *
+	 * In one list at the bottom rather than back among the open ones in their
+	 * sections. A closed task has stopped being work and started being a record,
+	 * and putting the record back in the middle of the plan makes the plan longer
+	 * without making it say more.
+	 */
+	let done = $derived(
+		app.tasks
+			.filter((t) => t.completed && !t.parent_id && t.project_id === project?.id)
+			.sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? ''))
+	);
+
+	// Reloads when the setting changes, because whether closed tasks are in the
+	// store at all is decided by the request.
+	$effect(() => {
+		completedView.shown;
+		if (project) app.loadTasks({ project_id: project.id });
+	});
 
 	let editing = $state(false);
 	let choosingColor = $state(false);
@@ -359,6 +381,13 @@
 				></button>
 			{/if}
 
+			<button
+				class="ghost"
+				onclick={() => completedView.toggle()}
+				aria-pressed={completedView.shown}
+			>
+				{completedView.shown ? t('view.hideDone') : t('view.showDone')}
+			</button>
 			<div class="views" role="group" aria-label={t('view.mode')}>
 				{#each [['list', t('view.list')], ['board', t('view.board')], ['calendar', t('view.calendar')]] as [value, label]}
 					<button
@@ -571,6 +600,16 @@
 				</section>
 			{/each}
 
+			<!-- After the plan, not inside it. -->
+			{#if completedView.shown && done.length}
+				<section class="done">
+					<div class="section-head"><h2>{t('view.done')}</h2></div>
+					{#each done as task (task.id)}
+						<TaskRow {task} />
+					{/each}
+				</section>
+			{/if}
+
 			{#if canEdit}
 				<section class="add-section">
 					{#if addingSection}
@@ -625,6 +664,28 @@
 </div>
 
 <style>
+	/* A quiet control: it changes what you are looking at, not what is there. It
+	   sits beside the view switcher because it is the same kind of decision. */
+	.ghost {
+		font-size: var(--text-sm);
+		color: var(--ink-faint);
+		padding: var(--s1) var(--s2);
+		border-radius: var(--radius);
+		flex: none;
+	}
+
+	.ghost:hover,
+	.ghost[aria-pressed='true'] {
+		color: var(--ink-muted);
+		background: var(--surface);
+	}
+
+	/* Recessed, because it is a record rather than a plan. The rows keep their own
+	   completed styling; this is about the section around them. */
+	.done {
+		opacity: 0.75;
+	}
+
 	.view {
 		max-width: var(--content-max);
 		margin: 0 auto;

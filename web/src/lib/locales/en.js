@@ -578,5 +578,9 @@ export const en = {
 	'push.deniedByBrowser':
 		'The browser has blocked notifications for this site. It has to be turned on in the browser’s own settings.',
 	'push.notEnabled': 'Notifications were not turned on.',
-	'push.noVapidKey': 'The server has no VAPID key.'
+	'push.noVapidKey': 'The server has no VAPID key.',
+
+	'view.done': 'Done',
+	'view.showDone': 'Show done',
+	'view.hideDone': 'Hide done'
 };

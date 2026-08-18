@@ -1146,6 +1146,64 @@ test('kontoens sprog skifter hele fladen, ikke kun parseren', async ({ page }) =
 });
 
 /**
+ * Finished tasks can be looked at, and are out of the way by default.
+ *
+ * A task list is what is left to do, so closing something has to remove it from
+ * the plan — but "what did I get done" is a real question and the answer was
+ * nowhere. They come back in one list at the bottom rather than back among the
+ * open ones in their sections: a closed task has stopped being work and started
+ * being a record, and putting the record back in the middle makes the plan longer
+ * without making it say more.
+ *
+ * The setting is in localStorage, so this also checks it survives a reload — the
+ * half that a toggle held only in component state would fail.
+ */
+test('færdige opgaver kan vises og skjules igen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Loftet');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Loftet' })).toBeVisible();
+
+	for (const what of ['rydde op', 'male gavlen']) {
+		await page.getByLabel('Ny opgave').fill(what);
+		await page.getByLabel('Ny opgave').press('Enter');
+		await expect(page.getByText(what, { exact: true })).toBeVisible();
+	}
+
+	// Close one. It leaves the list, which is the behaviour being protected here.
+	await page
+		.locator('.row')
+		.filter({ hasText: 'rydde op' })
+		.getByRole('button', { name: 'Markér som færdig' })
+		.click();
+	await expect(page.getByText('rydde op', { exact: true })).toBeHidden();
+	await expect(page.getByText('male gavlen', { exact: true })).toBeVisible();
+
+	// And it can be looked at again, under its own heading at the bottom.
+	await page.getByRole('button', { name: 'Vis færdige' }).click();
+	const done = page.locator('section.done');
+	await expect(done.getByRole('heading', { name: 'Færdige' })).toBeVisible();
+	await expect(done.getByText('rydde op', { exact: true })).toBeVisible();
+	// Still exactly where it was in the plan — reopened tasks are the only ones
+	// that come back up.
+	await expect(done.getByText('male gavlen', { exact: true })).toHaveCount(0);
+
+	// The choice is in localStorage, so it holds across a reload.
+	await page.reload();
+	await expect(page.locator('section.done').getByText('rydde op', { exact: true })).toBeVisible();
+
+	await page.getByRole('button', { name: 'Skjul færdige' }).click();
+	await expect(page.locator('section.done')).toHaveCount(0);
+	await expect(page.getByText('male gavlen', { exact: true })).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * The sidebar never scrolls sideways.
  *
  * It grew a horizontal scrollbar on an ordinary desktop, under the whole menu.
