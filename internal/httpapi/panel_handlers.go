@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -72,13 +73,26 @@ func (s *Server) handleRestartFromPanel(w http.ResponseWriter, r *http.Request) 
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 10*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("%s/api/servers/%s/restart", s.cfg.PanelURL, s.cfg.PanelServerID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	// safe-restart rather than restart, and the difference is not politeness.
+	//
+	// The plain endpoint does its work while the request is open: it stops the
+	// container — which kills this process — and the panel, seeing the caller
+	// vanish, never gets to the starting half. That took production down and left
+	// it down for four minutes on 18 August, and it cannot be fixed from this side:
+	// any button that synchronously asks for its own death has the same shape.
+	//
+	// safe-restart is scheduled. The panel answers "Restart scheduled" and does the
+	// work on its own afterwards, so nothing depends on this process still being
+	// alive to hear the reply.
+	url := fmt.Sprintf("%s/api/servers/%s/safe-restart", s.cfg.PanelURL, s.cfg.PanelServerID)
+	body := strings.NewReader(`{"backup_first":false,"target_id":""}`)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
 	if err != nil {
 		s.internal(w, r, "build panel request", err)
 		return
 	}
 	req.Header.Set("Authorization", "Bearer "+s.cfg.PanelToken)
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 	if err != nil {

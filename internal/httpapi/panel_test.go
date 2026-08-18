@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,11 @@ import (
 // request has to end either way, or whatever sits in front answers for it.
 func TestAPanelThatNeverAnswersStillEndsTheRequest(t *testing.T) {
 	panel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Drained first. A real server reads what it was sent, and one that does not
+		// never learns the caller has hung up — httptest.Server.Close then waits for
+		// a handler that will never return, and the whole binary times out instead
+		// of the one request.
+		_, _ = io.Copy(io.Discard, r.Body)
 		<-r.Context().Done()
 	}))
 	defer panel.Close()
@@ -56,6 +62,7 @@ func TestAPanelThatNeverAnswersStillEndsTheRequest(t *testing.T) {
 // And a panel that says no must say so in this server's own words, not in a proxy's.
 func TestAPanelThatRefusesSaysSoAsJSON(t *testing.T) {
 	panel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
 		w.WriteHeader(http.StatusForbidden)
 	}))
 	defer panel.Close()
