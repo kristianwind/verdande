@@ -484,6 +484,15 @@ func TestTheTasksRebuildCarriesTheDataAcross(t *testing.T) {
 		`INSERT INTO task_labels (task_id, label_id) VALUES ('t1', 'l1')`,
 		`INSERT INTO comments (id, task_id, user_id, body, created_at, updated_at)
 		 VALUES ('c1', 't1', 'u1', 'en kommentar', ` + fmt.Sprint(now) + `, ` + fmt.Sprint(now) + `)`,
+		// 0009 rebuilds activity and 0012 rebuilds attachments, so both need rows
+		// here: a rebuild that drops them looks exactly like one that works.
+		`INSERT INTO activity (id, project_id, task_id, user_id, event, payload_json, created_at)
+		 VALUES ('a1', 'p1', 't1', 'u1', 'task.created', '{}', ` + fmt.Sprint(now) + `),
+		        ('a2', 'p2', NULL, 'u1', 'project.created', '{}', ` + fmt.Sprint(now) + `)`,
+		`INSERT INTO attachments (id, task_id, filename, mime_type, size, path, uploaded_by, created_at)
+		 VALUES ('f1', 't1', 'tegning.pdf', 'application/pdf', 1024, 'ab/cd/abcd', 'u1', ` + fmt.Sprint(now) + `)`,
+		`INSERT INTO project_groups (id, owner_id, name, color, collapsed, sort_order, created_at, updated_at)
+		 VALUES ('g1', 'u1', 'Arbejde', 'graphite', 0, 1024, ` + fmt.Sprint(now) + `, ` + fmt.Sprint(now) + `)`,
 	} {
 		if _, err := sqlDB.ExecContext(ctx, stmt); err != nil {
 			t.Fatalf("seed: %v\n%s", err, stmt)
@@ -511,6 +520,48 @@ func TestTheTasksRebuildCarriesTheDataAcross(t *testing.T) {
 	if tasks != 3 || labels != 1 || comments != 1 {
 		t.Fatalf("after the rebuild: %d tasks, %d labels, %d comments — want 3, 1, 1. "+
 			"A drop that cascaded would look exactly like this", tasks, labels, comments)
+	}
+
+	// 0009 and 0012 rebuild activity and attachments by the same machinery. They
+	// run against a live database on the next restart, and the thing that goes
+	// wrong in a rebuild is rows quietly not arriving.
+	var activity, attachments, groups int
+	if err := db.QueryRow(`SELECT count(*) FROM activity`).Scan(&activity); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM attachments`).Scan(&attachments); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM project_groups`).Scan(&groups); err != nil {
+		t.Fatal(err)
+	}
+	if activity != 2 || attachments != 1 || groups != 1 {
+		t.Fatalf("after 0009 and 0012: %d activity rows, %d attachments, %d groups — want 2, 1, 1",
+			activity, attachments, groups)
+	}
+
+	// The attachment kept its parent and its bytes. A rebuild that lost the task_id
+	// leaves a row nothing can reach, which is worse than losing it outright.
+	var fileParent, filename string
+	if err := db.QueryRow(
+		`SELECT task_id, filename FROM attachments WHERE id = 'f1'`).Scan(&fileParent, &filename); err != nil {
+		t.Fatal(err)
+	}
+	if fileParent != "t1" || filename != "tegning.pdf" {
+		t.Errorf("the attachment came across as %q on %q", filename, fileParent)
+	}
+
+	// And the new columns arrived with their defaults rather than as NULL, which is
+	// what an ALTER that forgot NOT NULL DEFAULT would give.
+	var groupAbout, sidebar string
+	if err := db.QueryRow(`SELECT description FROM project_groups WHERE id = 'g1'`).Scan(&groupAbout); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT sidebar_collapsed FROM users WHERE id = 'u1'`).Scan(&sidebar); err != nil {
+		t.Fatal(err)
+	}
+	if groupAbout != "" || sidebar != "[]" {
+		t.Errorf("new columns on existing rows: description %q, sidebar_collapsed %q", groupAbout, sidebar)
 	}
 
 	// Every column came across, including the generated one and the sub-task's

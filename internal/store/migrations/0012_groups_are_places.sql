@@ -10,9 +10,16 @@
 --
 -- The attachments table has to be rebuilt for the second, because its CHECK spells
 -- out exactly which parent columns may be set, and SQLite cannot alter a CHECK.
+--
 -- Foreign keys go off for the length of it — see the marker below and the note in
--- `applyMigration` — because dropping the old table with them on is a cascading
--- delete of every attachment in the instance.
+-- `applyMigration`. Not because the drop would cascade: nothing references
+-- `attachments`, so it takes nothing with it. It is for the check that comes with
+-- the marker. With foreign keys on, the copy is validated a row at a time against
+-- a half-rebuilt schema and the first bad row aborts with no idea how many others
+-- there are; with them off, `PRAGMA foreign_key_check` runs once before the commit
+-- and names what is actually wrong. This runs against a live database on somebody's
+-- next restart, and an attachment whose task was already gone would otherwise stop
+-- the server from starting with one row's worth of explanation.
 --
 -- The rule stays "exactly one parent": an attachment belongs to a task, a comment
 -- or a group, never two. An attachment with two parents is one that gets deleted

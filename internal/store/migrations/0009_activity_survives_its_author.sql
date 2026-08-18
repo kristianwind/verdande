@@ -21,6 +21,14 @@
 -- (created_at, id) matches the keyset the handler pages with — two rows written in
 -- the same second must not be able to hide each other across a page boundary.
 --
+-- The marker below is not here because the drop would cascade: nothing references
+-- `activity`, so it takes nothing with it. It is here for the check that comes
+-- with it. With foreign keys on, the copy is validated a row at a time against a
+-- schema that is half rebuilt, and the first bad row aborts with no idea how many
+-- others are like it. With them off, `PRAGMA foreign_key_check` runs once before
+-- the commit and names what is actually wrong — and this runs against a live
+-- database on somebody's next restart.
+--
 -- verdande:rebuild-tables
 
 CREATE TABLE activity_rebuilt (
