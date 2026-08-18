@@ -1280,3 +1280,39 @@ func TestTheGmailClientIsAdminsOnlyAndSessionsOnly(t *testing.T) {
 		t.Errorf("with an admin's API token: status %d, want 403", resp.StatusCode)
 	}
 }
+
+// Rotating the mail-to-task address, which reported "something went wrong" in
+// production with nothing in the error log — the combination that means the 500 did
+// not come through `s.internal()`.
+func TestTheMailAddressCanBeRotated(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, before := ts.do(t, "GET", "/api/v1/mail-address", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get: status %d, body %v", resp.StatusCode, before)
+	}
+	first, _ := before["address"].(string)
+	if first == "" {
+		t.Fatal("no address to begin with")
+	}
+
+	resp, after := ts.do(t, "POST", "/api/v1/mail-address/rotate", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("rotate: status %d, body %v", resp.StatusCode, after)
+	}
+	second, _ := after["address"].(string)
+	if second == "" || second == first {
+		t.Errorf("the address did not change: %q → %q", first, second)
+	}
+
+	// And twice in a row, which is what somebody does when the first one appeared
+	// to fail.
+	resp, again := ts.do(t, "POST", "/api/v1/mail-address/rotate", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("second rotate: status %d, body %v", resp.StatusCode, again)
+	}
+	if third, _ := again["address"].(string); third == second {
+		t.Error("the second rotation returned the same address")
+	}
+}
