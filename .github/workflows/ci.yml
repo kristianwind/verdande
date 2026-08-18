@@ -79,12 +79,18 @@ jobs:
         working-directory: web
         run: npm ci --no-audit --no-fund
 
-      # Chromium only. A smoke test exists to catch a build that does not work at
-      # all; running it three times in three engines finds the same breakage three
-      # times and costs three times as much.
-      - name: Install Chromium
+      # Chromium for the suite, WebKit for one test.
+      #
+      # A smoke test exists to catch a build that does not work at all, and running
+      # the whole thing in three engines finds the same breakage three times for
+      # three times the cost. Focus is the exception, and it took a real report to
+      # learn it: Safari ignores `autofocus` on anything inserted after the page has
+      # loaded, so every inline form in the app opened with no cursor in it. WebKit
+      # here is the same engine Safari is, and `webkit-forms` in the Playwright
+      # config greps a single test out of the suite to run in it.
+      - name: Install browsers
         working-directory: web
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       # The suite builds the frontend, embeds it and starts the real binary — see
       # playwright.config.js. There is nothing to build here first.
