@@ -596,5 +596,10 @@ export const da = {
 	'push.upToDate': 'Ingen nyere version fundet.',
 
 	'view.nothingMoreToday': 'Ikke mere i dag.',
-	'project.roleFor': 'Rolle for {name}'
+	'project.roleFor': 'Rolle for {name}',
+
+	'project.more': 'Flere handlinger',
+	'project.removeMember': 'Fjern {name}',
+
+	'nav.closeMenu': 'Luk menu'
 };

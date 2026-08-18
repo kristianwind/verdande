@@ -140,6 +140,24 @@
 
 	let editing = $state(false);
 	let choosingColor = $state(false);
+	let showMenu = $state(false);
+
+	// Closes on a click anywhere else and on Escape. A menu that only closes by
+	// pressing its own button again is one you end up clicking twice to leave.
+	$effect(() => {
+		if (!showMenu) return;
+		const away = (event) => {
+			if (!event.target.closest?.('.more')) showMenu = false;
+		};
+		const escape = (event) => event.key === 'Escape' && (showMenu = false);
+		// Capture, so a click that its own handler stops still closes the menu.
+		window.addEventListener('click', away, true);
+		window.addEventListener('keydown', escape);
+		return () => {
+			window.removeEventListener('click', away, true);
+			window.removeEventListener('keydown', escape);
+		};
+	});
 
 	/**
 	 * The colour is written to the store as well as here: the sidebar reads its own
@@ -388,24 +406,6 @@
 					{/if}
 				</h1>
 			{/if}
-			{#if isOwner && !project.is_inbox}
-				<button
-					class="color"
-					style="background: {colorVar(project.color)}"
-					onclick={() => (choosingColor = !choosingColor)}
-					aria-expanded={choosingColor}
-					aria-label={t('project.color')}
-					title={t('project.color')}
-				></button>
-			{/if}
-
-			<button
-				class="ghost"
-				onclick={() => completedView.toggle()}
-				aria-pressed={completedView.shown}
-			>
-				{completedView.shown ? t('view.hideDone') : t('view.showDone')}
-			</button>
 			<div class="views" role="group" aria-label={t('view.mode')}>
 				{#each [['list', t('view.list')], ['board', t('view.board')], ['calendar', t('view.calendar')]] as [value, label]}
 					<button
@@ -416,25 +416,94 @@
 				{/each}
 			</div>
 
-			{#if !project.is_inbox}
-				<button class="share" onclick={() => (showShare = !showShare)}>
-					{project.shared ? t('project.sharedWith', { n: project.member_count }) : t('project.share')}
-				</button>
-			{/if}
+			<!-- Everything else lives behind one button.
+			     The row had eight controls in it — title, colour, show-done, three view
+			     buttons, share, history, delete — and a project name is not a short
+			     word. They fitted only on a wide window, and past that the heading was
+			     the thing that gave way, which is the one part of the row that has to
+			     be readable.
 
-			{#if !project.is_inbox}
-				<button class="share" onclick={() => (showLog = !showLog)} aria-expanded={showLog}>
-					{t('project.history')}
-				</button>
-			{/if}
-
-			{#if isOwner && !project.is_inbox}
-				<button class="remove" onclick={remove} aria-label={t('project.delete')}>
+			     What stays out is what you use while working: which view you are in.
+			     What moves in is what you do to a project rather than in it, and most
+			     of it once ever. -->
+			<div class="more">
+				<button
+					class="more-toggle"
+					onclick={() => (showMenu = !showMenu)}
+					aria-expanded={showMenu}
+					aria-haspopup="menu"
+					aria-label={t('project.more')}
+				>
 					<svg viewBox="0 0 24 24" aria-hidden="true">
-						<path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13h10l1-13" />
+						<circle cx="5" cy="12" r="1.6" />
+						<circle cx="12" cy="12" r="1.6" />
+						<circle cx="19" cy="12" r="1.6" />
 					</svg>
 				</button>
-			{/if}
+
+				{#if showMenu}
+					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+					<div class="menu" role="menu">
+						<button
+							role="menuitem"
+							onclick={() => {
+								completedView.toggle();
+								showMenu = false;
+							}}
+						>
+							{completedView.shown ? t('view.hideDone') : t('view.showDone')}
+						</button>
+
+						{#if !project.is_inbox}
+							<button
+								role="menuitem"
+								onclick={() => {
+									showShare = !showShare;
+									showMenu = false;
+								}}
+							>
+								{project.shared
+									? t('project.sharedWith', { n: project.member_count })
+									: t('project.share')}
+							</button>
+
+							<button
+								role="menuitem"
+								onclick={() => {
+									showLog = !showLog;
+									showMenu = false;
+								}}
+							>
+								{t('project.history')}
+							</button>
+						{/if}
+
+						{#if isOwner && !project.is_inbox}
+							<button
+								role="menuitem"
+								onclick={() => {
+									choosingColor = !choosingColor;
+									showMenu = false;
+								}}
+							>
+								<span class="swatch-dot" style="background: {colorVar(project.color)}"></span>
+								{t('project.color')}
+							</button>
+
+							<button
+								role="menuitem"
+								class="danger"
+								onclick={() => {
+									showMenu = false;
+									remove();
+								}}
+							>
+								{t('project.delete')}
+							</button>
+						{/if}
+					</div>
+				{/if}
+			</div>
 		</header>
 
 		{#if showLog}
@@ -445,7 +514,7 @@
 							<!-- Empty when the account has been deleted: the record of what was
 							     done outlives whoever did it, so the row stays and the name goes. -->
 							<span class="who" class:gone={!entry.user_name}
-								>{entry.user_name || 'En slettet konto'}</span
+								>{entry.user_name || t('history.deletedAccount')}</span
 							>
 							<span class="what">
 								{eventName(entry.event)}{#if eventDetail(entry)}
@@ -509,7 +578,7 @@
 										await api.removeMember(project.id, member.user_id);
 										members = (await api.listMembers(project.id)).members;
 									}}
-									aria-label="Fjern {member.name}">×</button
+									aria-label={t('project.removeMember', { name: member.name })}>×</button
 								>
 							{/if}
 						</li>
@@ -682,22 +751,6 @@
 </div>
 
 <style>
-	/* A quiet control: it changes what you are looking at, not what is there. It
-	   sits beside the view switcher because it is the same kind of decision. */
-	.ghost {
-		font-size: var(--text-sm);
-		color: var(--ink-faint);
-		padding: var(--s1) var(--s2);
-		border-radius: var(--radius);
-		flex: none;
-	}
-
-	.ghost:hover,
-	.ghost[aria-pressed='true'] {
-		color: var(--ink-muted);
-		background: var(--surface);
-	}
-
 	/* Recessed, because it is a record rather than a plan. The rows keep their own
 	   completed styling; this is about the section around them. */
 	.done {
@@ -711,10 +764,6 @@
 	}
 
 	/* A board and a month grid need the room; a list is easier to read narrow. */
-	.view:has(.board),
-	.view:has(.calendar) {
-		max-width: 1400px;
-	}
 
 	/* Wraps, and the title keeps a floor.
 	 *
@@ -734,11 +783,15 @@
 
 	h1 {
 		font-size: var(--text-2xl);
-		/* 8ch rather than 0: the basis is what stops flex shrinking it past the
-		   point where the wrapping below is the better answer. */
-		flex: 1 1 8ch;
-		min-width: 8ch;
-		overflow-wrap: anywhere;
+		/* Takes the row, and lets the controls keep their own width. With the rest
+		   of them behind one button there is room for a real project name. */
+		flex: 1 1 auto;
+		min-width: 0;
+		/* `break-word`, not `anywhere`. `anywhere` breaks inside a word at the first
+		   opportunity, so "GarageRisteriet" came out as "GarageRist / eriet" the
+		   moment the row was tight — a name split mid-syllable reads as a rendering
+		   fault. This only breaks a word that cannot fit on a line of its own. */
+		overflow-wrap: break-word;
 	}
 
 	/* The heading's button carries no button-ness: it is the heading, and the only
@@ -779,6 +832,83 @@
 		border-color: var(--accent);
 	}
 
+	/* --- the overflow menu ------------------------------------------------------ */
+
+	.more {
+		position: relative;
+		flex: none;
+	}
+
+	.more-toggle {
+		width: 28px;
+		height: 28px;
+		display: grid;
+		place-items: center;
+		border-radius: var(--radius);
+		color: var(--ink-faint);
+	}
+
+	.more-toggle:hover,
+	.more-toggle[aria-expanded='true'] {
+		color: var(--ink);
+		background: var(--surface);
+	}
+
+	.more-toggle svg {
+		width: 18px;
+		height: 18px;
+		fill: currentColor;
+	}
+
+	/* Right-aligned, because the button is at the right end of the row and a menu
+	   that opened leftward from there would hang off the page. */
+	.menu {
+		position: absolute;
+		top: calc(100% + var(--s1));
+		right: 0;
+		z-index: 20;
+		min-width: 190px;
+		display: flex;
+		flex-direction: column;
+		padding: var(--s1);
+		background: var(--surface-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		box-shadow: var(--shadow-lg);
+	}
+
+	.menu button {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		width: 100%;
+		text-align: left;
+		padding: var(--s2) var(--s3);
+		border-radius: var(--radius-sm);
+		font-size: var(--text-sm);
+		color: var(--ink);
+		white-space: nowrap;
+	}
+
+	.menu button:hover {
+		background: var(--surface-sunken);
+	}
+
+	.menu button.danger {
+		color: var(--danger);
+	}
+
+	.menu button.danger:hover {
+		background: var(--danger-sunken);
+	}
+
+	.swatch-dot {
+		width: 10px;
+		height: 10px;
+		border-radius: var(--radius-full);
+		flex: none;
+	}
+
 	.remove {
 		flex: none;
 		width: 30px;
@@ -797,34 +927,7 @@
 		background: var(--danger-sunken);
 	}
 
-	.remove svg {
-		width: 16px;
-		height: 16px;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 1.6;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-	}
 
-	/* A circle in the project's own colour, which is both the control and its own
-	   preview: the thing you are about to change is what you press. */
-	.color {
-		flex: none;
-		width: 20px;
-		height: 20px;
-		border-radius: var(--radius-full);
-		box-shadow: 0 0 0 2px var(--ground);
-		transition: box-shadow var(--fast) var(--ease);
-	}
-
-	.color:hover,
-	.color:focus-visible {
-		box-shadow:
-			0 0 0 2px var(--ground),
-			0 0 0 3px var(--line-strong);
-		outline: none;
-	}
 
 	.swatches {
 		display: flex;
@@ -887,20 +990,7 @@
 		font-weight: 500;
 	}
 
-	.share {
-		flex: none;
-		font-size: var(--text-sm);
-		color: var(--ink-muted);
-		padding: var(--s1) var(--s3);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-full);
-		transition: border-color var(--fast) var(--ease);
-	}
 
-	.share:hover {
-		border-color: var(--line-strong);
-		color: var(--ink);
-	}
 
 	.panel {
 		background: var(--surface);

@@ -591,5 +591,10 @@ export const en = {
 	'push.upToDate': 'No newer version found.',
 
 	'view.nothingMoreToday': 'Nothing more today.',
-	'project.roleFor': 'Role for {name}'
+	'project.roleFor': 'Role for {name}',
+
+	'project.more': 'More actions',
+	'project.removeMember': 'Remove {name}',
+
+	'nav.closeMenu': 'Close menu'
 };

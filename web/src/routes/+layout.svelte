@@ -142,7 +142,7 @@
 			<button
 				class="scrim"
 				onclick={() => (sidebarOpen = false)}
-				aria-label="Luk menu"
+				aria-label={t('nav.closeMenu')}
 				tabindex="-1"
 			></button>
 		{/if}

@@ -19,6 +19,25 @@ import { USER } from './user.js';
  * happened" is not an actionable test failure — "PATCH /api/v1/tasks/x returned
  * 500" is.
  */
+/**
+ * Opens the project header's overflow menu and clicks one of its items.
+ *
+ * The header used to carry eight controls in one row — title, colour, show-done,
+ * three view buttons, share, history, delete — and a project name is not a short
+ * word, so the heading was what gave way. Everything but the view switcher moved
+ * behind one button; this is how a test reaches them.
+ */
+async function projectAction(page, name) {
+	await page.getByRole('button', { name: 'Flere handlinger' }).click();
+	// `exact` only means anything for a string. The share item reads "Delt · 2" once
+	// somebody is in the project, so callers pass a regex for that one.
+	const item =
+		name instanceof RegExp
+			? page.getByRole('menuitem', { name })
+			: page.getByRole('menuitem', { name, exact: true });
+	await item.click();
+}
+
 function watchForTrouble(page) {
 	const trouble = [];
 	page.on('console', (message) => {
@@ -224,7 +243,7 @@ test('et projekt kan omdøbes, slettes og hentes tilbage', async ({ page }) => {
 	await expect(sidebar.getByRole('link', { name: 'Sommerferie' })).toBeVisible();
 
 	page.once('dialog', (dialog) => dialog.accept());
-	await page.getByRole('button', { name: 'Slet projektet' }).click();
+	await projectAction(page, 'Slet projektet');
 
 	await expect(sidebar.getByRole('link', { name: 'Sommerferie' })).toBeHidden();
 
@@ -540,7 +559,7 @@ test('et invitationslink opretter kontoen og giver adgang til projektet', async 
 	await sidebar.getByLabel('Projektnavn').press('Enter');
 	await expect(page.getByRole('heading', { name: 'Fælleshuset' })).toBeVisible();
 
-	await page.getByRole('button', { name: 'Del' }).click();
+	await projectAction(page, 'Del');
 	await page.getByLabel('Inviter via e-mail').fill('nabo@example.dk');
 	await page.getByRole('button', { name: 'Inviter' }).click();
 
@@ -779,7 +798,7 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 	// controls below only exist once it has.
 	await expect(page.getByRole('heading', { name: 'Fælles' })).toBeVisible();
 
-	await page.getByRole('button', { name: 'Del' }).click();
+	await projectAction(page, 'Del');
 	await page.getByLabel('Inviter via e-mail').fill('andreas@example.dk');
 	await page.getByLabel('Rolle').selectOption('viewer');
 	await page.getByRole('button', { name: 'Inviter' }).click();
@@ -804,7 +823,7 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 	// The owner promotes them from the member list. The owner's own row is text,
 	// not a dropdown: ownership is transferred, not granted.
 	await page.reload();
-	await page.getByRole('button', { name: /Delt/ }).click();
+	await projectAction(page, /Delt/);
 	await expect(page.getByText('Ejer')).toBeVisible();
 	await page.getByLabel('Rolle for andreas').selectOption('editor');
 
@@ -832,7 +851,7 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 	).toHaveCount(0);
 
 	// The log has recorded all of this since the beginning and nothing showed it.
-	await page.getByRole('button', { name: 'Historik' }).click();
+	await projectAction(page, 'Historik');
 	await expect(page.getByText('oprettede projektet')).toBeVisible();
 	await expect(page.getByText('ændrede rollen for')).toBeVisible();
 
@@ -1184,7 +1203,7 @@ test('færdige opgaver kan vises og skjules igen', async ({ page }) => {
 	await expect(page.getByText('male gavlen', { exact: true })).toBeVisible();
 
 	// And it can be looked at again, under its own heading at the bottom.
-	await page.getByRole('button', { name: 'Vis færdige' }).click();
+	await projectAction(page, 'Vis færdige');
 	const done = page.locator('section.done');
 	await expect(done.getByRole('heading', { name: 'Færdige' })).toBeVisible();
 	await expect(done.getByText('rydde op', { exact: true })).toBeVisible();
@@ -1196,7 +1215,7 @@ test('færdige opgaver kan vises og skjules igen', async ({ page }) => {
 	await page.reload();
 	await expect(page.locator('section.done').getByText('rydde op', { exact: true })).toBeVisible();
 
-	await page.getByRole('button', { name: 'Skjul færdige' }).click();
+	await projectAction(page, 'Skjul færdige');
 	await expect(page.locator('section.done')).toHaveCount(0);
 	await expect(page.getByText('male gavlen', { exact: true })).toBeVisible();
 
@@ -1268,6 +1287,51 @@ test('en sektion kan rumme flere opgaver, og rammen forsvinder bagefter @forms',
 		has: page.getByRole('heading', { name: 'Håndværker' })
 	});
 	await expect(after.locator('.row')).toHaveCount(2);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * The project header keeps its name readable.
+ *
+ * It was a flex row of eight controls and a heading, and the heading was the part
+ * that gave way: "GarageRisteriet" rendered as "GarageRist / eriet", broken
+ * mid-word, because `overflow-wrap: anywhere` breaks at the first opportunity
+ * rather than the last necessary one. A name split mid-syllable reads as a
+ * rendering fault, not as a wrap.
+ *
+ * Everything but the view switcher lives behind one button now. This measures the
+ * heading rather than counting controls, because the thing being protected is that
+ * the name is legible — not any particular arrangement of the row.
+ */
+test('projektets navn brydes ikke midt i et ord', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('GarageRisteriet');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+
+	const heading = page.getByRole('heading', { name: 'GarageRisteriet', level: 1 });
+	await expect(heading).toBeVisible();
+
+	// One line. The name is fifteen characters and the row now has room for it,
+	// which is the whole point of moving the rest behind a button.
+	const box = await heading.boundingBox();
+	const lineHeight = await heading.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+	expect(box.height, 'overskriften er brudt over flere linjer').toBeLessThan(lineHeight * 2);
+
+	// And the actions are still reachable, just one click further in.
+	await page.getByRole('button', { name: 'Flere handlinger' }).click();
+	for (const item of ['Vis færdige', 'Del', 'Historik', 'Farve på projektet', 'Slet projektet']) {
+		await expect(page.getByRole('menuitem', { name: item, exact: true })).toBeVisible();
+	}
+
+	// Escape closes it — a menu you can only leave by pressing its own button again
+	// is one you click twice to get out of.
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('menuitem', { name: 'Historik', exact: true })).toHaveCount(0);
 
 	expect(trouble).toEqual([]);
 });
