@@ -2,7 +2,7 @@
 	/**
 	 * The settings surface.
 	 *
-	 * Six pages rather than one long scroll: the sections have nothing to do with
+	 * Several pages rather than one long scroll: the sections have nothing to do with
 	 * each other, and a person opening "API-tokens" should not have to walk past
 	 * their own password to get there.
 	 *
@@ -28,6 +28,7 @@
 		...(app.user?.is_admin
 			? [
 					{ href: '/indstillinger/brugere', label: 'Brugere' },
+					{ href: '/indstillinger/historik', label: 'Historik' },
 					{ href: '/indstillinger/fejl', label: 'Fejl' }
 				]
 			: []),
@@ -65,8 +66,8 @@
 		margin-bottom: var(--s5);
 	}
 
-	/* A scrolling strip rather than a wrapping row: six labels wrap to two lines on
-	   a phone, and a two-line tab bar looks like a mistake. */
+	/* A scrolling strip rather than a wrapping row: this many labels wrap to two
+	   lines on a phone, and a two-line tab bar looks like a mistake. */
 	nav {
 		display: flex;
 		gap: var(--s1);

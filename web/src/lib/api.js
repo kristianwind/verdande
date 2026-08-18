@@ -160,6 +160,9 @@ export const api = {
 	logout: () => post('/auth/logout'),
 	me: () => get('/auth/me'),
 	updateProfile: (data) => patch('/auth/me', data),
+	// Its own route rather than a field on the profile: that one backs a form with
+	// a save button, and this writes on every click of a chevron.
+	setSidebarSections: (sections) => put('/auth/sidebar-sections', { sections }),
 	signup: (data) => post('/auth/signup', data),
 	forgotPassword: (email) => post('/auth/password/forgot', { email }),
 	resetPassword: (token, password) => post('/auth/password/reset', { token, password }),
@@ -179,6 +182,33 @@ export const api = {
 	deleteUser: (id) => del(`/users/${id}`),
 	revokeInvite: (id) => del(`/invites/${id}`),
 	listErrors: () => get('/errors'),
+
+	// The nightly backup, which ran since the beginning with nothing to show it.
+	// The OAuth client itself, which is the instance's registration with Google
+	// rather than anybody's mailbox.
+	gmailClient: () => get('/gmail/client'),
+	setGmailClient: (data) => put('/gmail/client', data),
+
+	listBackups: () => get('/backups'),
+	runBackup: () => post('/backups'),
+	// A link rather than a fetch: the browser's own download handles a file of
+	// this size, and a blob in memory of the whole database does not.
+	backupURL: (id) => `/api/v1/backups/${id}`,
+
+	// The instance-wide history, which is the other half of the error log: that
+	// one is what broke, this is what was done. Paged with the cursor the server
+	// hands back rather than an offset — see the OpenAPI note on /activity.
+	auditLog: ({ before, user_id, project_id, event, limit } = {}) => {
+		const q = new URLSearchParams();
+		if (before) q.set('before', before);
+		if (user_id) q.set('user_id', user_id);
+		if (project_id) q.set('project_id', project_id);
+		if (event) q.set('event', event);
+		if (limit) q.set('limit', limit);
+		const query = q.toString();
+		return get(`/activity${query ? `?${query}` : ''}`);
+	},
+	auditEvents: () => get('/activity/events'),
 
 	recoveryCodes: () => get('/auth/recovery-codes'),
 	regenerateRecoveryCodes: (password) => post('/auth/recovery-codes', { password }),

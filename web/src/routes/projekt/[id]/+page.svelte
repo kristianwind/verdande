@@ -5,11 +5,13 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { COLORS, colorVar } from '$lib/colors.js';
+	import { eventName, eventDetail } from '$lib/events.js';
 	import { TASK, carries, dragged, accept } from '$lib/dnd.js';
 	import TaskList from '$lib/components/TaskList.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
 	import BoardView from '$lib/components/BoardView.svelte';
 	import CalendarView from '$lib/components/CalendarView.svelte';
+	import { focusOnMount } from '$lib/focus.js';
 
 	let project = $state(null);
 	/**
@@ -74,45 +76,6 @@
 			api.activity(project.id).then((r) => (activity = r.activity)).catch(() => {});
 		}
 	});
-
-	/**
-	 * What each recorded event is called.
-	 *
-	 * The log has been written since the beginning — nineteen kinds of entry — and
-	 * nothing has ever read it. The keys are the server's and they are stable; this
-	 * is the only place they become Danish.
-	 *
-	 * An unknown key falls through to the key itself rather than being hidden: a
-	 * build that records something this table has not learned yet should still show
-	 * that it happened.
-	 */
-	const EVENTS = {
-		'project.created': 'oprettede projektet',
-		'project.updated': 'ændrede projektet',
-		'project.deleted': 'slettede projektet',
-		'project.imported': 'importerede projektet',
-		'section.created': 'oprettede en sektion',
-		'section.updated': 'ændrede en sektion',
-		'section.deleted': 'slettede en sektion',
-		'member.invited': 'inviterede',
-		'member.added': 'tilføjede',
-		'member.removed': 'fjernede',
-		'member.role_changed': 'ændrede rollen for',
-		'task.created': 'oprettede en opgave',
-		'task.updated': 'ændrede en opgave',
-		'task.completed': 'lukkede en opgave',
-		'task.reopened': 'genåbnede en opgave',
-		'task.moved': 'flyttede en opgave',
-		'task.deleted': 'slettede en opgave',
-		'task.split': 'delte en opgave op',
-		'comment.created': 'skrev en kommentar'
-	};
-
-	/** The bit of context an entry carries, when it has one worth reading. */
-	function detail(entry) {
-		const p = entry.payload ?? {};
-		return p.name ?? p.email ?? p.role ?? '';
-	}
 
 	function when(iso) {
 		const then = new Date(iso);
@@ -359,10 +322,9 @@
 			     what a screen reader announces on arrival. So the heading stays and
 			     becomes editable on click. -->
 			{#if editing}
-				<!-- svelte-ignore a11y_autofocus -->
 				<input
 					class="title"
-					autofocus
+					use:focusOnMount
 					value={project.name}
 					aria-label="Projektets navn"
 					onblur={(e) => rename(e.currentTarget)}
@@ -432,10 +394,14 @@
 				<ul class="log">
 					{#each activity as entry (entry.id)}
 						<li>
-							<span class="who">{entry.user_name}</span>
+							<!-- Empty when the account has been deleted: the record of what was
+							     done outlives whoever did it, so the row stays and the name goes. -->
+							<span class="who" class:gone={!entry.user_name}
+								>{entry.user_name || 'En slettet konto'}</span
+							>
 							<span class="what">
-								{EVENTS[entry.event] ?? entry.event}{#if detail(entry)}
-									<span class="detail">{detail(entry)}</span>{/if}
+								{eventName(entry.event)}{#if eventDetail(entry)}
+									<span class="detail">{eventDetail(entry)}</span>{/if}
 							</span>
 							<span class="when">{when(entry.created_at)}</span>
 						</li>
@@ -536,7 +502,12 @@
 		{/if}
 
 		{#if mode === 'board'}
-			<BoardView {project} {sections} {canEdit} />
+			<BoardView
+				{project}
+				{sections}
+				{canEdit}
+				onsectionadded={(section) => (sections = [...sections, section])}
+			/>
 		{:else if mode === 'calendar'}
 			<CalendarView projectId={project.id} />
 		{:else}
@@ -568,10 +539,9 @@
 					<div class="section-head">
 						{#if renamingSection === section.id}
 							<form onsubmit={(e) => renameSection(e, section)}>
-								<!-- svelte-ignore a11y_autofocus -->
 								<input
 									bind:value={sectionName}
-									autofocus
+									use:focusOnMount
 									aria-label="Sektionens navn"
 									onblur={() => (renamingSection = null)}
 									onkeydown={(e) => e.key === 'Escape' && (renamingSection = null)}
@@ -604,10 +574,9 @@
 				<section class="add-section">
 					{#if addingSection}
 						<form onsubmit={addSection}>
-							<!-- svelte-ignore a11y_autofocus -->
 							<input
 								bind:value={sectionName}
-								autofocus
+								use:focusOnMount
 								placeholder="Sektionens navn"
 								aria-label="Ny sektion"
 								onblur={() => !sectionName.trim() && (addingSection = false)}
@@ -998,6 +967,14 @@
 	.who {
 		font-weight: 500;
 		flex: none;
+	}
+
+	/* A name that is not a name reads at the weight of the surrounding prose, not
+	   at the weight a person's name gets. */
+	.who.gone {
+		font-weight: 400;
+		font-style: italic;
+		color: var(--ink-faint);
 	}
 
 	.what {

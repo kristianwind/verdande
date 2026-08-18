@@ -144,6 +144,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Use(s.requireAuth)
 				r.Get("/me", s.handleMe)
 				r.Patch("/me", s.handleUpdateProfile)
+				r.Put("/sidebar-sections", s.handleSetSidebarSections)
 				r.Post("/logout", s.handleLogout)
 				r.Post("/password/change", s.handleChangePassword)
 				r.Post("/totp/setup", s.handleTOTPSetup)
@@ -236,6 +237,17 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Delete("/", s.handleDisconnectGmail)
 				r.Post("/authorize", s.handleGmailAuthorize)
 				r.Post("/sync", s.handleGmailSyncNow)
+
+				// The OAuth client itself is the instance's registration with
+				// Google, not anybody's mailbox — so unlike everything above it, it
+				// is administrators only, and behind a session as well: a leaked
+				// token must not be able to read or replace this instance's
+				// identity to Google.
+				r.Group(func(r chi.Router) {
+					r.Use(s.requireSession, s.requireAdmin)
+					r.Get("/client", s.handleGetGmailClient)
+					r.Put("/client", s.handleSetGmailClient)
+				})
 			})
 
 			r.Route("/import", func(r chi.Router) {
@@ -306,6 +318,17 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			r.Group(func(r chi.Router) {
 				r.Use(s.requireSession, s.requireAdmin)
 				r.Get("/errors", s.handleListErrors)
+				// A backup file is a complete copy of the database, so this whole
+				// group is sessions-only as well as administrators-only: a leaked
+				// token must not be able to download everybody's data.
+				r.Get("/backups", s.handleListBackups)
+				r.Post("/backups", s.handleRunBackup)
+				r.Get("/backups/{backupID}", s.handleDownloadBackup)
+				// The instance-wide history. Above the per-project one in every
+				// sense: it crosses projects the caller is not a member of, which
+				// is the whole reason it is here and not there.
+				r.Get("/activity", s.handleAuditLog)
+				r.Get("/activity/events", s.handleAuditEvents)
 				r.Get("/users", s.handleListUsers)
 				r.Post("/users", s.handleCreateUser)
 				r.Patch("/users/{userID}", s.handleUpdateUser)
