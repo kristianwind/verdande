@@ -162,22 +162,41 @@ func (r *Runner) nightlyBackup(ctx context.Context) error {
 	if time.Since(last) < 23*time.Hour {
 		return nil
 	}
+	return Backup(ctx, r.cfg, r.db, r.log)
+}
 
+// Backup takes one snapshot now, records the run and rotates the old files.
+//
+// Exported and free of the Runner, because the settings page can ask for one too:
+// waiting until tonight to find out whether backups work at all is how somebody
+// discovers on the day they need one that the volume has been read-only for a
+// month. The nightly job is this function behind a "has one run today" check; the
+// button is this function without it.
+//
+// It uses SQLite's own VACUUM INTO rather than copying the file. A plain copy of a
+// live WAL-mode database can miss the most recent writes or catch a page
+// mid-update; VACUUM INTO produces a consistent, already-compacted database
+// without blocking writers for the duration.
+func Backup(ctx context.Context, cfg *config.Config, db *store.DB, log *slog.Logger) error {
 	started := time.Now()
 	name := backupPrefix + started.UTC().Format("2006-01-02T150405Z") + ".db"
-	path := filepath.Join(r.cfg.BackupsDir(), name)
+	path := filepath.Join(cfg.BackupsDir(), name)
 
-	runID, err := r.db.StartBackupRun(ctx, started)
+	if err := os.MkdirAll(cfg.BackupsDir(), 0o755); err != nil {
+		return fmt.Errorf("backups dir: %w", err)
+	}
+
+	runID, err := db.StartBackupRun(ctx, started)
 	if err != nil {
 		return err
 	}
 
-	if err := r.db.Snapshot(ctx, path); err != nil {
+	if err := db.Snapshot(ctx, path); err != nil {
 		// A failed attempt can leave a partial file, which would then look like a
 		// backup to anybody reading the directory.
 		os.Remove(path)
-		if recErr := r.db.FinishBackupRun(ctx, runID, "", 0, err); recErr != nil {
-			r.log.Warn("record backup failure", "err", recErr)
+		if recErr := db.FinishBackupRun(ctx, runID, "", 0, err); recErr != nil {
+			log.Warn("record backup failure", "err", recErr)
 		}
 		return fmt.Errorf("snapshot: %w", err)
 	}
@@ -186,13 +205,13 @@ func (r *Runner) nightlyBackup(ctx context.Context) error {
 	if info, err := os.Stat(path); err == nil {
 		size = info.Size()
 	}
-	if err := r.db.FinishBackupRun(ctx, runID, path, size, nil); err != nil {
-		r.log.Warn("record backup", "err", err)
+	if err := db.FinishBackupRun(ctx, runID, path, size, nil); err != nil {
+		log.Warn("record backup", "err", err)
 	}
-	r.log.Info("backup written", "path", path, "bytes", size,
+	log.Info("backup written", "path", path, "bytes", size,
 		"took", time.Since(started).Round(time.Millisecond).String())
 
-	return r.rotateBackups()
+	return rotateBackups(cfg, log)
 }
 
 // rotateBackups keeps the most recent fourteen and deletes the rest.
@@ -200,8 +219,8 @@ func (r *Runner) nightlyBackup(ctx context.Context) error {
 // Counted by file, not by age: a container that was off for a month would
 // otherwise come back, find every backup older than fourteen days, and delete all
 // of them — leaving none at exactly the moment they were most likely to be needed.
-func (r *Runner) rotateBackups() error {
-	entries, err := os.ReadDir(r.cfg.BackupsDir())
+func rotateBackups(cfg *config.Config, log *slog.Logger) error {
+	entries, err := os.ReadDir(cfg.BackupsDir())
 	if err != nil {
 		return err
 	}
@@ -216,12 +235,12 @@ func (r *Runner) rotateBackups() error {
 	sort.Sort(sort.Reverse(sort.StringSlice(backups)))
 
 	for _, name := range backups[min(len(backups), backupKeepDays):] {
-		path := filepath.Join(r.cfg.BackupsDir(), name)
+		path := filepath.Join(cfg.BackupsDir(), name)
 		if err := os.Remove(path); err != nil {
-			r.log.Warn("remove old backup", "err", err, "path", path)
+			log.Warn("remove old backup", "err", err, "path", path)
 			continue
 		}
-		r.log.Info("old backup removed", "path", path)
+		log.Info("old backup removed", "path", path)
 	}
 	return nil
 }
@@ -291,27 +310,12 @@ func (r *Runner) purgeSessions(ctx context.Context) error {
 	return nil
 }
 
-// RunBackupNow is what the "back up now" button calls, and what the tests use.
+// RunBackupNow is the Runner's way in, for the tests that already hold one.
+//
+// It was a second copy of Backup — written when the button that would call it did
+// not exist yet — and the two had already drifted: this one never created the
+// backups directory, and logged nothing. One implementation, so a fix to the
+// nightly path is a fix to the button as well.
 func (r *Runner) RunBackupNow(ctx context.Context) error {
-	started := time.Now()
-	name := backupPrefix + started.UTC().Format("2006-01-02T150405Z") + ".db"
-	path := filepath.Join(r.cfg.BackupsDir(), name)
-
-	runID, err := r.db.StartBackupRun(ctx, started)
-	if err != nil {
-		return err
-	}
-	if err := r.db.Snapshot(ctx, path); err != nil {
-		os.Remove(path)
-		_ = r.db.FinishBackupRun(ctx, runID, "", 0, err)
-		return err
-	}
-	var size int64
-	if info, err := os.Stat(path); err == nil {
-		size = info.Size()
-	}
-	if err := r.db.FinishBackupRun(ctx, runID, path, size, nil); err != nil {
-		return err
-	}
-	return r.rotateBackups()
+	return Backup(ctx, r.cfg, r.db, r.log)
 }

@@ -154,7 +154,7 @@ func TestBackupsRotateByCountNotAge(t *testing.T) {
 		}
 	}
 
-	if err := runner.rotateBackups(); err != nil {
+	if err := rotateBackups(cfg, runner.log); err != nil {
 		t.Fatalf("rotate: %v", err)
 	}
 

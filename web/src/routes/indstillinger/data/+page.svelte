@@ -4,6 +4,67 @@
 	import { app } from '$lib/stores.svelte.js';
 	import { goto } from '$app/navigation';
 
+	// --- backups ---------------------------------------------------------------------
+
+	let backups = $state([]);
+	let backupsLoaded = $state(false);
+	let backingUp = $state(false);
+	let lastBackup = $state('');
+
+	$effect(() => {
+		if (!app.user?.is_admin) return;
+		api
+			.listBackups()
+			.then((r) => {
+				backups = r.backups;
+				backupsLoaded = true;
+			})
+			.catch((e) => app.toast(humanMessage(e)));
+	});
+
+	/**
+	 * Takes one now.
+	 *
+	 * Worth a button of its own rather than trusting the nightly job: waiting until
+	 * tonight to find out whether backups work at all is how somebody finds out on
+	 * the day they need one. It is also the only way to get a snapshot from *before*
+	 * something you are about to do.
+	 */
+	async function backupNow() {
+		backingUp = true;
+		lastBackup = '';
+		try {
+			const made = await api.runBackup();
+			backups = [made, ...backups];
+			lastBackup = `Kopi taget — ${size(made.size_bytes)}`;
+		} catch (e) {
+			app.toast(humanMessage(e));
+		} finally {
+			backingUp = false;
+		}
+	}
+
+	function size(bytes) {
+		if (!bytes) return 'tom';
+		const mb = bytes / 1024 / 1024;
+		if (mb >= 1) return `${mb.toFixed(1)} MB`;
+		return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+	}
+
+	function when(iso) {
+		const then = new Date(iso);
+		const seconds = Math.round((Date.now() - then) / 1000);
+		if (seconds < 60) return 'lige nu';
+		if (seconds < 3600) return `for ${Math.floor(seconds / 60)} min. siden`;
+		if (seconds < 86400) return `for ${Math.floor(seconds / 3600)} timer siden`;
+		return then.toLocaleString('da-DK', {
+			day: 'numeric',
+			month: 'short',
+			hour: '2-digit',
+			minute: '2-digit'
+		});
+	}
+
 	// --- Todoist import ------------------------------------------------------------
 
 	let importing = $state(false);
@@ -208,6 +269,68 @@
 	{/if}
 </section>
 
+<!-- Administrators only, like the error log and for a sharper reason: a backup file
+     is a complete copy of the database, so this panel hands out everybody's data. -->
+{#if app.user?.is_admin}
+	<section class="panel">
+		<header>
+			<h2>Sikkerhedskopier</h2>
+			<p class="hint">
+				Databasen kopieres hver nat og de seneste fjorten gemmes. Kopierne er
+				talt, ikke dateret: en container, der har stået slukket en måned, må ikke
+				komme tilbage og slette dem alle for at være for gamle.
+			</p>
+			<p class="hint">
+				Vedhæftede filer er ikke med. De er indholdsadresserede og bliver kun lagt
+				til, så fjorten ens kopier af dem ville fylde det drev op, de skulle
+				beskytte — tag hele <code>/data</code>, hvis du vil have det hele.
+			</p>
+		</header>
+
+		<div class="row">
+			<button class="secondary" onclick={backupNow} disabled={backingUp}>
+				{backingUp ? 'Kopierer…' : 'Tag en kopi nu'}
+			</button>
+			{#if lastBackup}<span class="saved">{lastBackup}</span>{/if}
+		</div>
+
+		{#if backups.length}
+			<ul class="list">
+				{#each backups as backup (backup.id)}
+					<li>
+						<div class="what">
+							<span class="primary-line">
+								{when(backup.started_at)}
+								{#if backup.error}<span class="failed">mislykkedes</span>{/if}
+							</span>
+							<span class="secondary">
+								{#if backup.error}
+									{backup.error}
+								{:else}
+									{size(backup.size_bytes)}{#if !backup.present}{' · '}ryddet væk{/if}
+								{/if}
+							</span>
+						</div>
+						{#if backup.present && !backup.error}
+							<a class="link" href={api.backupURL(backup.id)} download>Hent</a>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{:else if backupsLoaded}
+			<p class="empty">Der er ikke taget nogen kopi endnu.</p>
+		{/if}
+
+		<p class="hint">
+			At lægge en kopi tilbage er ikke en knap her, og det er med vilje: en database
+			kan ikke skiftes ud under en server, der skriver i den, og en halvt gennemført
+			udskiftning ødelægger netop det, den skulle redde. Stop containeren, læg filen
+			i stedet for <code>verdande.db</code> i datamappen, slet <code>-wal</code> og
+			<code>-shm</code> ved siden af, og start den igen.
+		</p>
+	</section>
+{/if}
+
 <section class="panel">
 	<header>
 		<h2>Eksport</h2>
@@ -323,6 +446,39 @@
 </section>
 
 <style>
+	/* The backup list, which is a list of rows with a right-hand action — the same
+	   shape the settings pages use elsewhere, said once here because this is the
+	   only panel on the page that has one. */
+	.what {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.primary-line {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		font-size: var(--text-sm);
+	}
+
+	.secondary {
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+		overflow-wrap: anywhere;
+	}
+
+	.failed {
+		font-size: var(--text-xs);
+		font-weight: 560;
+		color: var(--danger);
+		border: 1px solid var(--danger);
+		border-radius: var(--radius-sm);
+		padding: 0 var(--s1);
+	}
+
 	form {
 		display: flex;
 		flex-direction: column;
