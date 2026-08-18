@@ -17,6 +17,7 @@ package imap
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"strings"
@@ -41,6 +42,13 @@ type Account struct {
 	Username string
 	Password string // an app-specific password on every host worth naming
 	Folder   string // "INBOX" when empty
+
+	// RootCAs adds a certificate authority to trust, on top of the system's. It
+	// exists so a test can put a real IMAP server behind a self-signed certificate
+	// and still be refused by everything else — the field can only widen trust,
+	// never switch verification off, which is the difference between a seam and a
+	// hole. Nil in production, where the system's roots are the answer.
+	RootCAs *x509.CertPool
 }
 
 // Dial opens a TLS connection and logs in. The caller closes it.
@@ -55,7 +63,11 @@ func Dial(a Account) (*Client, error) {
 	}
 
 	c, err := imapclient.DialTLS(a.Host, &imapclient.Options{
-		TLSConfig: &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12},
+		TLSConfig: &tls.Config{
+			ServerName: host,
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    a.RootCAs,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("connect to %s: %w", a.Host, err)

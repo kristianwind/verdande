@@ -58,6 +58,11 @@ const (
 	// read "something went wrong", and had nowhere to go. The interface wraps the
 	// message in one that says where it came from.
 	CodeGmailFailed = "gmail_failed"
+
+	// And the same for a mailbox read over IMAP. A host's refusal is the whole
+	// diagnosis — a wrong app password, a host that is not listening, a folder that
+	// is not there — and it says it in its own words.
+	CodeMailboxFailed = "mailbox_failed"
 )
 
 // errLastAdmin is returned to the caller that already wrote the response, so it

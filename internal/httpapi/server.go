@@ -260,6 +260,16 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 
 			r.Get("/version", s.handleVersion)
 
+			// Mailboxes read over IMAP — iCloud, Fastmail, any ordinary host. Each
+			// belongs to the person who connected it, so there is no admin gate
+			// here and no shared registration: the credential is theirs.
+			r.Route("/mailboxes", func(r chi.Router) {
+				r.Get("/", s.handleListMailboxes)
+				r.Post("/", s.handleAddMailbox)
+				r.Delete("/{mailboxID}", s.handleDeleteMailbox)
+				r.Post("/{mailboxID}/sync", s.handleSyncMailbox)
+			})
+
 			r.Route("/gmail", func(r chi.Router) {
 				r.Get("/", s.handleGetGmail)
 				r.Put("/", s.handleSetGmail)

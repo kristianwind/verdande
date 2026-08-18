@@ -74,6 +74,7 @@ func run() error {
 	defer stopJobs()
 	runner := jobs.New(cfg, db, log, api.Mail(), api.Hub())
 	runner.SyncGmail = api.SyncGmail
+	runner.SyncMailbox = api.SyncMailbox
 	runner.Start(jobCtx)
 
 	srv := &http.Server{

@@ -37,6 +37,10 @@ type Runner struct {
 	// startable from main.
 	SyncGmail func(ctx context.Context, user *store.User) (int, error)
 
+	// SyncMailbox reads one IMAP mailbox. Supplied by the HTTP layer for the same
+	// reason as SyncGmail: it owns turning a message into a task.
+	SyncMailbox func(ctx context.Context, user *store.User, m *store.Mailbox) (int, error)
+
 	wg sync.WaitGroup
 }
 
@@ -61,6 +65,7 @@ func (r *Runner) Start(ctx context.Context) {
 	// account for a to-do app. Ten minutes is fast enough for something somebody
 	// starred and slow enough not to look like abuse.
 	r.every(ctx, "gmail", 10*time.Minute, r.syncGmailAccounts)
+	r.every(ctx, "mailboxes", 10*time.Minute, r.syncMailboxes)
 }
 
 func (r *Runner) Wait() { r.wg.Wait() }
@@ -267,6 +272,44 @@ func (r *Runner) syncGmailAccounts(ctx context.Context) error {
 		}
 		if created > 0 {
 			r.log.Info("tasks created from gmail", "user", user.ID, "count", created)
+		}
+	}
+	return nil
+}
+
+// syncMailboxes polls every connected IMAP mailbox.
+//
+// Nobody is waiting, so no budget of its own — the request handler has one because
+// a person is watching a spinner. A host that has gone quiet costs this run its
+// own dial timeout and nothing else: the loop moves on, per mailbox and per
+// person, so one bad password does not stop everybody else's mail.
+func (r *Runner) syncMailboxes(ctx context.Context) error {
+	if r.SyncMailbox == nil {
+		return nil
+	}
+	userIDs, err := r.db.UsersWithMailboxes(ctx)
+	if err != nil {
+		return err
+	}
+	for _, id := range userIDs {
+		user, err := r.db.UserByID(ctx, id)
+		if err != nil || user == nil {
+			continue
+		}
+		boxes, err := r.db.Mailboxes(ctx, id)
+		if err != nil {
+			r.log.Warn("list mailboxes", "err", err, "user", id)
+			continue
+		}
+		for i := range boxes {
+			created, err := r.SyncMailbox(ctx, user, &boxes[i])
+			if err != nil {
+				r.log.Warn("mailbox sync", "err", err, "user", id, "mailbox", boxes[i].ID)
+				continue
+			}
+			if created > 0 {
+				r.log.Info("tasks created from a mailbox", "user", id, "count", created)
+			}
 		}
 	}
 	return nil
