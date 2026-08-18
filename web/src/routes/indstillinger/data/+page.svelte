@@ -3,6 +3,8 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { goto } from '$app/navigation';
+	import { ago } from '$lib/when.js';
+	import { t } from '$lib/i18n.svelte.js';
 
 	// --- backups ---------------------------------------------------------------------
 
@@ -36,7 +38,7 @@
 		try {
 			const made = await api.runBackup();
 			backups = [made, ...backups];
-			lastBackup = `Kopi taget — ${size(made.size_bytes)}`;
+			lastBackup = t('data.backupMade', { size: size(made.size_bytes) });
 		} catch (e) {
 			app.toast(humanMessage(e));
 		} finally {
@@ -45,25 +47,12 @@
 	}
 
 	function size(bytes) {
-		if (!bytes) return 'tom';
+		if (!bytes) return t('data.empty');
 		const mb = bytes / 1024 / 1024;
 		if (mb >= 1) return `${mb.toFixed(1)} MB`;
 		return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 	}
 
-	function when(iso) {
-		const then = new Date(iso);
-		const seconds = Math.round((Date.now() - then) / 1000);
-		if (seconds < 60) return 'lige nu';
-		if (seconds < 3600) return `for ${Math.floor(seconds / 60)} min. siden`;
-		if (seconds < 86400) return `for ${Math.floor(seconds / 3600)} timer siden`;
-		return then.toLocaleString('da-DK', {
-			day: 'numeric',
-			month: 'short',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
-	}
 
 	// --- Todoist import ------------------------------------------------------------
 
@@ -196,20 +185,19 @@
 
 <section class="panel">
 	<header>
-		<h2>Importér fra Todoist</h2>
+		<h2>{t('data.import')}</h2>
 		<p class="hint">
-			Vælg CSV-eksporten af ét projekt. Prioriteterne bliver konverteret, ikke
-			kopieret: Todoist skriver 4 for det, grænsefladen kalder P1.
+			{t('data.importHint')}
 		</p>
 	</header>
 
 	<div class="field">
-		<label for="todoist">CSV-fil</label>
+		<label for="todoist">{t('data.csvFile')}</label>
 		<input id="todoist" type="file" accept=".csv,text/csv" onchange={importTodoist} disabled={importing} />
 	</div>
 
 	{#if importing}
-		<p class="hint">Importerer …</p>
+		<p class="hint">{t('data.importing')}</p>
 	{/if}
 
 	{#if result}
@@ -230,7 +218,7 @@
 			{/if}
 			{#if result.project_id}
 				<div class="row">
-					<a class="link" href="/projekt/{result.project_id}">Åbn projektet</a>
+					<a class="link" href="/projekt/{result.project_id}">{t('data.openProject')}</a>
 				</div>
 			{/if}
 		</div>
@@ -239,18 +227,16 @@
 
 <section class="panel">
 	<header>
-		<h2>Papirkurv</h2>
+		<h2>{t('data.trash')}</h2>
 		<p class="hint">
-			Slettede projekter, med deres opgaver. De bliver hentet tilbage præcis som
-			de var — bortset fra opgaver, du havde slettet hver for sig først; dem var
-			der en grund til.
+			{t('data.trashHint')}
 		</p>
 	</header>
 
 	{#if loadingTrash}
 		<p class="empty">…</p>
 	{:else if trashed.length === 0}
-		<p class="empty">Papirkurven er tom.</p>
+		<p class="empty">{t('data.trashEmpty')}</p>
 	{:else}
 		<ul class="list">
 			{#each trashed as project (project.id)}
@@ -262,7 +248,7 @@
 							{daysLeft(project.purge_after)} dage tilbage
 						</span>
 					</div>
-					<button class="use" onclick={() => restore(project)}>Hent tilbage</button>
+					<button class="use" onclick={() => restore(project)}>{t('data.restore')}</button>
 				</li>
 			{/each}
 		</ul>
@@ -274,22 +260,18 @@
 {#if app.user?.is_admin}
 	<section class="panel">
 		<header>
-			<h2>Sikkerhedskopier</h2>
+			<h2>{t('data.backups')}</h2>
 			<p class="hint">
-				Databasen kopieres hver nat og de seneste fjorten gemmes. Kopierne er
-				talt, ikke dateret: en container, der har stået slukket en måned, må ikke
-				komme tilbage og slette dem alle for at være for gamle.
+				{t('data.backupsHint')}
 			</p>
 			<p class="hint">
-				Vedhæftede filer er ikke med. De er indholdsadresserede og bliver kun lagt
-				til, så fjorten ens kopier af dem ville fylde det drev op, de skulle
-				beskytte — tag hele <code>/data</code>, hvis du vil have det hele.
+				{t('data.backupsAttachments')}
 			</p>
 		</header>
 
 		<div class="row">
 			<button class="secondary" onclick={backupNow} disabled={backingUp}>
-				{backingUp ? 'Kopierer…' : 'Tag en kopi nu'}
+				{backingUp ? t('data.backingUp') : t('data.backupNow')}
 			</button>
 			{#if lastBackup}<span class="saved">{lastBackup}</span>{/if}
 		</div>
@@ -300,56 +282,51 @@
 					<li>
 						<div class="what">
 							<span class="primary-line">
-								{when(backup.started_at)}
-								{#if backup.error}<span class="failed">mislykkedes</span>{/if}
+								{ago(backup.started_at)}
+								{#if backup.error}<span class="failed">{t('data.backupFailed')}</span>{/if}
 							</span>
 							<span class="secondary">
 								{#if backup.error}
 									{backup.error}
 								{:else}
-									{size(backup.size_bytes)}{#if !backup.present}{' · '}ryddet væk{/if}
+									{size(backup.size_bytes)}{#if !backup.present}{' · '}{t('data.swept')}{/if}
 								{/if}
 							</span>
 						</div>
 						{#if backup.present && !backup.error}
-							<a class="link" href={api.backupURL(backup.id)} download>Hent</a>
+							<a class="link" href={api.backupURL(backup.id)} download>{t('data.download')}</a>
 						{/if}
 					</li>
 				{/each}
 			</ul>
 		{:else if backupsLoaded}
-			<p class="empty">Der er ikke taget nogen kopi endnu.</p>
+			<p class="empty">{t('data.noBackups')}</p>
 		{/if}
 
 		<p class="hint">
-			At lægge en kopi tilbage er ikke en knap her, og det er med vilje: en database
-			kan ikke skiftes ud under en server, der skriver i den, og en halvt gennemført
-			udskiftning ødelægger netop det, den skulle redde. Stop containeren, læg filen
-			i stedet for <code>verdande.db</code> i datamappen, slet <code>-wal</code> og
-			<code>-shm</code> ved siden af, og start den igen.
+			{t('data.restoreHint')}
 		</p>
 	</section>
 {/if}
 
 <section class="panel">
 	<header>
-		<h2>Eksport</h2>
+		<h2>{t('data.export')}</h2>
 		<p class="hint">
-			Alt, i den rå form. Det er garantien for, at du kan gå igen — en
-			eksport, der er blevet pyntet, er en eksport, der har mistet noget.
+			{t('data.exportHint')}
 		</p>
 	</header>
 
 	<div class="row">
 		<!-- Plain links, not fetch: the browser's own download handling knows what to
 		     do with a Content-Disposition, and the session cookie rides along. -->
-		<a class="link" href={api.exportAccountURL()} download>Hele kontoen som JSON</a>
+		<a class="link" href={api.exportAccountURL()} download>{t('data.exportAccount')}</a>
 	</div>
 
 	<div class="field">
-		<label for="export-project">Ét projekt</label>
+		<label for="export-project">{t('data.exportOne')}</label>
 		<select id="export-project" bind:value={exportProject}>
-			<option value="">Vælg et projekt</option>
+			<option value="">{t('data.pickProject')}</option>
 			{#each app.projects as project (project.id)}
 				<option value={project.id}>{project.name}</option>
 			{/each}
@@ -358,26 +335,25 @@
 
 	{#if exportProject}
 		<div class="row">
-			<a class="link" href={api.exportProjectCSVURL(exportProject)} download>CSV</a>
-			<a class="link" href={api.exportProjectICSURL(exportProject)} download>Kalenderfil</a>
+			<a class="link" href={api.exportProjectCSVURL(exportProject)} download>{t('data.csv')}</a>
+			<a class="link" href={api.exportProjectICSURL(exportProject)} download>{t('data.ics')}</a>
 		</div>
 	{/if}
 </section>
 
 <section class="panel">
 	<header>
-		<h2>Skabeloner</h2>
+		<h2>{t('data.templates')}</h2>
 		<p class="hint">
-			Et projekt gemt som en form, der kan bruges igen. Datoerne i skabelonen er
-			relative, så de bliver regnet ud fra den startdato, du vælger.
+			{t('data.templatesHint')}
 		</p>
 	</header>
 
 	<form onsubmit={saveTemplate}>
 		<div class="field">
-			<label for="save-from">Gem et projekt som skabelon</label>
+			<label for="save-from">{t('data.saveAsTemplate')}</label>
 			<select id="save-from" bind:value={saveFrom}>
-				<option value="">Vælg et projekt</option>
+				<option value="">{t('data.pickProject')}</option>
 				{#each projects as project (project.id)}
 					<option value={project.id}>{project.name}</option>
 				{/each}
@@ -386,7 +362,7 @@
 
 		{#if saveFrom}
 			<div class="field">
-				<label for="template-name">Navn på skabelonen</label>
+				<label for="template-name">{t('data.templateName')}</label>
 				<input
 					id="template-name"
 					bind:value={templateName}
@@ -395,7 +371,7 @@
 			</div>
 
 			<div class="row">
-				<button class="primary" type="submit" disabled={savingTemplate}>Gem som skabelon</button>
+				<button class="primary" type="submit" disabled={savingTemplate}>{t('data.saveTemplate')}</button>
 			</div>
 		{/if}
 	</form>
@@ -403,7 +379,7 @@
 	{#if loadingTemplates}
 		<p class="empty">…</p>
 	{:else if templates.length === 0}
-		<p class="empty">Ingen skabeloner endnu.</p>
+		<p class="empty">{t('data.noTemplates')}</p>
 	{:else}
 		<ul class="list">
 			{#each templates as template (template.id)}
@@ -415,27 +391,27 @@
 						</span>
 					</div>
 					<button class="use" onclick={() => (usingId = usingId === template.id ? '' : template.id)}>
-						Brug
+						{t('data.use')}
 					</button>
-					<button class="remove" onclick={() => deleteTemplate(template)}>Slet</button>
+					<button class="remove" onclick={() => deleteTemplate(template)}>{t('data.delete')}</button>
 				</li>
 
 				{#if usingId === template.id}
 					<li class="use-form">
 						<form onsubmit={useTemplate}>
 							<div class="field">
-								<label for="new-name">Navn på det nye projekt</label>
+								<label for="new-name">{t('data.newProjectName')}</label>
 								<input id="new-name" bind:value={newProjectName} placeholder={template.name} />
 							</div>
 
 							<div class="field">
-								<label for="start">Startdato</label>
+								<label for="start">{t('data.startDate')}</label>
 								<input id="start" type="date" bind:value={startDate} />
-								<p class="hint">Dag nul for skabelonens datoer. Tom betyder i dag.</p>
+								<p class="hint">{t('data.startDateHint')}</p>
 							</div>
 
 							<div class="row">
-								<button class="primary" type="submit">Opret projektet</button>
+								<button class="primary" type="submit">{t('data.createProject')}</button>
 							</div>
 						</form>
 					</li>

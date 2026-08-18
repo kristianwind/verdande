@@ -3,6 +3,7 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import * as push from '$lib/push.js';
+	import { t, plural } from '$lib/i18n.svelte.js';
 
 	// --- web push ----------------------------------------------------------------
 
@@ -95,10 +96,9 @@
 
 <section class="panel">
 	<header>
-		<h2>Notifikationer på enheden</h2>
+		<h2>{t('push.title')}</h2>
 		<p class="hint">
-			Påmindelser og beskeder fra andre, også når fanen er lukket. Beskeden
-			krypteres til din browser undervejs — push-tjenesten kan ikke læse den.
+			{t('push.hint')}
 		</p>
 	</header>
 
@@ -106,42 +106,39 @@
 		<p class="empty">…</p>
 	{:else if pushState === 'unsupported'}
 		<p class="hint">
-			Denne browser understøtter det ikke. Safari kræver, at appen er lagt på
-			hjemmeskærmen; over almindelig HTTP virker det kun på localhost.
+			{t('push.unsupported')}
 		</p>
 	{:else if pushState === 'blocked'}
 		<p class="hint">
-			Browseren har blokeret notifikationer for dette site. Det kan kun laves om i
-			browserens egne indstillinger — en side kan ikke spørge igen, når svaret har
-			været nej.
+			{t('push.blocked')}
 		</p>
 	{:else if pushState === 'on'}
-		<p class="hint">Slået til på denne enhed.</p>
+		<p class="hint">{t('push.on')}</p>
 		<div class="row">
-			<button class="secondary" onclick={disablePush} disabled={busy}>Slå fra</button>
+			<button class="secondary" onclick={disablePush} disabled={busy}>{t('push.turnOff')}</button>
 		</div>
 	{:else}
 		<div class="row">
 			<button class="primary" onclick={enablePush} disabled={busy}>
-				Slå til på denne enhed
+				{t('push.turnOn')}
 			</button>
 		</div>
-		<p class="hint">Gælder kun den browser, du sidder i nu.</p>
+		<p class="hint">{t('push.perBrowser')}</p>
 	{/if}
 </section>
 
 <section class="panel">
 	<header>
-		<h2>Seneste</h2>
+		<h2>{t('push.recent')}</h2>
 		{#if unread > 0}
-			<p class="hint">{unread} ulæst{unread === 1 ? '' : 'e'}.</p>
+			<p class="hint">{plural(unread, 'push.unreadOne', 'push.unreadMany')}</p>
 		{/if}
 	</header>
 
 	{#if loading}
 		<p class="empty">…</p>
 	{:else if notifications.length === 0}
-		<p class="empty">Ingenting endnu.</p>
+		<p class="empty">{t('push.none')}</p>
 	{:else}
 		<ul class="list">
 			{#each notifications as note (note.id)}
@@ -154,7 +151,7 @@
 						</span>
 					</div>
 					{#if note.task_id && note.project_id}
-						<a class="go" href="/projekt/{note.project_id}">Åbn</a>
+						<a class="go" href="/projekt/{note.project_id}">{t('push.open')}</a>
 					{/if}
 				</li>
 			{/each}
@@ -162,7 +159,7 @@
 
 		{#if unread > 0}
 			<div class="row">
-				<button class="secondary" onclick={markAllRead}>Markér alle som læst</button>
+				<button class="secondary" onclick={markAllRead}>{t('push.markAllRead')}</button>
 			</div>
 		{/if}
 	{/if}
@@ -171,11 +168,11 @@
 {#if version}
 	<section class="panel">
 		<header>
-			<h2>Version</h2>
+			<h2>{t('push.version')}</h2>
 		</header>
 
 		<p class="hint">
-			Kører <span class="mono">{version.current}</span>.
+			{t('push.running')} <span class="mono">{version.current}</span>.
 			{#if version.disabled}
 				Der bliver ikke set efter opdateringer.
 			{:else if version.update_available}
@@ -192,7 +189,7 @@
 			{#if version.url}
 				<div class="row">
 					<a class="release" href={version.url} target="_blank" rel="noreferrer noopener">
-						Se udgivelsen
+						{t('push.seeRelease')}
 					</a>
 				</div>
 			{/if}

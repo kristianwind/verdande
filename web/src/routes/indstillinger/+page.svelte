@@ -2,6 +2,7 @@
 	/** Konto: who you are, your password, and the second factor. */
 	import { api, humanMessage } from '$lib/api.js';
 	import { app, theme, THEMES } from '$lib/stores.svelte.js';
+	import { t, plural, i18n } from '$lib/i18n.svelte.js';
 
 	// --- profile ---------------------------------------------------------------
 
@@ -43,6 +44,10 @@
 		profileSaved = false;
 		try {
 			app.user = await api.updateProfile({ name, timezone, locale });
+			// Applied straight away rather than on the next load. `i18n.locale` is
+			// $state, so every component that calls t() redraws — which is the whole
+			// reason the module is .svelte.js.
+			i18n.set(app.user.locale);
 			profileSaved = true;
 		} catch (e) {
 			profileErrors = e.fields ?? {};
@@ -196,16 +201,15 @@
 
 <section class="panel">
 	<header>
-		<h2>Profil</h2>
+		<h2>{t('account.profile')}</h2>
 		<p class="hint">
-			Tidszonen er ikke pynt: alle datoer i appen bliver afgjort i den, så
-			&ldquo;i morgen kl. 9&rdquo; betyder noget andet, når du skifter den.
+			{t('account.profileHint')}
 		</p>
 	</header>
 
 	<form onsubmit={saveProfile}>
 		<div class="field">
-			<label for="name">Navn</label>
+			<label for="name">{t('account.name')}</label>
 			<input
 				id="name"
 				bind:value={name}
@@ -215,15 +219,15 @@
 		</div>
 
 		<div class="field">
-			<label for="email">E-mail</label>
+			<label for="email">{t('account.email')}</label>
 			<!-- Read-only: the address identifies the account and is what invitations
 			     were sent to. Changing it is a re-verification flow, not a field. -->
 			<input id="email" value={app.user?.email ?? ''} readonly disabled />
-			<p class="hint">Kan ikke ændres her.</p>
+			<p class="hint">{t('account.emailFixed')}</p>
 		</div>
 
 		<div class="field">
-			<label for="timezone">Tidszone</label>
+			<label for="timezone">{t('account.timezone')}</label>
 			<select id="timezone" bind:value={timezone}>
 				{#each zones as zone (zone)}
 					<option value={zone}>{zone}</option>
@@ -233,31 +237,29 @@
 		</div>
 
 		<div class="field">
-			<label for="locale">Sprog i hurtig tilføjelse</label>
+			<label for="locale">{t('account.parseLanguage')}</label>
 			<select id="locale" bind:value={locale}>
-				<option value="da">Dansk</option>
-				<option value="en">English</option>
+				<option value="da">{t('account.danish')}</option>
+				<option value="en">{t('account.english')}</option>
 			</select>
 			<p class="hint">
-				Afgør hvilken grammatik der tolker en linje — &ldquo;hver mandag&rdquo;
-				eller &ldquo;every monday&rdquo;.
+				{t('account.parseHint')}
 			</p>
 			{#if profileErrors.locale}<p class="error">{profileErrors.locale}</p>{/if}
 		</div>
 
 		<div class="row">
-			<button class="primary" type="submit" disabled={savingProfile}>Gem</button>
-			{#if profileSaved}<span class="saved">Gemt.</span>{/if}
+			<button class="primary" type="submit" disabled={savingProfile}>{t('account.save')}</button>
+			{#if profileSaved}<span class="saved">{t('account.saved')}</span>{/if}
 		</div>
 	</form>
 </section>
 
 <section class="panel">
 	<header>
-		<h2>Udseende</h2>
+		<h2>{t('account.appearance')}</h2>
 		<p class="hint">
-			Gemmes i denne browser. Det er en egenskab ved den skærm, du sidder ved —
-			en bærbar i solen og en skærm i et mørkt rum vil have hvert sit svar.
+			{t('account.appearanceHint')}
 		</p>
 	</header>
 
@@ -278,8 +280,8 @@
 					<span class="swatch-line short"></span>
 					<span class="swatch-dot"></span>
 				</span>
-				<span class="theme-name">{option.name}</span>
-				<span class="theme-note">{option.note}</span>
+				<span class="theme-name">{t(option.name)}</span>
+				<span class="theme-note">{t(option.note)}</span>
 			</button>
 		{/each}
 	</div>
@@ -287,16 +289,15 @@
 
 <section class="panel">
 	<header>
-		<h2>Adgangskode</h2>
+		<h2>{t('account.password')}</h2>
 		<p class="hint">
-			At skifte den logger alle andre sessioner ud — hvilket for det meste er
-			grunden til at gøre det.
+			{t('account.passwordHint')}
 		</p>
 	</header>
 
 	<form onsubmit={changePassword}>
 		<div class="field">
-			<label for="current">Nuværende adgangskode</label>
+			<label for="current">{t('account.currentPassword')}</label>
 			<input
 				id="current"
 				type="password"
@@ -310,7 +311,7 @@
 		</div>
 
 		<div class="field">
-			<label for="new">Ny adgangskode</label>
+			<label for="new">{t('account.newPassword')}</label>
 			<input
 				id="new"
 				type="password"
@@ -322,16 +323,16 @@
 		</div>
 
 		<div class="row">
-			<button class="primary" type="submit">Skift adgangskode</button>
-			{#if passwordSaved}<span class="saved">Skiftet.</span>{/if}
+			<button class="primary" type="submit">{t('account.changePassword')}</button>
+			{#if passwordSaved}<span class="saved">{t('account.passwordChanged')}</span>{/if}
 		</div>
 	</form>
 </section>
 
 <section class="panel">
 	<header>
-		<h2>To-faktor</h2>
-		<p class="hint">En engangskode fra en authenticator-app oven i adgangskoden.</p>
+		<h2>{t('account.totp')}</h2>
+		<p class="hint">{t('account.totpHint')}</p>
 	</header>
 
 	{#if recoveryCodes.length}
@@ -339,8 +340,7 @@
 		     so there is no later screen that could show them again. -->
 		<div class="field">
 			<p class="hint">
-				<strong>Skriv dem ned nu.</strong> De vises kun denne ene gang — serveren
-				har kun deres hash.
+				<strong>{t('account.writeThemDown')}</strong> {t('account.recoveryHint')}
 			</p>
 			<ul class="codes mono">
 				{#each recoveryCodes as code (code)}
@@ -348,18 +348,18 @@
 				{/each}
 			</ul>
 			<div class="row">
-				<button class="secondary" onclick={() => (recoveryCodes = [])}>Jeg har dem</button>
+				<button class="secondary" onclick={() => (recoveryCodes = [])}>{t('account.gotThem')}</button>
 			</div>
 		</div>
 	{:else if app.user?.totp_enabled}
 		<p class="hint">
-			Slået til.{#if remaining !== null}
-				{remaining} gendannelseskode{remaining === 1 ? '' : 'r'} tilbage.{/if}
+			{t('account.totpEnabled')}{#if remaining !== null}
+				{plural(remaining, 'account.recoveryLeftOne', 'account.recoveryLeftMany')}{/if}
 		</p>
 
 		<form onsubmit={disableTOTP}>
 			<div class="field">
-				<label for="disable-pw">Adgangskode</label>
+				<label for="disable-pw">{t('account.password')}</label>
 				<input
 					id="disable-pw"
 					type="password"
@@ -369,26 +369,25 @@
 				/>
 				{#if totpErrors.password}<p class="error">{totpErrors.password}</p>{/if}
 				<p class="hint">
-					Kræves til begge handlinger nedenfor. At slå to-faktor fra er præcis
-					det, en fremmed med din session ville gøre først.
+					{t('account.passwordRequired')}
 				</p>
 			</div>
 
 			<div class="row">
-				<button class="secondary" onclick={regenerate}>Nye gendannelseskoder</button>
-				<button class="danger" type="submit">Slå to-faktor fra</button>
+				<button class="secondary" onclick={regenerate}>{t('account.newRecoveryCodes')}</button>
+				<button class="danger" type="submit">{t('account.totpOff')}</button>
 			</div>
 		</form>
 	{:else if totpSecret}
 		<div class="field">
-			<p class="hint">Scan i din authenticator-app, eller indtast nøglen manuelt.</p>
+			<p class="hint">{t('account.scanHint')}</p>
 			<p class="mono secret">{totpSecret}</p>
 			<p class="hint mono uri">{totpURI}</p>
 		</div>
 
 		<form onsubmit={confirmTOTP}>
 			<div class="field">
-				<label for="totp">Koden fra appen</label>
+				<label for="totp">{t('account.codeFromApp')}</label>
 				<input
 					id="totp"
 					bind:value={totpCode}
@@ -398,29 +397,27 @@
 				/>
 				{#if totpErrors.code}<p class="error">{totpErrors.code}</p>{/if}
 				<p class="hint">
-					To-faktor er først slået til, når en kode har bevist, at appen faktisk
-					har nøglen.
+					{t('account.totpProofHint')}
 				</p>
 			</div>
 
 			<div class="row">
-				<button class="primary" type="submit">Bekræft</button>
-				<button class="secondary" onclick={() => (totpSecret = '')}>Fortryd</button>
+				<button class="primary" type="submit">{t('account.confirm')}</button>
+				<button class="secondary" onclick={() => (totpSecret = '')}>{t('account.cancel')}</button>
 			</div>
 		</form>
 	{:else}
 		<div class="row">
-			<button class="primary" onclick={beginTOTP}>Slå to-faktor til</button>
+			<button class="primary" onclick={beginTOTP}>{t('account.totpOn')}</button>
 		</div>
 	{/if}
 </section>
 
 <section class="panel">
 	<header>
-		<h2>Enheder</h2>
+		<h2>{t('account.devices')}</h2>
 		<p class="hint">
-			Hvor du er logget ind. Genkender du ikke en af dem, så log den ud og skift
-			adgangskode.
+			{t('account.devicesHint')}
 		</p>
 	</header>
 
@@ -430,7 +427,7 @@
 				<div class="what">
 					<span class="device">
 						{session.device}
-						{#if session.current}<span class="badge">denne enhed</span>{/if}
+						{#if session.current}<span class="badge">{t('account.thisDevice')}</span>{/if}
 					</span>
 					<!-- The address and the time, small: they are what settles "was that
 					     me?", and they are not what you read first. -->
@@ -438,7 +435,7 @@
 						{ago(session.last_seen_at)}{#if session.ip}{' · ' + session.ip}{/if}
 					</span>
 				</div>
-				<button class="secondary" onclick={() => endSession(session)}>Log ud</button>
+				<button class="secondary" onclick={() => endSession(session)}>{t('account.signOutDevice')}</button>
 			</li>
 		{/each}
 	</ul>

@@ -4,6 +4,7 @@
 	import { api } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import TaskRow from '$lib/components/TaskRow.svelte';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let filter = $state(null);
 	let error = $state('');
@@ -25,7 +26,7 @@
 				app.tasks = result?.tasks ?? [];
 			})
 			.catch((e) => {
-				error = e.fields?.query ?? 'Filteret kunne ikke køres.';
+				error = e.fields?.query ?? t('view.filterFailed');
 				app.tasks = [];
 			});
 	});
@@ -51,7 +52,7 @@
 		{#if !open.length}
 			<p class="clear">
 				<span class="rune" aria-hidden="true">ᚹ</span>
-				Ingenting matcher lige nu.
+				{t('view.filterEmpty')}
 			</p>
 		{/if}
 	{/if}

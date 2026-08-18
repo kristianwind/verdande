@@ -22,46 +22,54 @@ export class ApiError extends Error {
 	}
 }
 
-/** Danish messages for the codes the API can return. The server sends English
- *  prose for logs; what a person reads is decided here, where the locale is known. */
+import { t } from './i18n.svelte.js';
+
+/**
+ * The key for each code the API can return.
+ *
+ * Keys rather than sentences, because the server's own prose is English and
+ * written for a log — what a person reads is decided here, where the locale is
+ * known. `errorcodes_test.go` walks this table against the codes Go can emit, so
+ * a code the server gained and this did not fails the build rather than falling
+ * through to that log prose.
+ */
 const MESSAGES = {
-	unauthorized: 'Forkert e-mail eller adgangskode.',
-	totp_required: 'Indtast koden fra din authenticator.',
-	forbidden: 'Det har du ikke adgang til.',
-	not_found: 'Findes ikke.',
-	conflict: 'Det er der allerede.',
-	rate_limited: 'For mange forsøg. Vent et øjeblik.',
-	validation_failed: 'Tjek felterne herunder.',
-	payload_too_large: 'Det er for stort.',
-	internal_error: 'Noget gik galt. Prøv igen.',
-	bad_request: 'Anmodningen kunne ikke læses.',
+	unauthorized: 'error.unauthorized',
+	totp_required: 'error.totpRequired',
+	forbidden: 'error.forbidden',
+	not_found: 'error.notFound',
+	conflict: 'error.conflict',
+	rate_limited: 'error.rateLimited',
+	validation_failed: 'error.validation',
+	payload_too_large: 'error.tooLarge',
+	internal_error: 'error.internal',
+	bad_request: 'error.badRequest',
 	// Client-only: a network failure is not an HTTP status, so the server has no
 	// code for it.
-	offline: 'Ingen forbindelse til serveren.',
+	offline: 'error.offline',
 
 	// Situations that used to arrive as a plain `conflict` and were therefore
-	// shown as "Det er der allerede." — which was not merely vague but wrong. An
+	// shown as "that already exists" — which was not merely vague but wrong. An
 	// unconfigured Gmail is not a Gmail that is already connected.
-	gmail_not_configured:
-		'Gmail er ikke sat op på denne server. Administratoren skal registrere en OAuth-klient hos Google og sætte VERDANDE_GMAIL_CLIENT_ID og _SECRET.',
-	ai_not_configured: 'Der er ikke valgt en AI-udbyder. Sæt den op under Indstillinger → AI.',
-	totp_not_enabled: 'To-faktor er ikke slået til.',
-	inbox_protected: 'Indbakken kan ikke slettes.',
-	last_admin:
-		'Det er den sidste administrator. Gør en anden til administrator først — ellers er der ingen, der kan komme ind på denne side igen.'
+	gmail_not_configured: 'error.gmailNotConfigured',
+	ai_not_configured: 'error.aiNotConfigured',
+	totp_not_enabled: 'error.totpNotEnabled',
+	inbox_protected: 'error.inboxProtected',
+	last_admin: 'error.lastAdmin'
 };
 
 /**
  * What to show a person for a failed request.
  *
- * A code with no message here falls back to the server's prose, which is English
- * and written for a log — not good, but better than swallowing the only
- * explanation there is. A code that turns up in that fallback is a code this
- * table is missing.
+ * A code with no key here falls back to the server's prose, which is English and
+ * written for a log — not good, but better than swallowing the only explanation
+ * there is. A code that turns up in that fallback is a code this table is missing.
  */
 export function humanMessage(err) {
-	if (!(err instanceof ApiError)) return MESSAGES.offline;
-	return MESSAGES[err.code] ?? err.message ?? MESSAGES.internal_error;
+	if (!(err instanceof ApiError)) return t(MESSAGES.offline);
+	const key = MESSAGES[err.code];
+	if (key) return t(key);
+	return err.message ?? t(MESSAGES.internal_error);
 }
 
 async function request(method, path, body, options = {}) {

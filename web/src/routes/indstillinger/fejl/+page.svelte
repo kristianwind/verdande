@@ -10,6 +10,8 @@
 	 */
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
+	import { t } from '$lib/i18n.svelte.js';
+	import { ago } from '$lib/when.js';
 
 	let errors = $state([]);
 	let loaded = $state(false);
@@ -24,29 +26,13 @@
 			.catch((e) => app.toast(humanMessage(e)));
 	});
 
-	function when(iso) {
-		const then = new Date(iso);
-		const seconds = Math.round((Date.now() - then) / 1000);
-		if (seconds < 60) return 'lige nu';
-		if (seconds < 3600) return `for ${Math.floor(seconds / 60)} min. siden`;
-		if (seconds < 86400) return `for ${Math.floor(seconds / 3600)} timer siden`;
-		return then.toLocaleString('da-DK', {
-			day: 'numeric',
-			month: 'short',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
-	}
 </script>
 
 <section class="panel">
 	<header>
-		<h2>Serverfejl</h2>
+		<h2>{t('errors.title')}</h2>
 		<p class="hint">
-			Hver 500, API'et har svaret, med hvad handleren var i gang med og fejlen den
-			ramte. Gemt i databasen, ikke kun i loggen — containerens log starter forfra
-			ved hver genstart, så forklaringen er som regel væk, når nogen kigger.
-			Ryddes efter 30 dage.
+			{t('errors.hint')}
 		</p>
 	</header>
 
@@ -66,12 +52,12 @@
 									error.request_id}{/if}
 						</span>
 					</div>
-					<span class="when">{when(error.at)}</span>
+					<span class="when">{ago(error.at)}</span>
 				</li>
 			{/each}
 		</ul>
 	{:else if loaded}
-		<p class="hint">Ingen fejl registreret. Det er den rigtige tilstand.</p>
+		<p class="hint">{t('errors.none')}</p>
 	{/if}
 </section>
 

@@ -8,6 +8,7 @@
 	 */
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let tokens = $state([]);
 	let loading = $state(true);
@@ -94,24 +95,23 @@
 
 <section class="panel">
 	<header>
-		<h2>API-tokens</h2>
+		<h2>{t('tokens.title')}</h2>
 		<p class="hint">
-			Det, et script, en CalDAV-klient eller en MCP-forbindelse logger ind med. En
-			token bærer dine rettigheder præcist — den kan intet, du ikke selv kan.
+			{t('tokens.hint')}
 		</p>
 	</header>
 
 	{#if fresh}
 		<div class="fresh">
 			<p class="hint">
-				<strong>Kopiér den nu.</strong> Den vises kun denne ene gang — serveren har
+				<strong>{t('tokens.copyNow')}</strong> Den vises kun denne ene gang — serveren har
 				kun dens hash.
 			</p>
 			<p class="mono value">{fresh.token}</p>
 			<div class="row">
-				<button class="primary" onclick={copy}>Kopiér</button>
-				{#if copied}<span class="saved">Kopieret.</span>{/if}
-				<button class="secondary" onclick={() => (fresh = null)}>Færdig</button>
+				<button class="primary" onclick={copy}>{t('tokens.copy')}</button>
+				{#if copied}<span class="saved">{t('tokens.copied')}</span>{/if}
+				<button class="secondary" onclick={() => (fresh = null)}>{t('tokens.done')}</button>
 			</div>
 
 			<!-- Shown here and nowhere else, because it contains the token, and the
@@ -120,13 +120,13 @@
 			     the form it has to be in. -->
 			<div class="also">
 				<p class="hint">
-					Skal du bruge den som <a href="/indstillinger/integrationer">MCP-forbindelse</a>
-					i Claude? Så er det denne adresse, dialogen skal have:
+					{t('tokens.mcpBefore')} <a href="/indstillinger/integrationer">{t('tokens.mcpLink')}</a>
+					{t('tokens.mcpAfter')}
 				</p>
 				<p class="mono value">{connectorURL}</p>
 				<div class="row">
-					<button class="secondary" onclick={copyConnector}>Kopiér adressen</button>
-					{#if connectorCopied}<span class="saved">Kopieret.</span>{/if}
+					<button class="secondary" onclick={copyConnector}>{t('tokens.copyAddress')}</button>
+					{#if connectorCopied}<span class="saved">{t('tokens.copied')}</span>{/if}
 				</div>
 			</div>
 		</div>
@@ -134,40 +134,39 @@
 
 	<form onsubmit={create}>
 		<div class="field">
-			<label for="token-name">Navn</label>
+			<label for="token-name">{t('tokens.name')}</label>
 			<input
 				id="token-name"
 				bind:value={name}
-				placeholder="fx min bærbare, eller backup-scriptet"
+				placeholder={t('tokens.namePlaceholder')}
 				aria-invalid={errors.name ? 'true' : undefined}
 			/>
 			{#if errors.name}<p class="error">{errors.name}</p>{/if}
 		</div>
 
 		<div class="field">
-			<label for="token-expiry">Udløber</label>
+			<label for="token-expiry">{t('tokens.expires')}</label>
 			<select id="token-expiry" bind:value={expiresInDays}>
-				<option value={0}>Aldrig</option>
-				<option value={30}>Om 30 dage</option>
-				<option value={90}>Om 90 dage</option>
-				<option value={365}>Om et år</option>
+				<option value={0}>{t('tokens.never')}</option>
+				<option value={30}>{t('tokens.in30')}</option>
+				<option value={90}>{t('tokens.in90')}</option>
+				<option value={365}>{t('tokens.inYear')}</option>
 			</select>
 			<p class="hint">
-				En kalenderklient, der har abonneret i årevis, har brug for
-				&ldquo;aldrig&rdquo;. Et script, du kører én gang, har ikke.
+				{t('tokens.expiryHint')}
 			</p>
 			{#if errors.expires_in_days}<p class="error">{errors.expires_in_days}</p>{/if}
 		</div>
 
 		<div class="row">
-			<button class="primary" type="submit" disabled={creating}>Lav en token</button>
+			<button class="primary" type="submit" disabled={creating}>{t('tokens.create')}</button>
 		</div>
 	</form>
 
 	{#if loading}
 		<p class="empty">…</p>
 	{:else if tokens.length === 0}
-		<p class="empty">Ingen tokens endnu.</p>
+		<p class="empty">{t('tokens.none')}</p>
 	{:else}
 		<ul class="list">
 			{#each tokens as token (token.id)}
@@ -177,18 +176,19 @@
 						<span class="meta mono">
 							{token.prefix}…
 							{#if token.last_used_at}
-								· sidst brugt {date(token.last_used_at)}
+								· {t('tokens.lastUsed', { when: date(token.last_used_at) })}
 							{:else}
-								· aldrig brugt
+								· {t('tokens.neverUsed')}
 							{/if}
 							{#if token.expires_at}
-								· {expired(token.expires_at) ? 'udløbet' : 'udløber'}
-								{date(token.expires_at)}
+								· {expired(token.expires_at)
+									? t('tokens.expired', { when: date(token.expires_at) })
+									: t('tokens.expiresOn', { when: date(token.expires_at) })}
 							{/if}
 						</span>
 					</div>
-					<button class="revoke" onclick={() => revoke(token)} aria-label="Tilbagekald {token.name}">
-						Tilbagekald
+					<button class="revoke" onclick={() => revoke(token)} aria-label={t('tokens.revokeNamed', { name: token.name })}>
+						{t('tokens.revoke')}
 					</button>
 				</li>
 			{/each}

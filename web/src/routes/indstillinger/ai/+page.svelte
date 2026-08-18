@@ -2,6 +2,7 @@
 	/** The AI provider: which one, which model, and the key. */
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let settings = $state(null);
 	let apiKey = $state('');
@@ -13,7 +14,7 @@
 	let summarising = $state(false);
 
 	const PROVIDERS = [
-		{ value: '', label: 'Slået fra' },
+		{ value: '', label: t('ai.off') },
 		{ value: 'anthropic', label: 'Anthropic' },
 		{ value: 'openai', label: 'OpenAI' },
 		{ value: 'google', label: 'Google' },
@@ -76,11 +77,9 @@
 
 <section class="panel">
 	<header>
-		<h2>AI</h2>
+		<h2>{t('ai.title')}</h2>
 		<p class="hint">
-			Bruges to steder: at dele en opgave op i undertasks, og at skrive et kort
-			overblik over det, der er udestående. Nøglen ligger på din server og sendes
-			kun til den udbyder, du vælger her.
+			{t('ai.hint')}
 		</p>
 	</header>
 
@@ -89,7 +88,7 @@
 	{:else}
 		<form onsubmit={save}>
 			<div class="field">
-				<label for="provider">Udbyder</label>
+				<label for="provider">{t('ai.provider')}</label>
 				<select id="provider" bind:value={settings.provider}>
 					{#each PROVIDERS as provider (provider.value)}
 						<option value={provider.value}>{provider.label}</option>
@@ -100,7 +99,7 @@
 
 			{#if settings.provider}
 				<div class="field">
-					<label for="model">Model</label>
+					<label for="model">{t('ai.model')}</label>
 					<input
 						id="model"
 						bind:value={settings.model}
@@ -110,7 +109,7 @@
 
 				{#if settings.provider === 'compatible'}
 					<div class="field">
-						<label for="base">Adresse</label>
+						<label for="base">{t('ai.baseURL')}</label>
 						<input
 							id="base"
 							class="mono"
@@ -121,29 +120,27 @@
 				{/if}
 
 				<div class="field">
-					<label for="key">API-nøgle</label>
+					<label for="key">{t('ai.apiKey')}</label>
 					<input
 						id="key"
 						type="password"
 						autocomplete="off"
 						bind:value={apiKey}
-						placeholder={settings.has_key ? 'Der er gemt en nøgle — lad feltet stå tomt' : ''}
+						placeholder={settings.has_key ? t('ai.keyStored') : ''}
 					/>
 					<p class="hint">
 						{#if settings.has_key}
-							Feltet er tomt med vilje. Nøglen sendes aldrig tilbage til browseren
-							— en indstillingsside, der fylder et kodeordsfelt ud igen, er en side,
-							der en dag lækker en nøgle ud i et skærmbillede.
+							{t('ai.keyBlankHint')}
 						{:else}
-							Gemmes på serveren og vises aldrig igen.
+							{t('ai.keyNewHint')}
 						{/if}
 					</p>
 				</div>
 			{/if}
 
 			<div class="row">
-				<button class="primary" type="submit" disabled={saving}>Gem</button>
-				{#if saved}<span class="saved">Gemt.</span>{/if}
+				<button class="primary" type="submit" disabled={saving}>{t('ai.save')}</button>
+				{#if saved}<span class="saved">{t('ai.saved')}</span>{/if}
 			</div>
 		</form>
 	{/if}
@@ -152,8 +149,8 @@
 {#if settings?.provider && settings?.has_key}
 	<section class="panel">
 		<header>
-			<h2>Ugentligt overblik</h2>
-			<p class="hint">En kort note om, hvad der ser vigtigst ud lige nu.</p>
+			<h2>{t('ai.weekly')}</h2>
+			<p class="hint">{t('ai.weeklyHint')}</p>
 		</header>
 
 		<div class="row">

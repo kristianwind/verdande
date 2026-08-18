@@ -16,6 +16,7 @@
 	import { app } from '$lib/stores.svelte.js';
 	import { colorVar } from '$lib/colors.js';
 	import { focusOnMount } from '$lib/focus.js';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let group = $state(null);
 	let projects = $state([]);
@@ -94,7 +95,7 @@
 	}
 
 	async function removeFile(attachment) {
-		if (!confirm(`Fjern "${attachment.filename}"?`)) return;
+		if (!confirm(t('group.removeQuestion', { name: attachment.filename }))) return;
 
 		const previous = attachments;
 		attachments = attachments.filter((a) => a.id !== attachment.id);
@@ -112,21 +113,21 @@
 	}
 </script>
 
-<svelte:head><title>{group?.name ?? 'Gruppe'} — verdande</title></svelte:head>
+<svelte:head><title>{group?.name ?? t('group.projects')} — verdande</title></svelte:head>
 
 <div class="view">
 	{#if status === 'denied'}
-		<p class="empty">Gruppen findes ikke, eller den er ikke din.</p>
+		<p class="empty">{t('group.notFound')}</p>
 	{:else if status === 'failed'}
 		<p class="empty">
-			Gruppen kunne ikke hentes.
-			<button class="link" onclick={() => load(id)}>Prøv igen</button>
+			{t('group.failed')}
+			<button class="link" onclick={() => load(id)}>{t('group.retry')}</button>
 		</p>
 	{:else if group}
 		<header>
 			<span class="dot" style="background: {colorVar(group.color)}" aria-hidden="true"></span>
 			<h1>{group.name}</h1>
-			<span class="count">{projects.length === 1 ? '1 projekt' : `${projects.length} projekter`}</span>
+			<span class="count">{projects.length === 1 ? t('group.projectOne') : t('group.projectMany', { n: projects.length })}</span>
 		</header>
 
 		<!-- Click to write, blur to save. The same shape as a task's description,
@@ -138,8 +139,8 @@
 					bind:value={description}
 					use:focusOnMount
 					rows="4"
-					aria-label="Om gruppen"
-					placeholder="Hvad er det her for et stykke arbejde?"
+					aria-label={t('group.about')}
+					placeholder={t('group.aboutPlaceholder')}
 					onblur={saveDescription}
 					onkeydown={(e) => e.key === 'Escape' && (editing = false)}
 				></textarea>
@@ -148,15 +149,15 @@
 					{#if group.description}
 						{group.description}
 					{:else}
-						<span class="placeholder">Skriv hvad det her er for et stykke arbejde.</span>
+						<span class="placeholder">{t('group.writeAbout')}</span>
 					{/if}
 				</button>
 			{/if}
-			{#if saving}<span class="saved">Gemmer…</span>{/if}
+			{#if saving}<span class="saved">{t('group.saving')}</span>{/if}
 		</section>
 
 		<section class="projects">
-			<h2>Projekter</h2>
+			<h2>{t('group.projects')}</h2>
 			{#if projects.length}
 				<ul>
 					{#each projects as project (project.id)}
@@ -175,17 +176,15 @@
 				</ul>
 			{:else}
 				<p class="empty">
-					Ingen projekter i gruppen endnu. Træk et herop i sidebjælken, eller vælg gruppen,
-					når du opretter et.
+					{t('group.noProjects')}
 				</p>
 			{/if}
 		</section>
 
 		<section class="files">
-			<h2>Dokumenter</h2>
+			<h2>{t('group.documents')}</h2>
 			<p class="hint">
-				Filer, der hører til hele gruppen frem for til én opgave i den — kontrakten,
-				tegningen, den aftale alt det andet hviler på.
+				{t('group.documentsHint')}
 			</p>
 
 			{#if attachments.length}
@@ -196,8 +195,8 @@
 								{attachment.filename}
 							</a>
 							<span class="secondary">{size(attachment.size)}</span>
-							<button class="remove" onclick={() => removeFile(attachment)} aria-label="Fjern {attachment.filename}">
-								Fjern
+							<button class="remove" onclick={() => removeFile(attachment)} aria-label={t('group.removeNamed', { name: attachment.filename })}>
+								{t('group.remove')}
 							</button>
 						</li>
 					{/each}
@@ -206,7 +205,7 @@
 
 			<label class="add">
 				<input type="file" onchange={addFile} disabled={uploading} />
-				<span>{uploading ? 'Lægger op…' : '+ Læg en fil op'}</span>
+				<span>{uploading ? t('group.uploading') : t('group.addFile')}</span>
 			</label>
 		</section>
 	{/if}

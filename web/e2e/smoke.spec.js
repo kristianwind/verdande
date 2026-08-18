@@ -1082,6 +1082,70 @@ test('en gruppe er en side med sine projekter, en beskrivelse og filer', async (
 });
 
 /**
+ * The account's language changes the interface, not only the parser.
+ *
+ * `locale` has been on the account since the beginning and only chose which
+ * grammar quick add read a line with — so picking English changed nothing anybody
+ * could see, and the field said so honestly: "Sprog i hurtig tilføjelse".
+ *
+ * Asserted on both directions and on a date, because the date formatter is the
+ * half that is easy to leave behind: `toLocaleDateString('da-DK', …)` was written
+ * into a dozen components, and an English interface still saying "24. aug." is the
+ * shape of a half-finished translation.
+ *
+ * It puts Danish back at the end. Everything after this reads Danish labels, and a
+ * test that leaves the account in English fails the ones that follow it rather
+ * than itself — which is the worst way for a suite to report anything.
+ */
+test('kontoens sprog skifter hele fladen, ikke kun parseren', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/indstillinger');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await expect(sidebar.getByRole('link', { name: 'I dag' })).toBeVisible();
+
+	await page.getByLabel('Sprog').selectOption('en');
+	await page.getByRole('button', { name: 'Gem' }).first().click();
+
+	// The sidebar redraws without a reload: i18n.locale is $state, which is the
+	// whole reason that module is .svelte.js.
+	const english = page.getByRole('navigation', { name: 'Main menu' });
+	await expect(english.getByRole('link', { name: 'Today' })).toBeVisible();
+	await expect(english.getByRole('link', { name: 'Upcoming' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
+
+	// And it survives a reload, which is the difference between the page keeping up
+	// and the account actually holding it.
+	await page.reload();
+	await expect(
+		page.getByRole('navigation', { name: 'Main menu' }).getByRole('link', { name: 'Today' })
+	).toBeVisible();
+
+	// A date, in the half that is easy to leave in Danish. The month grid's heading
+	// is `toLocaleDateString`, which was `'da-DK'` in a dozen components before
+	// `tag()` existed — an English interface still saying "december" is exactly the
+	// shape of a half-finished translation.
+	await page.goto('/upcoming');
+	await page.getByRole('button', { name: 'Month', exact: true }).click();
+	await expect(page.locator('.calendar h2')).not.toContainText(
+		/januar|februar|marts|maj|juni|juli|oktober|december/i
+	);
+
+	// The Inbox keeps its name: it is a project row created at signup, not a
+	// string in the interface, and the person can rename it like any other.
+
+	// Danish again, for everything that runs after this.
+	await page.goto('/indstillinger');
+	await page.getByLabel('Language').selectOption('da');
+	await page.getByRole('button', { name: 'Save' }).first().click();
+	await expect(
+		page.getByRole('navigation', { name: 'Hovedmenu' }).getByRole('link', { name: 'I dag' })
+	).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * The sidebar never scrolls sideways.
  *
  * It grew a horizontal scrollbar on an ordinary desktop, under the whole menu.

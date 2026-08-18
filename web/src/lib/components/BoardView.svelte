@@ -13,6 +13,7 @@
 	import { TASK, startDrag, carries, accept } from '$lib/dnd.js';
 	import { focusOnMount } from '$lib/focus.js';
 	import TaskRow from './TaskRow.svelte';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let { project, sections, canEdit, onsectionadded } = $props();
 
@@ -143,7 +144,7 @@
 				{/each}
 
 				{#if !tasks.length}
-					<p class="empty">Tom</p>
+					<p class="empty">{t('view.emptySection')}</p>
 				{/if}
 			</div>
 		</section>
@@ -156,8 +157,8 @@
 					<input
 						bind:value={name}
 						use:focusOnMount
-						placeholder="Sektionens navn"
-						aria-label="Ny sektion"
+						placeholder={t('view.sectionName')}
+						aria-label={t('view.newSection')}
 						onblur={() => !name.trim() && (adding = false)}
 						onkeydown={(e) => e.key === 'Escape' && (adding = false)}
 					/>
@@ -168,7 +169,7 @@
 					onclick={() => {
 						adding = true;
 						name = '';
-					}}>+ Tilføj sektion</button
+					}}>{t('view.addSection')}</button
 				>
 			{/if}
 		</section>

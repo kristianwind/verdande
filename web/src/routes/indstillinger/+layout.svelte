@@ -12,6 +12,7 @@
 	 */
 	import { page } from '$app/stores';
 	import { app } from '$lib/stores.svelte.js';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let { children } = $props();
 
@@ -20,19 +21,19 @@
 	// than disabled: this is not a feature to upsell, it is one that does not
 	// apply to you.
 	let sections = $derived([
-		{ href: '/indstillinger', label: 'Konto' },
-		{ href: '/indstillinger/notifikationer', label: 'Notifikationer' },
-		{ href: '/indstillinger/integrationer', label: 'Integrationer' },
-		{ href: '/indstillinger/ai', label: 'AI' },
-		{ href: '/indstillinger/tokens', label: 'API-tokens' },
+		{ href: '/indstillinger', label: t('settings.tab.account') },
+		{ href: '/indstillinger/notifikationer', label: t('settings.tab.notifications') },
+		{ href: '/indstillinger/integrationer', label: t('settings.tab.integrations') },
+		{ href: '/indstillinger/ai', label: t('settings.tab.ai') },
+		{ href: '/indstillinger/tokens', label: t('settings.tab.tokens') },
 		...(app.user?.is_admin
 			? [
-					{ href: '/indstillinger/brugere', label: 'Brugere' },
-					{ href: '/indstillinger/historik', label: 'Historik' },
-					{ href: '/indstillinger/fejl', label: 'Fejl' }
+					{ href: '/indstillinger/brugere', label: t('settings.tab.users') },
+					{ href: '/indstillinger/historik', label: t('settings.tab.history') },
+					{ href: '/indstillinger/fejl', label: t('settings.tab.errors') }
 				]
 			: []),
-		{ href: '/indstillinger/data', label: 'Data og skabeloner' }
+		{ href: '/indstillinger/data', label: t('settings.tab.data') }
 	]);
 
 	let current = $derived($page.url.pathname.replace(/\/$/, '') || '/indstillinger');
@@ -40,10 +41,10 @@
 
 <div class="settings">
 	<header>
-		<h1>Indstillinger</h1>
+		<h1>{t('settings.title')}</h1>
 	</header>
 
-	<nav aria-label="Indstillinger">
+	<nav aria-label={t('settings.title')}>
 		{#each sections as section (section.href)}
 			<a href={section.href} class:active={current === section.href}>{section.label}</a>
 		{/each}

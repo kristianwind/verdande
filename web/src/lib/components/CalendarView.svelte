@@ -13,6 +13,7 @@
 	 */
 	import { app } from '$lib/stores.svelte.js';
 	import { TASK, startDrag, carries, dragged, accept } from '$lib/dnd.js';
+	import { t, tag } from '$lib/i18n.svelte.js';
 
 	let {
 		/**
@@ -53,7 +54,21 @@
 
 	let cursor = $state(span === 'week' ? startOfWeek(new Date()) : startOfMonth(new Date()));
 
-	const WEEKDAYS = ['man', 'tir', 'ons', 'tor', 'fre', 'lør', 'søn'];
+	/**
+	 * The weekday names, from Intl rather than written out.
+	 *
+	 * Not to save seven strings — so the abbreviations are the ones the language
+	 * actually uses. Every language shortens its weekdays differently, and guessing
+	 * at that from a translation table is how a calendar ends up saying something
+	 * no reader of that language would write.
+	 *
+	 * Monday first, because the grid is. The 1st of January 2024 was a Monday; any
+	 * Monday would do, and a constant one keeps this out of the render path.
+	 */
+	const WEEKDAYS = $derived.by(() => {
+		const format = new Intl.DateTimeFormat(tag(), { weekday: 'short' });
+		return Array.from({ length: 7 }, (_, i) => format.format(new Date(Date.UTC(2024, 0, 1 + i))));
+	});
 
 	function startOfMonth(d) {
 		return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -123,7 +138,7 @@
 		);
 
 	const monthName = $derived(
-		cursor.toLocaleDateString('da-DK', { month: 'long', year: 'numeric' })
+		cursor.toLocaleDateString(tag(), { month: 'long', year: 'numeric' })
 	);
 
 	// "24. aug. – 30. aug. 2026", collapsed to one month name when the week does not
@@ -134,9 +149,9 @@
 		const day = { day: 'numeric', month: 'short' };
 		const left =
 			from.getMonth() === to.getMonth()
-				? from.toLocaleDateString('da-DK', { day: 'numeric' })
-				: from.toLocaleDateString('da-DK', day);
-		return `${left}–${to.toLocaleDateString('da-DK', day)} ${to.getFullYear()}`;
+				? from.toLocaleDateString(tag(), { day: 'numeric' })
+				: from.toLocaleDateString(tag(), day);
+		return `${left}–${to.toLocaleDateString(tag(), day)} ${to.getFullYear()}`;
 	});
 
 	/**
@@ -196,17 +211,17 @@
 
 <div class="calendar" class:week={span === 'week'}>
 	<header>
-		<button onclick={() => step(-1)} aria-label={span === 'week' ? 'Forrige uge' : 'Forrige måned'}
+		<button onclick={() => step(-1)} aria-label={span === 'week' ? t('view.prevWeek') : t('view.prevMonth')}
 			>‹</button
 		>
 		<h2 class:week={span === 'week'}>
 			{heading}
-			{#if weekNumber}<span class="weekno">uge {weekNumber}</span>{/if}
+			{#if weekNumber}<span class="weekno">{t('view.weekNumber', { n: weekNumber })}</span>{/if}
 		</h2>
-		<button onclick={() => step(1)} aria-label={span === 'week' ? 'Næste uge' : 'Næste måned'}
+		<button onclick={() => step(1)} aria-label={span === 'week' ? t('view.nextWeek') : t('view.nextMonth')}
 			>›</button
 		>
-		<button class="today" onclick={() => (cursor = startOfSpan(new Date()))}>I dag</button>
+		<button class="today" onclick={() => (cursor = startOfSpan(new Date()))}>{t('task.today')}</button>
 	</header>
 
 	<div class="weekdays" aria-hidden="true">
@@ -257,7 +272,7 @@
 				{/each}
 
 				{#if tasks.length > chipLimit}
-					<span class="more">+{tasks.length - chipLimit} mere</span>
+					<span class="more">{t('view.more', { n: tasks.length - chipLimit })}</span>
 				{/if}
 			</div>
 		{/each}

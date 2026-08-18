@@ -3,6 +3,7 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { page } from '$app/stores';
+	import { t } from '$lib/i18n.svelte.js';
 
 	// --- Gmail ------------------------------------------------------------------
 
@@ -58,25 +59,25 @@
 	 * whose response could have carried it.
 	 */
 	const CALLBACK = {
-		connected: { tone: 'ok', text: 'Gmail er forbundet.' },
+		connected: { tone: 'ok', text: t('int.gmailConnected') },
 		state: {
 			tone: 'bad',
-			text: 'Svaret fra Google passede ikke til det forsøg, der blev startet her. Prøv igen.'
+			text: t('int.gmailState')
 		},
-		expired: { tone: 'bad', text: 'Forsøget udløb undervejs. Prøv igen.' },
-		invalid: { tone: 'bad', text: 'Svaret fra Google kunne ikke læses. Prøv igen.' },
-		failed: { tone: 'bad', text: 'Google afviste ombytningen af koden.' },
+		expired: { tone: 'bad', text: t('int.gmailExpired') },
+		invalid: { tone: 'bad', text: t('int.gmailInvalid') },
+		failed: { tone: 'bad', text: t('int.gmailFailed') },
 		norefresh: {
 			tone: 'bad',
-			text: 'Google sendte ingen refresh-token. Fjern verdande under din Google-konto og forbind igen.'
+			text: t('int.gmailNoRefresh')
 		},
-		access_denied: { tone: 'bad', text: 'Adgangen blev afvist hos Google.' }
+		access_denied: { tone: 'bad', text: t('int.gmailDenied') }
 	};
 
 	let callback = $derived.by(() => {
 		const value = $page.url.searchParams.get('gmail');
 		if (!value) return null;
-		return CALLBACK[value] ?? { tone: 'bad', text: `Gmail svarede: ${value}` };
+		return CALLBACK[value] ?? { tone: 'bad', text: t('int.gmailOther', { what: value }) };
 	});
 
 	$effect(() => {
@@ -183,10 +184,9 @@
 
 <section class="panel">
 	<header>
-		<h2>Gmail</h2>
+		<h2>{t('int.gmail')}</h2>
 		<p class="hint">
-			Stjernemarkér en mail, eller giv den en etiket, og den bliver en opgave.
-			Envejs: at fjerne stjernen gør ikke noget ved opgaven.
+			{t('int.gmailHint')}
 		</p>
 	</header>
 
@@ -199,7 +199,7 @@
 	{:else if !gmail.connected}
 		<div class="row">
 			<button class="primary" onclick={connect} disabled={client && !client.client_id}>
-				Forbind Gmail
+				{t('int.connectGmail')}
 			</button>
 		</div>
 
@@ -210,24 +210,18 @@
 		{#if app.user?.is_admin && client}
 			{#if client.from_env}
 				<p class="hint">
-					Klienten er sat i miljøet (<span class="mono">VERDANDE_GMAIL_CLIENT_ID</span>),
-					så den kan ikke ændres her. Det er med vilje: en værdi i runens manifest er
-					en beslutning, der bliver anvendt igen ved hver genstart, og en formular,
-					der kunne overskrive den, ville gøre manifestet til en løgn.
+					{t('int.fromEnv')}
 				</p>
 			{:else}
 				<details class="setup" open={!client.client_id}>
-					<summary>OAuth-klient hos Google</summary>
+					<summary>{t('int.oauthClient')}</summary>
 
 					<p class="hint">
-						Registrér en klient i <span class="mono">Google Cloud Console → APIs &amp;
-						Services → Credentials → OAuth client ID → Web application</span>, slå
-						Gmail API til, og indsæt de to værdier her. Din egen konto skal stå som
-						testbruger, så længe appen ikke er verificeret hos Google.
+						{t('int.registerHint')}
 					</p>
 
 					<div class="field">
-						<label for="redirect">Godkendt redirect-URI</label>
+						<label for="redirect">{t('int.redirectURI')}</label>
 						<!-- Read-only and spelled out: it is derived from VERDANDE_BASE_URL,
 						     it has to match Google's copy exactly, and the error Google gives
 						     when it does not names neither value. Google afviser desuden
@@ -237,57 +231,56 @@
 
 					<form onsubmit={saveClient}>
 						<div class="field">
-							<label for="client-id">Klient-id</label>
+							<label for="client-id">{t('int.clientID')}</label>
 							<input id="client-id" bind:value={clientId} autocomplete="off" />
 						</div>
 						<div class="field">
-							<label for="client-secret">Klienthemmelighed</label>
+							<label for="client-secret">{t('int.clientSecret')}</label>
 							<input
 								id="client-secret"
 								type="password"
 								bind:value={clientSecret}
 								autocomplete="off"
-								placeholder={client.has_secret ? 'Gemt — udfyld kun for at skifte den' : ''}
+								placeholder={client.has_secret ? t('int.secretStored') : ''}
 							/>
 						</div>
 						<div class="row">
-							<button class="primary" type="submit" disabled={savingClient}>Gem</button>
-							{#if clientSaved}<span class="saved">Gemt.</span>{/if}
+							<button class="primary" type="submit" disabled={savingClient}>{t('int.save')}</button>
+							{#if clientSaved}<span class="saved">{t('int.saved')}</span>{/if}
 						</div>
 					</form>
 				</details>
 			{/if}
 		{:else if client && !client.client_id}
 			<p class="hint">
-				Der er ikke registreret en OAuth-klient hos Google endnu. Det skal en
-				administrator gøre, før knappen her kan bruges.
+				{t('int.noClient')}
 			</p>
 		{/if}
 	{:else}
-		<p class="hint">Forbundet som <strong>{gmail.email || 'ukendt konto'}</strong>.</p>
+		<p class="hint">{t('int.connectedAs')} <strong>{gmail.email || t('int.unknownAccount')}</strong>.</p>
 
 		<form onsubmit={saveGmail}>
 			<div class="field">
-				<label for="trigger">Hvad laver en opgave</label>
+				<label for="trigger">{t('int.whatMakesATask')}</label>
 				<select id="trigger" bind:value={gmail.trigger}>
-					<option value="starred">Stjernemarkerede</option>
-					<option value="label">En bestemt etiket</option>
-					<option value="both">Begge dele</option>
+					<option value="starred">{t('int.starred')}</option>
+					<option value="label">{t('int.aLabel')}</option>
+					<option value="both">{t('int.both')}</option>
 				</select>
 			</div>
 
 			{#if gmail.trigger === 'label' || gmail.trigger === 'both'}
 				<div class="field">
-					<label for="gmail-label">Etikettens navn i Gmail</label>
-					<input id="gmail-label" bind:value={gmail.label} placeholder="fx Opgaver" />
+					<label for="gmail-label">{t('int.gmailLabelName')}</label>
+					<input id="gmail-label" bind:value={gmail.label} placeholder={t('int.gmailLabelExample')} />
 				</div>
 			{/if}
 
 			<div class="row">
-				<button class="primary" type="submit" disabled={savingGmail}>Gem</button>
-				{#if gmailSaved}<span class="saved">Gemt.</span>{/if}
-				<button class="secondary" onclick={syncNow} disabled={syncing}>Hent nu</button>
-				<button class="danger" onclick={disconnectGmail}>Afbryd</button>
+				<button class="primary" type="submit" disabled={savingGmail}>{t('int.save')}</button>
+				{#if gmailSaved}<span class="saved">{t('int.saved')}</span>{/if}
+				<button class="secondary" onclick={syncNow} disabled={syncing}>{t('int.fetchNow')}</button>
+				<button class="danger" onclick={disconnectGmail}>{t('int.disconnect')}</button>
 			</div>
 		</form>
 	{/if}
@@ -295,74 +288,64 @@
 
 <section class="panel">
 	<header>
-		<h2>Kalenderfeed</h2>
+		<h2>{t('int.feed')}</h2>
 		<p class="hint">
-			Abonnér i Apple Kalender, Google eller Thunderbird. En kalenderklient kan
-			ikke logge ind, så nøglen i adressen <em>er</em> hele adgangskoden — del den
-			ikke.
+			{t('int.feedHint')}
 		</p>
 	</header>
 
 	<div class="field">
-		<label for="feed">Adresse</label>
+		<label for="feed">{t('int.address')}</label>
 		<input id="feed" class="mono" value={feedURL} readonly />
 	</div>
 
 	<div class="row">
-		<button class="secondary" onclick={() => copy(feedURL)}>Kopiér</button>
-		<button class="danger" onclick={rotateFeed}>Nyt link</button>
+		<button class="secondary" onclick={() => copy(feedURL)}>{t('int.copy')}</button>
+		<button class="danger" onclick={rotateFeed}>{t('int.newLink')}</button>
 	</div>
 	<p class="hint">
-		Et nyt link bryder alle eksisterende abonnementer med det samme. Det er
-		pointen: det er det, man gør, når det gamle er havnet et forkert sted.
+		{t('int.newLinkHint')}
 	</p>
 </section>
 
 <section class="panel">
 	<header>
-		<h2>Mail til opgave</h2>
+		<h2>{t('int.mailToTask')}</h2>
 		<p class="hint">
-			Send eller videresend en mail hertil, og emnelinjen bliver tolket som en
-			hurtig tilføjelse — &ldquo;Fakturer Anders p1 #Firma&rdquo; virker også her.
+			{t('int.mailHint')}
 		</p>
 	</header>
 
 	{#if mailConfigured === false}
 		<p class="callback" data-tone="bad">
-			Der er ingen mailserver sat op på denne server, så adressen herunder kan
-			ikke modtage noget endnu. Sæt <span class="mono">VERDANDE_SMTP_HOST</span> og
-			de øvrige SMTP-indstillinger, og få mailserveren til at aflevere post til
-			<span class="mono">todo+*</span> videre til
-			<span class="mono">/inbound/mail</span>.
+			{t('int.noMailServer')}
 		</p>
 	{/if}
 
 	<div class="field">
-		<label for="mail">Din adresse</label>
+		<label for="mail">{t('int.yourAddress')}</label>
 		<input id="mail" class="mono" value={mailAddress} readonly />
 	</div>
 
 	<div class="row">
-		<button class="secondary" onclick={() => copy(mailAddress)}>Kopiér</button>
-		<button class="danger" onclick={rotateMail}>Ny adresse</button>
+		<button class="secondary" onclick={() => copy(mailAddress)}>{t('int.copy')}</button>
+		<button class="danger" onclick={rotateMail}>{t('int.newAddress')}</button>
 	</div>
 </section>
 
 <section class="panel">
 	<header>
-		<h2>CalDAV</h2>
+		<h2>{t('int.caldav')}</h2>
 		<p class="hint">
-			Tovejs, i modsætning til feedet ovenfor: Apple Påmindelser og Thunderbird
-			kan også skrive tilbage.
+			{t('int.caldavHint')}
 		</p>
 	</header>
 
 	<div class="field">
-		<label for="caldav">Server</label>
+		<label for="caldav">{t('int.server')}</label>
 		<input id="caldav" class="mono" value={`${location.origin}/caldav/`} readonly />
 		<p class="hint">
-			Brugernavn er din e-mail. Adgangskoden er en
-			<a href="/indstillinger/tokens">API-token</a> — ikke din rigtige adgangskode.
+			{t('int.caldavAuth')}
 		</p>
 	</div>
 </section>

@@ -19,6 +19,7 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { focusOnMount } from '$lib/focus.js';
+	import { t } from '$lib/i18n.svelte.js';
 
 	// loading | login | setup | totp | forgot | sent | invite | reset | done
 	let mode = $state('loading');
@@ -144,31 +145,31 @@
 		{#if mode === 'loading'}
 			<p class="lede">&nbsp;</p>
 		{:else if mode === 'setup'}
-			<p class="lede">Opret den første konto. Den bliver administrator.</p>
+			<p class="lede">{t('auth.firstAccount')}</p>
 
 			<label>
-				Navn
+				{t('auth.name')}
 				<input bind:value={name} autocomplete="name" required />
-				{#if fields.name}<span class="field-error">Skal udfyldes</span>{/if}
+				{#if fields.name}<span class="field-error">{t('auth.nameRequired')}</span>{/if}
 			</label>
 			<label>
-				E-mail
+				{t('auth.email')}
 				<input bind:value={email} type="email" autocomplete="username" required />
-				{#if fields.email}<span class="field-error">Skal være en e-mailadresse</span>{/if}
+				{#if fields.email}<span class="field-error">{t('auth.emailInvalid')}</span>{/if}
 			</label>
 			<label>
-				Adgangskode
+				{t('auth.password')}
 				<input bind:value={password} type="password" autocomplete="new-password" required />
-				<span class="hint">Mindst 10 tegn. En sætning er både nemmere og stærkere.</span>
+				<span class="hint">{t('auth.passwordHint')}</span>
 				{#if fields.password}<span class="field-error">{fields.password}</span>{/if}
 			</label>
 
-			<button type="submit" disabled={busy}>Opret konto</button>
+			<button type="submit" disabled={busy}>{t('auth.createAccount')}</button>
 		{:else if mode === 'totp'}
-			<p class="lede">Indtast koden fra din authenticator.</p>
+			<p class="lede">{t('auth.totpPrompt')}</p>
 
 			<label>
-				Kode
+				{t('auth.code')}
 				<input
 					bind:value={code}
 					use:focusOnMount
@@ -178,34 +179,34 @@
 					class="code"
 					required
 				/>
-				<span class="hint">Har du mistet din telefon, virker en af dine gendannelseskoder her.</span>
+				<span class="hint">{t('auth.totpRecovery')}</span>
 			</label>
 
-			<button type="submit" disabled={busy}>Fortsæt</button>
+			<button type="submit" disabled={busy}>{t('auth.continue')}</button>
 		{:else if mode === 'forgot'}
-			<p class="lede">Vi sender et link til at vælge en ny adgangskode.</p>
+			<p class="lede">{t('auth.resetPrompt')}</p>
 
 			<label>
-				E-mail
+				{t('auth.email')}
 				<input bind:value={email} type="email" autocomplete="username" required />
 			</label>
 
-			<button type="submit" disabled={busy}>Send link</button>
-			<button type="button" class="link" onclick={() => (mode = 'login')}>Tilbage</button>
+			<button type="submit" disabled={busy}>{t('auth.sendLink')}</button>
+			<button type="button" class="link" onclick={() => (mode = 'login')}>{t('auth.back')}</button>
 		{:else if mode === 'invite' || mode === 'reset'}
 			{#if !token}
 				<!-- A link that lost its token on the way. Saying so beats a form that
 				     cannot succeed and a message that arrives only after it is filled in. -->
 				<p class="lede">
-					Linket er ikke komplet. Åbn det fra e-mailen igen, eller bed om et nyt.
+					{t('auth.linkBroken')}
 				</p>
-				<a class="link" href="/">Til log ind</a>
+				<a class="link" href="/">{t('auth.toSignIn')}</a>
 			{:else if app.user}
 				<!-- Already somebody else. The invite is tied to an address, so using it
 				     from this session would create a second account for a person who is
 				     right here in the first one. -->
 				<p class="lede">
-					Du er logget ind som {app.user.name}. Log ud først, og åbn så linket igen.
+					{t('auth.alreadySignedIn', { name: app.user.name })}
 				</p>
 				<button
 					type="button"
@@ -213,61 +214,61 @@
 					onclick={async () => {
 						await api.logout();
 						location.reload();
-					}}>Log ud</button
+					}}>{t('auth.signOut')}</button
 				>
 			{:else if mode === 'invite'}
-				<p class="lede">Du er inviteret. Vælg et navn og en adgangskode.</p>
+				<p class="lede">{t('auth.invited')}</p>
 
 				<label>
-					Navn
+					{t('auth.name')}
 					<input bind:value={name} autocomplete="name" required />
-					{#if fields.name}<span class="field-error">Skal udfyldes</span>{/if}
+					{#if fields.name}<span class="field-error">{t('auth.nameRequired')}</span>{/if}
 				</label>
 				<label>
-					Adgangskode
+					{t('auth.password')}
 					<input bind:value={password} type="password" autocomplete="new-password" required />
-					<span class="hint">Mindst 10 tegn. En sætning er både nemmere og stærkere.</span>
+					<span class="hint">{t('auth.passwordHint')}</span>
 					{#if fields.password}<span class="field-error">{fields.password}</span>{/if}
 				</label>
 
-				<button type="submit" disabled={busy}>Opret konto</button>
+				<button type="submit" disabled={busy}>{t('auth.createAccount')}</button>
 			{:else}
-				<p class="lede">Vælg en ny adgangskode.</p>
+				<p class="lede">{t('auth.pickNew')}</p>
 
 				<label>
-					Ny adgangskode
+					{t('auth.newPassword')}
 					<input bind:value={password} type="password" autocomplete="new-password" required />
-					<span class="hint">Mindst 10 tegn. Alle andre enheder bliver logget ud.</span>
+					<span class="hint">{t('auth.newPasswordHint')}</span>
 					{#if fields.password}<span class="field-error">{fields.password}</span>{/if}
 				</label>
 
-				<button type="submit" disabled={busy}>Gem adgangskoden</button>
+				<button type="submit" disabled={busy}>{t('auth.savePassword')}</button>
 			{/if}
 		{:else if mode === 'done'}
-			<p class="lede">Adgangskoden er skiftet. Log ind med den nye.</p>
-			<a class="link" href="/">Til log ind</a>
+			<p class="lede">{t('auth.passwordChanged')}</p>
+			<a class="link" href="/">{t('auth.toSignIn')}</a>
 		{:else if mode === 'sent'}
 			<!-- Deliberately not "we sent an email": that would confirm the address
 			     has an account here to anybody who tried it. -->
 			<p class="lede">
-				Hvis adressen har en konto, er der et link på vej. Tjek også spamfilteret.
+				{t('auth.resetSent')}
 			</p>
-			<button type="button" class="link" onclick={() => (mode = 'login')}>Tilbage</button>
+			<button type="button" class="link" onclick={() => (mode = 'login')}>{t('auth.back')}</button>
 		{:else}
-			<p class="lede">Log ind for at fortsætte.</p>
+			<p class="lede">{t('auth.signInPrompt')}</p>
 
 			<label>
-				E-mail
+				{t('auth.email')}
 				<input bind:value={email} type="email" autocomplete="username" required />
 			</label>
 			<label>
-				Adgangskode
+				{t('auth.password')}
 				<input bind:value={password} type="password" autocomplete="current-password" required />
 			</label>
 
-			<button type="submit" disabled={busy}>Log ind</button>
+			<button type="submit" disabled={busy}>{t('auth.signIn')}</button>
 			<button type="button" class="link" onclick={() => (mode = 'forgot')}>
-				Glemt adgangskode?
+				{t('auth.forgot')}
 			</button>
 		{/if}
 

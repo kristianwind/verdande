@@ -10,6 +10,7 @@
 	import { api } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import TaskRow from '$lib/components/TaskRow.svelte';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let loaded = $state(false);
 	let name = $derived(decodeURIComponent($page.params.navn ?? ''));
@@ -42,7 +43,7 @@
 	{#if loaded && !open.length}
 		<p class="clear">
 			<span class="rune" aria-hidden="true">ᚹ</span>
-			Ingen åbne opgaver med denne etiket.
+			{t('view.labelEmpty')}
 		</p>
 	{/if}
 </div>

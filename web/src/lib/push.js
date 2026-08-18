@@ -8,6 +8,7 @@
  */
 
 import { api } from './api.js';
+import { t } from './i18n.svelte.js';
 
 /** Whether this browser can do it at all. Safari before 16.4 cannot, and neither
  *  can any browser on a page served over plain HTTP from a non-localhost host. */
@@ -56,14 +57,14 @@ export async function subscribe() {
 	if (granted !== 'granted') {
 		throw new Error(
 			granted === 'denied'
-				? 'Browseren har blokeret notifikationer for dette site. Det skal slås til i browserens indstillinger.'
-				: 'Notifikationer blev ikke slået til.'
+				? t('push.deniedByBrowser')
+				: t('push.notEnabled')
 		);
 	}
 
 	const reg = await registration();
 	const { public_key } = await api.pushKey();
-	if (!public_key) throw new Error('Serveren har ingen VAPID-nøgle.');
+	if (!public_key) throw new Error(t('push.noVapidKey'));
 
 	const subscription = await reg.pushManager.subscribe({
 		// Not optional in Chrome: a subscription that is not userVisibleOnly is

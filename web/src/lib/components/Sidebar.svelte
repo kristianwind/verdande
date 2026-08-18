@@ -328,7 +328,7 @@
 	}
 </script>
 
-<nav class="sidebar" aria-label="Hovedmenu">
+<nav class="sidebar" aria-label={t('nav.main')}>
 	<div class="brand">
 		<!-- Verdande's mark: the rune Wunjo, which is the letter the Norn's name
 		     starts with in the elder futhark. One glyph, no wordmark beside it —
@@ -573,8 +573,8 @@
 									class="swatch"
 									class:chosen={(group.color ?? 'graphite') === color.id}
 									style="background: {colorVar(color.id)}"
-									title={color.name}
-									aria-label={color.name}
+									title={t(color.name)}
+									aria-label={t(color.name)}
 									aria-pressed={(group.color ?? 'graphite') === color.id}
 									onmousedown={(e) => e.preventDefault()}
 									onclick={() => app.setGroupColor(group.id, color.id)}

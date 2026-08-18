@@ -21,17 +21,20 @@
  * carries a `--color-<id>` token for each, and a Go test reads this file to check
  * the server's list of accepted names has not drifted from it.
  */
+// `name` is a key rather than a word: the picker calls `t()` on it. The ids stay
+// exactly as they are — they are what the database stores, and `internal/store`
+// has a test that reads them out of this file.
 export const COLORS = [
-	{ id: 'graphite', name: 'Grafit' },
-	{ id: 'tomato', name: 'Tomat' },
-	{ id: 'amber', name: 'Rav' },
-	{ id: 'lime', name: 'Lime' },
-	{ id: 'green', name: 'Grøn' },
-	{ id: 'teal', name: 'Petrol' },
-	{ id: 'blue', name: 'Blå' },
-	{ id: 'indigo', name: 'Indigo' },
-	{ id: 'violet', name: 'Violet' },
-	{ id: 'magenta', name: 'Magenta' }
+	{ id: 'graphite', name: 'color.graphite' },
+	{ id: 'tomato', name: 'color.tomato' },
+	{ id: 'amber', name: 'color.amber' },
+	{ id: 'lime', name: 'color.lime' },
+	{ id: 'green', name: 'color.green' },
+	{ id: 'teal', name: 'color.teal' },
+	{ id: 'blue', name: 'color.blue' },
+	{ id: 'indigo', name: 'color.indigo' },
+	{ id: 'violet', name: 'color.violet' },
+	{ id: 'magenta', name: 'color.magenta' }
 ];
 
 /** The CSS variable a colour id paints with, falling back to the default. */

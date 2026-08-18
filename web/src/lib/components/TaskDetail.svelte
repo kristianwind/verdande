@@ -13,6 +13,7 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { focusOnMount } from '$lib/focus.js';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let { task, onclose } = $props();
 
@@ -35,8 +36,8 @@
 		{ rule: 'FREQ=DAILY', label: 'Hver dag' },
 		{ rule: 'FREQ=WEEKLY', label: 'Hver uge' },
 		{ rule: 'FREQ=WEEKLY;INTERVAL=2', label: 'Hver anden uge' },
-		{ rule: 'FREQ=MONTHLY', label: 'Hver måned' },
-		{ rule: 'FREQ=YEARLY', label: 'Hvert år' }
+		{ rule: 'FREQ=MONTHLY', label: t('detail.monthly') },
+		{ rule: 'FREQ=YEARLY', label: t('detail.yearly') }
 	];
 
 	let subtasks = $state([]);
@@ -176,7 +177,7 @@
 			if (patch.priority) priority = patch.priority;
 			if (patch.recurrence_rule) recurrence = patch.recurrence_rule;
 			if (patch.labels) labels = patch.labels.join(', ');
-			app.toast(`Læst som ${took.join(', ')}.`);
+			app.toast(t('detail.readAs', { what: took.join(', ') }));
 		}
 	}
 
@@ -363,9 +364,9 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <div class="scrim" onclick={onclose} role="presentation"></div>
 
-<aside class="drawer" aria-label="Opgave">
+<aside class="drawer" aria-label={t('detail.task')}>
 	<header>
-		<button class="close" onclick={onclose} aria-label="Luk">
+		<button class="close" onclick={onclose} aria-label={t('detail.close')}>
 			<svg viewBox="0 0 24 24" aria-hidden="true">
 				<path d="M6 6l12 12M18 6L6 18" />
 			</svg>
@@ -379,38 +380,38 @@
 				use:focusOnMount
 				bind:value={content}
 				onblur={saveContent}
-				aria-label="Opgavens tekst"
+				aria-label={t('detail.text')}
 			/>
 		</div>
 
 		<div class="field">
-			<label for="description">Beskrivelse</label>
+			<label for="description">{t('detail.description')}</label>
 			<textarea
 				id="description"
 				rows="4"
 				bind:value={description}
 				onblur={saveDescription}
-				placeholder="Detaljer, links, hvad der skal huskes"
+				placeholder={t('detail.descriptionPlaceholder')}
 			></textarea>
 		</div>
 
 		<div class="grid">
 			<div class="field">
-				<label for="priority">Prioritet</label>
+				<label for="priority">{t('detail.priority')}</label>
 				<select
 					id="priority"
 					bind:value={priority}
 					onchange={() => save({ priority: Number(priority) })}
 				>
-					<option value={1}>P1 — haster</option>
+					<option value={1}>{t('detail.p1')}</option>
 					<option value={2}>P2</option>
 					<option value={3}>P3</option>
-					<option value={4}>Ingen</option>
+					<option value={4}>{t('detail.none')}</option>
 				</select>
 			</div>
 
 			<div class="field">
-				<label for="due">Forfalder</label>
+				<label for="due">{t('detail.due')}</label>
 				<input
 					id="due"
 					type="date"
@@ -421,18 +422,18 @@
 		</div>
 
 		<div class="field">
-			<label for="labels">Etiketter</label>
+			<label for="labels">{t('detail.labels')}</label>
 			<input
 				id="labels"
 				bind:value={labels}
 				onblur={saveLabels}
-				placeholder="adskilt af komma"
+				placeholder={t('detail.labelsPlaceholder')}
 			/>
 		</div>
 
 		<div class="grid">
 			<div class="field">
-				<label for="project">Projekt</label>
+				<label for="project">{t('detail.project')}</label>
 				<select id="project" bind:value={projectId} onchange={saveProject}>
 					{#each app.projects as project (project.id)}
 						<option value={project.id}>{project.name}</option>
@@ -441,7 +442,7 @@
 			</div>
 
 			<div class="field">
-				<label for="repeat">Gentages</label>
+				<label for="repeat">{t('detail.repeats')}</label>
 				<select id="repeat" bind:value={recurrence} onchange={saveRecurrence}>
 					{#each REPEATS as option (option.rule)}
 						<option value={option.rule}>{option.label}</option>
@@ -458,9 +459,9 @@
 
 		{#if members.length > 1}
 			<div class="field">
-				<label for="assignee">Ansvarlig</label>
+				<label for="assignee">{t('detail.assignee')}</label>
 				<select id="assignee" bind:value={assignee} onchange={saveAssignee}>
-					<option value="">Ingen</option>
+					<option value="">{t('detail.none')}</option>
 					{#each members as member (member.user_id)}
 						<option value={member.user_id}>{member.name}</option>
 					{/each}
@@ -469,7 +470,7 @@
 		{/if}
 
 		<section>
-			<h3>Undertasks</h3>
+			<h3>{t('detail.subtasks')}</h3>
 
 			{#each subtasks as subtask (subtask.id)}
 				<div class="subtask" class:done={subtask.completed}>
@@ -477,26 +478,26 @@
 						class="check"
 						class:checked={subtask.completed}
 						onclick={() => toggleSubtask(subtask)}
-						aria-label={subtask.completed ? 'Genåbn' : 'Markér som færdig'}
+						aria-label={subtask.completed ? t('detail.reopen') : t('task.complete')}
 					>
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M6 12.5l4 4 8-8.5" />
 						</svg>
 					</button>
 					<span class="subtask-text">{subtask.content}</span>
-					<button class="remove" onclick={() => removeSubtask(subtask)} aria-label="Slet">
+					<button class="remove" onclick={() => removeSubtask(subtask)} aria-label={t('detail.delete')}>
 						×
 					</button>
 				</div>
 			{/each}
 
 			<form onsubmit={addSubtask}>
-				<input bind:value={newSubtask} placeholder="Tilføj en undertask" aria-label="Ny undertask" />
+				<input bind:value={newSubtask} placeholder={t('detail.addSubtask')} aria-label={t('detail.newSubtask')} />
 			</form>
 		</section>
 
 		<section>
-			<h3>Filer</h3>
+			<h3>{t('detail.files')}</h3>
 
 			{#each attachments as attachment (attachment.id)}
 				<div class="file">
@@ -504,7 +505,7 @@
 					     in place would run its own script on this origin. -->
 					<a href={attachment.url} download={attachment.filename}>{attachment.filename}</a>
 					<span class="size">{kb(attachment.size)}</span>
-					<button class="remove" onclick={() => removeAttachment(attachment)} aria-label="Slet">
+					<button class="remove" onclick={() => removeAttachment(attachment)} aria-label={t('detail.delete')}>
 						×
 					</button>
 				</div>
@@ -512,18 +513,18 @@
 
 			<label class="upload">
 				<input type="file" onchange={upload} disabled={uploading} />
-				<span>{uploading ? 'Lægger op …' : 'Vedhæft en fil'}</span>
+				<span>{uploading ? t('detail.uploading') : t('detail.attachFile')}</span>
 			</label>
 		</section>
 
 		<section>
-			<h3>Påmindelser</h3>
+			<h3>{t('detail.reminders')}</h3>
 
 			{#each reminders as reminder (reminder.id)}
 				<div class="reminder">
 					<span>{reminder.remind_at ? stamp(reminder.remind_at) : `${reminder.offset_min} min.`}</span>
-					{#if reminder.sent}<span class="sent">sendt</span>{/if}
-					<button class="remove" onclick={() => removeReminder(reminder)} aria-label="Slet">
+					{#if reminder.sent}<span class="sent">{t('detail.sent')}</span>{/if}
+					<button class="remove" onclick={() => removeReminder(reminder)} aria-label={t('detail.delete')}>
 						×
 					</button>
 				</div>
@@ -533,14 +534,14 @@
 				<input
 					type="datetime-local"
 					bind:value={newReminder}
-					aria-label="Ny påmindelse"
+					aria-label={t('detail.newReminder')}
 				/>
-				<button class="add" type="submit">Tilføj</button>
+				<button class="add" type="submit">{t('detail.add')}</button>
 			</form>
 		</section>
 
 		<section>
-			<h3>Kommentarer</h3>
+			<h3>{t('detail.comments')}</h3>
 
 			{#each comments as comment (comment.id)}
 				<article class="comment">
@@ -560,7 +561,7 @@
 						{/each}
 					</div>
 					{#if comment.user_id === app.user?.id}
-						<button class="remove" onclick={() => removeComment(comment)} aria-label="Slet">
+						<button class="remove" onclick={() => removeComment(comment)} aria-label={t('detail.delete')}>
 							×
 						</button>
 					{/if}
@@ -571,10 +572,10 @@
 				<textarea
 					rows="2"
 					bind:value={newComment}
-					placeholder="Skriv en kommentar"
-					aria-label="Ny kommentar"
+					placeholder={t('detail.writeComment')}
+					aria-label={t('detail.newComment')}
 				></textarea>
-				<button class="add" type="submit" disabled={posting}>Skriv</button>
+				<button class="add" type="submit" disabled={posting}>{t('detail.post')}</button>
 			</form>
 		</section>
 	</div>

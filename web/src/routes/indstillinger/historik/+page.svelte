@@ -16,6 +16,8 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { eventName, eventDetail } from '$lib/events.js';
+	import { t } from '$lib/i18n.svelte.js';
+	import { ago } from '$lib/when.js';
 
 	let entries = $state([]);
 	let cursor = $state(null);
@@ -94,19 +96,6 @@
 		}
 	}
 
-	function when(iso) {
-		const then = new Date(iso);
-		const seconds = Math.round((Date.now() - then) / 1000);
-		if (seconds < 60) return 'lige nu';
-		if (seconds < 3600) return `for ${Math.floor(seconds / 60)} min. siden`;
-		if (seconds < 86400) return `for ${Math.floor(seconds / 3600)} timer siden`;
-		return then.toLocaleString('da-DK', {
-			day: 'numeric',
-			month: 'short',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
-	}
 
 	let filtered = $derived(Boolean(filterUser || filterProject || filterEvent));
 
@@ -119,21 +108,17 @@
 
 <section class="panel">
 	<header>
-		<h2>Historik</h2>
+		<h2>{t('history.title')}</h2>
 		<p class="hint">
-			Alt, der er blevet gjort på denne server, på tværs af alle projekter — også
-			dem, du ikke selv er med i. Projekternes egne historik-paneler viser det
-			samme, ét projekt ad gangen; det her er spørgsmålet, de ikke kan svare på.
-			Rækkerne bliver stående, når en konto slettes: det, der blev gjort, holder op
-			med at have et navn, ikke med at være sket.
+			{t('history.hint')}
 		</p>
 	</header>
 
 	<div class="filters">
 		<label>
-			<span>Person</span>
+			<span>{t('history.person')}</span>
 			<select bind:value={filterUser}>
-				<option value="">Alle</option>
+				<option value="">{t('history.all')}</option>
 				{#each people as person (person.id)}
 					<option value={person.id}>{person.name}</option>
 				{/each}
@@ -141,9 +126,9 @@
 		</label>
 
 		<label>
-			<span>Projekt</span>
+			<span>{t('history.project')}</span>
 			<select bind:value={filterProject}>
-				<option value="">Alle</option>
+				<option value="">{t('history.all')}</option>
 				{#each projects as project (project.id)}
 					<option value={project.id}>{project.name}</option>
 				{/each}
@@ -151,9 +136,9 @@
 		</label>
 
 		<label>
-			<span>Hændelse</span>
+			<span>{t('history.event')}</span>
 			<select bind:value={filterEvent}>
-				<option value="">Alle</option>
+				<option value="">{t('history.all')}</option>
 				{#each events as event (event.event)}
 					<option value={event.event}>{eventName(event.event)} ({event.count})</option>
 				{/each}
@@ -161,7 +146,7 @@
 		</label>
 
 		{#if filtered}
-			<button class="secondary" onclick={clearFilters}>Ryd</button>
+			<button class="secondary" onclick={clearFilters}>{t('history.clear')}</button>
 		{/if}
 	</div>
 
@@ -172,7 +157,7 @@
 					<div class="what">
 						<span class="primary-line">
 							<span class="who" class:gone={!entry.user_name}
-								>{entry.user_name || 'En slettet konto'}</span
+								>{entry.user_name || t('history.deletedAccount')}</span
 							>
 							<span class="event"
 								>{eventName(entry.event)}{#if eventDetail(entry)}
@@ -181,7 +166,7 @@
 						</span>
 						<span class="secondary">{entry.project_name}</span>
 					</div>
-					<span class="when">{when(entry.at)}</span>
+					<span class="when">{ago(entry.at)}</span>
 				</li>
 			{/each}
 		</ul>
@@ -189,15 +174,15 @@
 		{#if cursor}
 			<div class="row">
 				<button class="secondary" onclick={more} disabled={loading}>
-					{loading ? 'Henter…' : 'Hent flere'}
+					{loading ? t('history.loading') : t('history.more')}
 				</button>
 			</div>
 		{/if}
 	{:else if loaded}
 		<p class="hint">
 			{filtered
-				? 'Ingen hændelser matcher de valgte filtre.'
-				: 'Der er ikke registreret noget endnu.'}
+				? t('history.noMatch')
+				: t('history.nothing')}
 		</p>
 	{/if}
 </section>

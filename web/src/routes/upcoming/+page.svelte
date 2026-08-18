@@ -20,6 +20,7 @@
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
 	import CalendarView from '$lib/components/CalendarView.svelte';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let days = $state([]);
 
@@ -80,9 +81,9 @@
 
 <div class="view" class:wide={upcomingView.mode !== 'list'}>
 	<header>
-		<h1>Kommende</h1>
-		<div class="views" role="group" aria-label="Visning">
-			{#each [['list', 'Liste'], ['week', 'Uge'], ['calendar', 'Måned']] as [value, label]}
+		<h1>{t('view.upcoming')}</h1>
+		<div class="views" role="group" aria-label={t('view.mode')}>
+			{#each [['list', t('view.list')], ['week', t('view.week')], ['calendar', t('view.month')]] as [value, label]}
 				<button
 					class:active={upcomingView.mode === value}
 					onclick={() => upcomingView.set(value)}

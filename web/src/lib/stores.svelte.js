@@ -12,6 +12,7 @@
  */
 
 import { api, ApiError, humanMessage } from './api.js';
+import { i18n } from './i18n.svelte.js';
 
 class AppState {
 	user = $state(null);
@@ -93,6 +94,9 @@ class AppState {
 		this.loading = true;
 		try {
 			this.user = await api.me();
+			// The interface's language follows the account, so it is set the moment
+			// the session is known — before anything has drawn a string.
+			i18n.set(this.user.locale);
 			const [{ projects }, { groups }, { people }] = await Promise.all([
 				api.listProjects(),
 				api.listProjectGroups(),
@@ -666,11 +670,11 @@ export const upcomingView = new UpcomingView();
  * the picker rather than a missing block.
  */
 export const THEMES = [
-	{ id: 'dark', name: 'Nordlys', note: 'Mørk med grøn accent.', dark: true },
-	{ id: 'dusk', name: 'Skumring', note: 'Mørk og varm, med rav.', dark: true },
-	{ id: 'light', name: 'Dagslys', note: 'Lys og køligt neutral.', dark: false },
-	{ id: 'paper', name: 'Papir', note: 'Lys og varm, som papir.', dark: false },
-	{ id: 'contrast', name: 'Kontrast', note: 'Sort på hvidt, til skarpt lys.', dark: false }
+	{ id: 'dark', name: 'theme.dark', note: 'theme.darkNote', dark: true },
+	{ id: 'dusk', name: 'theme.dusk', note: 'theme.duskNote', dark: true },
+	{ id: 'light', name: 'theme.light', note: 'theme.lightNote', dark: false },
+	{ id: 'paper', name: 'theme.paper', note: 'theme.paperNote', dark: false },
+	{ id: 'contrast', name: 'theme.contrast', note: 'theme.contrastNote', dark: false }
 ];
 
 /** Theme, kept in localStorage and applied to the document element. */

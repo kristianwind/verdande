@@ -10,6 +10,8 @@
 	 */
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
+	import { t } from '$lib/i18n.svelte.js';
+	import { ago, shortDate } from '$lib/when.js';
 
 	let users = $state([]);
 	let invites = $state([]);
@@ -76,22 +78,25 @@
 	 * warning.
 	 */
 	async function remove(user) {
-		const parts = [`Slet ${user.name} <${user.email}> for altid?`, ''];
+		const parts = [t('users.deleteQuestion', { name: user.name, email: user.email }), ''];
 		if (user.project_count || user.task_count) {
 			parts.push(
-				`Det sletter ${count(user.project_count, 'projekt', 'projekter')} og ` +
-					`${count(user.task_count, 'opgave', 'opgaver')} i dem.`,
+				t('users.deleteTakes', {
+					projects: count(user.project_count, 'users.projectOne', 'users.projectMany'),
+					tasks: count(user.task_count, 'users.taskOne', 'users.taskMany')
+				}),
 				''
 			);
 		}
 		if (user.authored_elsewhere) {
 			parts.push(
-				`${count(user.authored_elsewhere, 'opgave', 'opgaver')} i andres projekter ` +
-					`bliver stående uden forfatter.`,
+				t('users.deleteLeaves', {
+					tasks: count(user.authored_elsewhere, 'users.taskOne', 'users.taskMany')
+				}),
 				''
 			);
 		}
-		parts.push('Det kan ikke fortrydes. Der er ingen papirkurv for konti.');
+		parts.push(t('users.deleteFinal'));
 		if (!confirm(parts.join('\n'))) return;
 
 		const previous = users;
@@ -105,8 +110,7 @@
 	}
 
 	async function revoke(pending) {
-		if (!confirm(`Træk invitationen til ${pending.email} tilbage? Linket holder op med at virke.`))
-			return;
+		if (!confirm(t('users.revokeQuestion', { email: pending.email }))) return;
 
 		const previous = invites;
 		invites = invites.filter((i) => i.id !== pending.id);
@@ -118,53 +122,41 @@
 		}
 	}
 
-	const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+	const count = (n, one, many) => `${n} ${t(n === 1 ? one : many)}`;
 
-	function ago(iso) {
-		if (!iso) return 'aldrig logget ind';
-		const then = new Date(iso);
-		const seconds = Math.round((Date.now() - then) / 1000);
-		if (seconds < 60) return 'lige nu';
-		if (seconds < 3600) return `for ${Math.floor(seconds / 60)} min. siden`;
-		if (seconds < 86400) return `for ${Math.floor(seconds / 3600)} timer siden`;
-		if (seconds < 604800) return `for ${Math.floor(seconds / 86400)} dage siden`;
-		return then.toLocaleDateString('da-DK', { day: 'numeric', month: 'short', year: 'numeric' });
-	}
 
-	const expires = (iso) =>
-		new Date(iso).toLocaleDateString('da-DK', { day: 'numeric', month: 'short' });
+	const expires = shortDate;
 </script>
 
 <section class="panel">
 	<header>
-		<h2>Inviter en bruger</h2>
+		<h2>{t('users.invite')}</h2>
 		<p class="hint">
-			Der er ingen åben registrering. Du sender et link, og personen vælger selv navn
-			og adgangskode — så er der ikke en adgangskode, to mennesker kender.
+			{t('users.inviteHint')}
 		</p>
 	</header>
 
 	<form onsubmit={invite}>
 		<div class="field">
-			<label for="ny-email">E-mailadresse</label>
+			<label for="ny-email">{t('users.emailAddress')}</label>
 			<input
 				id="ny-email"
 				type="email"
 				bind:value={email}
-				placeholder="navn@example.dk"
+				placeholder={t('users.emailPlaceholder')}
 				required
 				aria-invalid={errors.email ? 'true' : undefined}
 			/>
-			{#if errors.email}<p class="error">Skal være en e-mailadresse.</p>{/if}
+			{#if errors.email}<p class="error">{t('users.mustBeEmail')}</p>{/if}
 		</div>
 		<div class="row">
-			<button class="primary" type="submit" disabled={busy}>Send invitation</button>
+			<button class="primary" type="submit" disabled={busy}>{t('users.sendInvite')}</button>
 		</div>
 	</form>
 
 	{#if link}
 		<div class="field">
-			<p class="hint">Invitationen er oprettet. Send linket til personen:</p>
+			<p class="hint">{t('users.inviteMade')}</p>
 			<code class="link-out">{link}</code>
 		</div>
 	{/if}
@@ -173,10 +165,9 @@
 {#if invites.length}
 	<section class="panel">
 		<header>
-			<h2>Afventer svar</h2>
+			<h2>{t('users.pending')}</h2>
 			<p class="hint">
-				Invitationer, der er sendt og ikke brugt endnu. Kun linkets hash er gemt, så
-				det kan ikke vises igen — er det gået til den forkerte, så træk det tilbage.
+				{t('users.pendingHint')}
 			</p>
 		</header>
 
@@ -187,11 +178,11 @@
 						<span class="primary-line">{pending.email}</span>
 						<span class="secondary">
 							{pending.project_name ? `til ${pending.project_name}` : 'til instansen'}
-							· udløber {expires(pending.expires_at)}
+							· {t('tokens.expiresOn', { when: expires(pending.expires_at) })}
 							{#if pending.invited_by}· inviteret af {pending.invited_by}{/if}
 						</span>
 					</div>
-					<button class="secondary" onclick={() => revoke(pending)}>Træk tilbage</button>
+					<button class="secondary" onclick={() => revoke(pending)}>{t('users.revoke')}</button>
 				</li>
 			{/each}
 		</ul>
@@ -200,8 +191,8 @@
 
 <section class="panel">
 	<header>
-		<h2>Konti</h2>
-		<p class="hint">Alle på denne instans.</p>
+		<h2>{t('users.accounts')}</h2>
+		<p class="hint">{t('users.accountsHint')}</p>
 	</header>
 
 	<ul class="rows">
@@ -213,11 +204,11 @@
 				<div class="what">
 					<span class="primary-line">
 						{user.name}
-						{#if user.is_admin}<span class="badge">administrator</span>{/if}
-						{#if user.self}<span class="badge quiet">dig</span>{/if}
+						{#if user.is_admin}<span class="badge">{t('users.admin')}</span>{/if}
+						{#if user.self}<span class="badge quiet">{t('users.you')}</span>{/if}
 					</span>
 					<span class="secondary">
-						{user.email} · {ago(user.last_seen_at)}
+						{user.email} · {ago(user.last_seen_at, { never: 'when.neverSignedIn' })}
 						{#if user.project_count}· {count(user.project_count, 'projekt', 'projekter')}{/if}
 					</span>
 				</div>
@@ -227,9 +218,9 @@
 				     wastes a click to teach you a rule. -->
 				{#if !user.self}
 					<button class="secondary" onclick={() => setAdmin(user, !user.is_admin)}>
-						{user.is_admin ? 'Fjern administrator' : 'Gør til administrator'}
+						{user.is_admin ? t('users.removeAdmin') : t('users.makeAdmin')}
 					</button>
-					<button class="danger" onclick={() => remove(user)}>Slet</button>
+					<button class="danger" onclick={() => remove(user)}>{t('users.delete')}</button>
 				{/if}
 			</li>
 		{/each}

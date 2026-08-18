@@ -12,6 +12,7 @@
 	import BoardView from '$lib/components/BoardView.svelte';
 	import CalendarView from '$lib/components/CalendarView.svelte';
 	import { focusOnMount } from '$lib/focus.js';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let project = $state(null);
 	/**
@@ -326,7 +327,7 @@
 					class="title"
 					use:focusOnMount
 					value={project.name}
-					aria-label="Projektets navn"
+					aria-label={t('project.name')}
 					onblur={(e) => rename(e.currentTarget)}
 					onkeydown={(e) => {
 						if (e.key === 'Enter') e.currentTarget.blur();
@@ -339,7 +340,7 @@
 			{:else}
 				<h1 class:renameable={isOwner}>
 					{#if isOwner}
-						<button onclick={() => (editing = true)} title="Klik for at omdøbe">
+						<button onclick={() => (editing = true)} title={t('project.clickToRename')}>
 							{project.name}
 						</button>
 					{:else}
@@ -353,13 +354,13 @@
 					style="background: {colorVar(project.color)}"
 					onclick={() => (choosingColor = !choosingColor)}
 					aria-expanded={choosingColor}
-					aria-label="Farve på projektet"
-					title="Farve på projektet"
+					aria-label={t('project.color')}
+					title={t('project.color')}
 				></button>
 			{/if}
 
-			<div class="views" role="group" aria-label="Visning">
-				{#each [['list', 'Liste'], ['board', 'Board'], ['calendar', 'Kalender']] as [value, label]}
+			<div class="views" role="group" aria-label={t('view.mode')}>
+				{#each [['list', t('view.list')], ['board', t('view.board')], ['calendar', t('view.calendar')]] as [value, label]}
 					<button
 						class:active={mode === value}
 						onclick={() => setView(value)}
@@ -370,18 +371,18 @@
 
 			{#if !project.is_inbox}
 				<button class="share" onclick={() => (showShare = !showShare)}>
-					{project.shared ? `Delt · ${project.member_count}` : 'Del'}
+					{project.shared ? t('project.sharedWith', { n: project.member_count }) : t('project.share')}
 				</button>
 			{/if}
 
 			{#if !project.is_inbox}
 				<button class="share" onclick={() => (showLog = !showLog)} aria-expanded={showLog}>
-					Historik
+					{t('project.history')}
 				</button>
 			{/if}
 
 			{#if isOwner && !project.is_inbox}
-				<button class="remove" onclick={remove} aria-label="Slet projektet">
+				<button class="remove" onclick={remove} aria-label={t('project.delete')}>
 					<svg viewBox="0 0 24 24" aria-hidden="true">
 						<path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13h10l1-13" />
 					</svg>
@@ -408,20 +409,20 @@
 					{/each}
 				</ul>
 				{#if !activity.length}
-					<p class="empty">Ingenting er sket her endnu.</p>
+					<p class="empty">{t('project.noHistory')}</p>
 				{/if}
 			</div>
 		{/if}
 
 		{#if choosingColor}
-			<div class="panel swatches" role="group" aria-label="Vælg farve">
+			<div class="panel swatches" role="group" aria-label={t('project.pickColor')}>
 				{#each COLORS as color (color.id)}
 					<button
 						class="swatch"
 						class:chosen={(project.color ?? 'graphite') === color.id}
 						style="background: {colorVar(color.id)}"
-						title={color.name}
-						aria-label={color.name}
+						title={t(color.name)}
+						aria-label={t(color.name)}
 						aria-pressed={(project.color ?? 'graphite') === color.id}
 						onclick={() => setColor(color.id)}
 					></button>
@@ -473,20 +474,20 @@
 						<input
 							bind:value={inviteEmail}
 							type="email"
-							placeholder="e-mailadresse"
-							aria-label="Inviter via e-mail"
+							placeholder={t('project.emailAddress')}
+							aria-label={t('project.inviteByEmail')}
 							required
 						/>
-						<select bind:value={inviteRole} aria-label="Rolle">
-							<option value="editor">Kan redigere</option>
-							<option value="viewer">Kan kun se</option>
+						<select bind:value={inviteRole} aria-label={t('project.role')}>
+							<option value="editor">{t('project.canEdit')}</option>
+							<option value="viewer">{t('project.canView')}</option>
 						</select>
-						<button type="submit">Inviter</button>
+						<button type="submit">{t('project.invite')}</button>
 					</form>
 
 					{#if inviteLink}
 						<p class="link-out">
-							Ingen mailserver sat op — send selv linket:
+							{t('project.sendLinkYourself')}
 							<code>{inviteLink}</code>
 						</p>
 					{/if}
@@ -523,7 +524,7 @@
 				     the label is a heading for the only list there is, and the empty
 				     state below already says the project is empty. -->
 				{#if sections.length && !unsectioned.length}
-					<p class="empty">Uden sektion</p>
+					<p class="empty">{t('project.noSection')}</p>
 				{/if}
 			</section>
 
@@ -542,7 +543,7 @@
 								<input
 									bind:value={sectionName}
 									use:focusOnMount
-									aria-label="Sektionens navn"
+									aria-label={t('view.sectionName')}
 									onblur={() => (renamingSection = null)}
 									onkeydown={(e) => e.key === 'Escape' && (renamingSection = null)}
 								/>
@@ -555,17 +556,17 @@
 									onclick={() => {
 										renamingSection = section.id;
 										sectionName = section.name;
-									}}>Omdøb</button
+									}}>{t('project.rename')}</button
 								>
 								<button class="section-action remove" onclick={() => removeSection(section)}>
-									Slet
+									{t('project.deleteSection')}
 								</button>
 							{/if}
 						{/if}
 					</div>
 					<TaskList {tasks} projectId={project.id} sectionId={section.id} {canEdit} />
 					{#if !tasks.length}
-						<p class="empty">Tom</p>
+						<p class="empty">{t('view.emptySection')}</p>
 					{/if}
 				</section>
 			{/each}
@@ -577,8 +578,8 @@
 							<input
 								bind:value={sectionName}
 								use:focusOnMount
-								placeholder="Sektionens navn"
-								aria-label="Ny sektion"
+								placeholder={t('view.sectionName')}
+								aria-label={t('view.newSection')}
 								onblur={() => !sectionName.trim() && (addingSection = false)}
 								onkeydown={(e) => e.key === 'Escape' && (addingSection = false)}
 							/>
@@ -591,7 +592,7 @@
 								sectionName = '';
 							}}
 						>
-							+ Tilføj sektion
+							{t('view.addSection')}
 						</button>
 					{/if}
 				</section>
@@ -600,25 +601,25 @@
 			{#if !open.length && !sections.length}
 				<p class="clear">
 					<span class="rune" aria-hidden="true">ᚹ</span>
-					Ingenting her endnu.
+					{t('project.nothingHere')}
 				</p>
 			{/if}
 		{/if}
 
 		{#if project.role === 'viewer'}
-			<p class="readonly">Du kan se dette projekt, men ikke ændre det.</p>
+			<p class="readonly">{t('project.readOnly')}</p>
 		{/if}
 	{:else if status === 'loading'}
 		<!-- Deliberately blank, as on first load elsewhere: a spinner for a request
 		     that usually resolves in 30ms is a flash of anxiety, not feedback. -->
 		<div class="booting"></div>
 	{:else if status === 'denied'}
-		<p class="clear">Projektet findes ikke, eller du har ikke adgang til det.</p>
+		<p class="clear">{t('project.notFound')}</p>
 	{:else}
 		<p class="clear">
 			<span class="rune" aria-hidden="true">ᚹ</span>
-			Kunne ikke hente projektet. Serveren svarede ikke.
-			<button class="retry" onclick={() => load(id)}>Prøv igen</button>
+			{t('project.loadFailed')}
+			<button class="retry" onclick={() => load(id)}>{t('project.retry')}</button>
 		</p>
 	{/if}
 </div>

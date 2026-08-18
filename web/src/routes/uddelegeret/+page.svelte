@@ -10,6 +10,7 @@
 	import { api } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import TaskRow from '$lib/components/TaskRow.svelte';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let people = $state([]);
 	let loaded = $state(false);
@@ -31,7 +32,7 @@
 </script>
 
 <div class="view">
-	<header><h1>Venter på andre</h1></header>
+	<header><h1>{t('view.delegated')}</h1></header>
 
 	{#each people as person (person.user_id)}
 		{@const tasks = live(person)}
@@ -54,7 +55,7 @@
 	{#if loaded && !people.some((p) => live(p).length)}
 		<p class="clear">
 			<span class="rune" aria-hidden="true">ᚹ</span>
-			Du venter ikke på nogen.
+			{t('view.delegatedEmpty')}
 		</p>
 	{/if}
 </div>

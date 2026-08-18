@@ -1,32 +1,36 @@
 <script>
 	/** The shortcuts, listed. Mapped to Todoist's so muscle memory carries over. */
-	const groups = [
+	import { t } from '$lib/i18n.svelte.js';
+
+	const groups = $derived([
 		{
-			title: 'Navigation',
+			title: t('keys.navigation'),
 			keys: [
-				['q', 'Hop til feltet “tilføj opgave”'],
-				['t', 'I dag'],
-				['u', 'Kommende'],
-				['⌘K / Ctrl+K', 'Søg'],
-				['?', 'Denne side']
+				['q', t('keys.jumpToQuickAdd')],
+				['t', t('nav.today')],
+				['u', t('nav.upcoming')],
+				['⌘K / Ctrl+K', t('nav.search')],
+				['?', t('keys.thisPage')]
 			]
 		},
 		{
-			title: 'I quick add',
+			title: t('keys.inQuickAdd'),
 			keys: [
-				['#projekt', 'Læg opgaven i et projekt'],
-				['@etiket', 'Sæt en etiket'],
-				['p1 – p4', 'Prioritet'],
-				['i morgen, på fredag, om 3 dage', 'Dato — dansk og engelsk'],
-				['kl 10, 14:30, 7pm', 'Klokkeslæt'],
-				['Esc', 'Ryd feltet']
+				['#projekt', t('keys.intoProject')],
+				['@etiket', t('keys.setLabel')],
+				['p1 – p4', t('keys.priority')],
+				// The examples stay in both languages, because the parser takes both
+				// and the point of the line is what you can actually type.
+				['i morgen, på fredag, om 3 dage', t('keys.date')],
+				['kl 10, 14:30, 7pm', t('keys.time')],
+				['Esc', t('keys.clear')]
 			]
 		}
-	];
+	]);
 </script>
 
 <div class="view">
-	<h1>Genveje</h1>
+	<h1>{t('keys.title')}</h1>
 	{#each groups as group}
 		<section>
 			<h2>{group.title}</h2>
