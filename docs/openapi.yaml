@@ -226,6 +226,43 @@ paths:
         "422": { $ref: "#/components/responses/Validation" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /api/v1/auth/sidebar-sections:
+    put:
+      tags: [auth]
+      summary: Which sidebar headings are folded away.
+      description: |
+        On the account rather than in the browser. A project group already carries
+        `collapsed` on its own row for the same reason: folding a heading is a
+        statement about the work — "I am not in Etiketter at the moment" — and that
+        is as true on a laptop as on a desktop. The sidebar's *width* is the
+        opposite case and stays in the browser, because a narrow laptop and a wide
+        monitor deserve different answers.
+
+        Its own route rather than a field on `PATCH /auth/me`. That one backs a
+        form with a save button and validates three fields together; this writes on
+        every click of a chevron, and sharing the path would mean a fold sending a
+        name and a timezone it was never asked to change.
+
+        The keys belong to the interface and are not checked here. An unknown one
+        costs nothing — the sidebar folds what it recognises and ignores the rest —
+        so renaming or removing a heading leaves a harmless entry rather than
+        needing a migration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sections:
+                  type: array
+                  maxItems: 20
+                  items: { type: string }
+                  example: ["labels", "filters"]
+      responses:
+        "204": { description: Saved. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /api/v1/auth/me:
     get:
       tags: [auth]
@@ -856,6 +893,261 @@ paths:
         "204": { description: Deleted. }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/activity:
+    get:
+      tags: [auth]
+      summary: What has been done on this instance. Administrators only.
+      description: |
+        The same rows as `/projects/{projectID}/activity`, read across every
+        project instead of one at a time.
+
+        The per-project history is a question a project's members ask about their
+        own work. This is a different question — "what has happened on this
+        server" — and nothing could answer it: the per-project endpoint takes one
+        project id, and an administrator is not necessarily a member of the
+        project they need to look into.
+
+        It is the other half of `/errors`. That one is what broke; this is what was
+        done.
+
+        Rows outlive the accounts that wrote them. `activity.user_id` is
+        `ON DELETE SET NULL`, so a deleted account leaves its trail behind with
+        `user_id` and `user_name` absent — a log that lost those rows would be
+        missing the part most worth keeping.
+
+        Paged with a keyset cursor rather than an offset. The log is written to
+        constantly and read rarely, so a page fetched a minute after the one
+        before it would be shifted by everything written in between: a row shown
+        twice and the row behind it skipped.
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }
+        - name: before
+          in: query
+          schema: { type: string }
+          description: |
+            `next_cursor` from the previous page, as `<unix>:<id>`. Both halves
+            are required: the log is written in whole seconds, so a timestamp
+            alone cannot separate two rows written in the same one.
+          example: "1755432000:01J8Z9"
+        - { name: user_id, in: query, schema: { type: string } }
+        - { name: project_id, in: query, schema: { type: string } }
+        - name: event
+          in: query
+          schema: { type: string }
+          description: An exact event name, as listed by `/activity/events`.
+          example: task.completed
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activity:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        at: { type: string, format: date-time }
+                        project_id: { type: string }
+                        project_name: { type: string }
+                        task_id: { type: string }
+                        user_id:
+                          type: string
+                          description: Absent when the account has been deleted.
+                        user_name:
+                          type: string
+                          description: Absent when the account has been deleted.
+                        event: { type: string, example: task.completed }
+                        payload: { type: object, additionalProperties: true }
+                  next_cursor:
+                    type: string
+                    description: |
+                      Absent on the last page. Present only when the page came
+                      back full — a short page is the end of the log, and a
+                      cursor there invites one more request that can only come
+                      back empty.
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/activity/events:
+    get:
+      tags: [auth]
+      summary: The event names the log contains, with counts. Administrators only.
+      description: |
+        What the `event` filter is drawn from, most frequent first.
+
+        Offered rather than typed. Event names are an internal vocabulary —
+        `member.role_changed`, not a sentence anybody would guess — so a text
+        field for them is a field that returns nothing until you have read the
+        source. The counts are worth having on their own: they are the shape of
+        what the instance does.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        event: { type: string, example: task.completed }
+                        count: { type: integer }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/gmail/client:
+    get:
+      tags: [integrations]
+      summary: The Gmail OAuth client this instance uses. Administrators only.
+      description: |
+        The registration Google requires, enterable rather than deployed.
+
+        The one click that opens Google's consent screen already exists. What it
+        needs behind it is a registered client, and no app can conjure one: Google
+        issues no Gmail access to an unregistered client, and `gmail.readonly` is a
+        restricted scope, so an id shipped inside a public image would be both
+        extractable from it and unusable without Google's security review of every
+        deployment that used it.
+
+        The registration is a one-off. Having to edit a Rune's manifest and
+        recreate the container to paste the result was not, which is what this
+        replaces.
+
+        `VERDANDE_GMAIL_CLIENT_ID` and `_SECRET` still win when they are set. A
+        value in the environment is a deliberate deployment decision — under
+        version control, reapplied on every recreate — and a form that could
+        quietly override it would make the manifest a lie. `from_env` says so, and
+        `PUT` answers 409.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GmailClient" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [integrations]
+      summary: Set the Gmail OAuth client. Administrators only.
+      description: |
+        An empty `client_secret` means "leave the stored one alone", not "delete
+        it" — otherwise correcting a typo in the id would silently clear the
+        secret. The secret is never read back, for the same reason the AI key is
+        not: a settings page that repopulates a password field is one that will
+        eventually leak into a screenshot.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                client_id: { type: string }
+                client_secret: { type: string }
+      responses:
+        "204": { description: Saved. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: The environment sets it, so this cannot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /api/v1/backups:
+    get:
+      tags: [auth]
+      summary: The nightly backups. Administrators only.
+      description: |
+        The backup job has run since the beginning and nothing showed it. A backup
+        nobody can see is a backup nobody knows has been failing, and the failure
+        is quiet: a volume that went read-only, a disk that filled, a container
+        that has not been up at midnight all week. The first anybody hears of it
+        is the day they need one.
+
+        The most recent fourteen files are kept — counted by file rather than by
+        age, so a container that was off for a month does not come back and delete
+        every backup for being too old. Rows older than that stay in the list with
+        `present: false`: a true record of a backup that was made and a file that
+        is no longer there.
+
+        Sessions-only as well as administrators-only. A backup is a complete copy
+        of the database, so this is everybody's data in one file.
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 30, maximum: 100 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backups:
+                    type: array
+                    items: { $ref: "#/components/schemas/BackupRun" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [auth]
+      summary: Take a backup now. Administrators only.
+      description: |
+        The same work the nightly job does, without its "one a day" check.
+
+        Two reasons it exists: waiting until tonight to find out whether backups
+        work at all is how somebody finds out on the day they need one, and it is
+        the only way to get a snapshot from *before* something you are about to
+        do.
+
+        Synchronous — a homelab database is a second or two, and a button that
+        returns immediately and says nothing is a button people press twice.
+      responses:
+        "201":
+          description: Written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupRun" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500":
+          description: |
+            The snapshot failed — a full volume, or one that has gone read-only,
+            which is precisely the condition this button exists to surface.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/backups/{backupID}:
+    parameters:
+      - { name: backupID, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [auth]
+      summary: Download one backup file. Administrators only.
+      description: |
+        A SQLite database, served as `application/octet-stream` with
+        `Content-Disposition: attachment` — nothing should ever be tempted to
+        render it inline.
+
+        Restoring is deliberately not an API call. Putting a database back under a
+        running server means stopping every writer, swapping the file and
+        reopening, and a half-done version of that corrupts the thing it was
+        restoring. Stop the container, put the file in place of `verdande.db` in
+        the data volume, delete the `-wal` and `-shm` beside it, and start it
+        again.
+
+        A row whose file has been rotated away answers 404. That is the honest
+        answer to "send me that one".
+      responses:
+        "200":
+          description: The database file.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/v1/errors:
     get:
       tags: [auth]
@@ -1012,11 +1304,12 @@ paths:
         The only hard delete in this API. Everything else is soft-deleted with a
         trash behind it; this is not recoverable.
 
-        What goes is wider than it looks: their projects, every task in those
-        projects, **and every task they wrote anywhere** — `tasks.created_by`
-        cascades, so retiring a colleague's account removes their contributions
-        from shared projects too. Tasks merely assigned to them are unassigned
-        and survive.
+        What goes: their projects, and every task in those projects.
+
+        What stays: everything they wrote in **somebody else's** project.
+        `tasks.created_by` is `ON DELETE SET NULL`, so that work survives and
+        loses its author rather than disappearing with the account. Tasks merely
+        assigned to them are unassigned and survive by the same rule.
 
         Refused for your own account, and for the last administrator.
       responses:
@@ -2516,6 +2809,14 @@ components:
         locale: { type: string, enum: [da, en] }
         is_admin: { type: boolean }
         totp_enabled: { type: boolean }
+        sidebar_collapsed:
+          type: array
+          items: { type: string }
+          description: |
+            The sidebar headings this person has folded away. Always an array,
+            never null: a client that has to check for both an absent array and an
+            empty one will one day check for only one of them.
+          example: ["labels"]
         created_at: { type: string, format: date-time }
 
     RecoveryCodes:
@@ -2550,9 +2851,60 @@ components:
         task_count:
           type: integer
           description: |
-            Everything a delete would destroy: tasks in projects they own, plus
-            every task they wrote anywhere. Not the same as "their tasks", and
-            the difference is the whole point of showing it.
+            What a delete would destroy: the tasks in the projects they own,
+            which go with those projects.
+        authored_elsewhere:
+          type: integer
+          description: |
+            What a delete would leave behind: tasks they wrote in projects other
+            people own. Those survive without an author. A separate number from
+            `task_count` because it is a separate sentence — one is what
+            disappears, the other is what stays unattributed.
+
+    GmailClient:
+      type: object
+      properties:
+        client_id: { type: string }
+        has_secret:
+          type: boolean
+          description: Whether a secret is stored. The secret itself is never sent back.
+        from_env:
+          type: boolean
+          description: |
+            The deployment set this, so the stored pair is ignored and the fields
+            are not worth editing.
+        redirect_uri:
+          type: string
+          description: |
+            What has to be registered with Google, spelled out. Derived from
+            `VERDANDE_BASE_URL` and matched exactly — it is the single most likely
+            thing to be wrong, and the error Google returns for it names neither
+            value. Google rejects private IP addresses over http, so a LAN address
+            will not do: it has to be https, or `http://localhost`.
+          example: https://verdande.example.com/oauth/gmail/callback
+
+    BackupRun:
+      type: object
+      properties:
+        id: { type: string }
+        started_at: { type: string, format: date-time }
+        finished_at:
+          type: string
+          format: date-time
+          description: |
+            Absent while a run is still going, and on one the process died in the
+            middle of — which is the same shape from outside, and honestly so: a
+            run that was interrupted never finished.
+        size_bytes: { type: integer }
+        error:
+          type: string
+          description: Present only on a run that failed, in the words it failed with.
+        present:
+          type: boolean
+          description: |
+            Whether the file is still on disk. Rotation keeps the most recent
+            fourteen, so an older row is a record with nothing behind it and its
+            download answers 404.
 
     PendingInvite:
       type: object
@@ -2609,7 +2961,12 @@ components:
           items: { type: string }
         completed: { type: boolean }
         completed_at: { type: string, format: date-time }
-        created_by: { type: string }
+        created_by:
+          type: string
+          description: |
+            Empty when the author's account has been deleted. The task outlives
+            the person who wrote it.
+
         sort_order: { type: number }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
