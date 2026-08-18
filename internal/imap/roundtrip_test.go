@@ -37,7 +37,7 @@ func TestFlaggedMailComesBackAsMessages(t *testing.T) {
 	}
 	defer client.Close()
 
-	msgs, err := client.Since(0, 25)
+	msgs, _, err := client.Since(0, 25)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestFlaggedMailComesBackAsMessages(t *testing.T) {
 
 	// And reading on from a marker returns only what is newer, which is the whole
 	// of the deduplication.
-	rest, err := client.Since(msgs[0].UID, 25)
+	rest, _, err := client.Since(msgs[0].UID, 25)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +92,9 @@ func TestAnUntrustedCertificateIsRefused(t *testing.T) {
 type mail struct {
 	subject, from, body string
 	flagged             bool
+	// raw replaces the whole message when set, which is the only way to get a
+	// genuinely multipart one in.
+	raw string
 }
 
 // serveMailbox starts an in-process IMAP server over TLS and returns its address
@@ -112,8 +115,11 @@ func serveMailbox(t *testing.T, mails []mail) (string, *x509.CertPool) {
 		if m.flagged {
 			flags = append(flags, imap.FlagFlagged)
 		}
-		raw := "From: " + m.from + "\r\nSubject: " + m.subject +
-			"\r\nDate: Tue, 18 Aug 2026 10:00:00 +0200\r\n\r\n" + m.body + "\r\n"
+		raw := m.raw
+		if raw == "" {
+			raw = "From: " + m.from + "\r\nSubject: " + m.subject +
+				"\r\nDate: Tue, 18 Aug 2026 10:00:00 +0200\r\n\r\n" + m.body + "\r\n"
+		}
 		if _, err := user.Append("INBOX", strings.NewReader(raw), &imap.AppendOptions{
 			Flags: flags,
 		}); err != nil {
@@ -180,4 +186,79 @@ func selfSigned(t *testing.T) (tls.Certificate, *x509.CertPool) {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(certPEM)
 	return cert, pool
+}
+
+// The bug this was written for: every press of "Fetch now" made the same mail
+// into a task again. The marker the next run starts from is the uid, and if it
+// comes back as zero the marker never moves.
+func TestEveryMessageCarriesAUID(t *testing.T) {
+	addr, pool := serveMailbox(t, []mail{
+		{subject: "En", from: "a@example.dk", body: "en", flagged: true},
+		{subject: "To", from: "b@example.dk", body: "to", flagged: true},
+	})
+	client, err := Dial(Account{Host: addr, Username: "kw", Password: "hemmelig", RootCAs: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	msgs, _, err := client.Since(0, 25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range msgs {
+		if m.UID == 0 {
+			t.Fatalf("%q came back without a uid; the marker would never move and "+
+				"every run would make it into a task again", m.Subject)
+		}
+	}
+	if msgs[0].UID == msgs[1].UID {
+		t.Error("two messages share a uid")
+	}
+}
+
+// The other half of the same report: the snippet under a task's title read
+// "--=_be71cb39… Content-Transfer-Encoding: 8bit Content-Type: text/plain".
+func TestAMultipartMailReadsAsItsText(t *testing.T) {
+	const boundary = "=_be71cb3975bdfbc60a16327cb2f49c23"
+	body := "This is a multi-part message.\r\n" +
+		"--" + boundary + "\r\n" +
+		"Content-Transfer-Encoding: 8bit\r\n" +
+		"Content-Type: text/plain; charset=UTF-8; format=flowed\r\n\r\n" +
+		"Hej igen,\r\n\r\nVi har normalt 3 slags. :)\r\n" +
+		"--" + boundary + "\r\n" +
+		"Content-Type: text/html; charset=UTF-8\r\n\r\n" +
+		"<html><body><p>Hej igen</p></body></html>\r\n" +
+		"--" + boundary + "--\r\n"
+
+	addr, pool := serveMailbox(t, []mail{{
+		flagged: true,
+		raw: "Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n" +
+			"From: kontakt@mikrobagt.dk\r\nSubject: Re: Kaffebestilling\r\n" +
+			"Date: Tue, 18 Aug 2026 10:00:00 +0200\r\n\r\n" + body,
+	}})
+
+	client, err := Dial(Account{Host: addr, Username: "kw", Password: "hemmelig", RootCAs: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	msgs, _, err := client.Since(0, 25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("got %d messages", len(msgs))
+	}
+
+	got := msgs[0].Snippet
+	for _, junk := range []string{boundary, "Content-Transfer-Encoding", "Content-Type", "<html>", "<p>"} {
+		if strings.Contains(got, junk) {
+			t.Errorf("the snippet still carries %q: %q", junk, got)
+		}
+	}
+	if !strings.HasPrefix(got, "Hej igen") {
+		t.Errorf("the snippet does not start with the text of the mail: %q", got)
+	}
 }

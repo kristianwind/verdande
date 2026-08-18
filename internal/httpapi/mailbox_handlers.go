@@ -147,7 +147,7 @@ func (s *Server) SyncMailbox(ctx context.Context, user *store.User, m *store.Mai
 	}
 	defer client.Close()
 
-	messages, err := client.Since(m.LastUID, 25)
+	messages, searched, err := client.Since(m.LastUID, 25)
 	if err != nil {
 		return 0, err
 	}
@@ -195,6 +195,14 @@ func (s *Server) SyncMailbox(ctx context.Context, user *store.User, m *store.Mai
 			highest = msg.UID
 		}
 		s.hub.Publish(projectID, "task.created", toTaskJSON(*task))
+	}
+
+	// A run that got all the way through moves the marker to the whole of what the
+	// search considered, not merely to the last message it happened to read. That
+	// is what stops the same mail becoming a task again on the next run when the
+	// server did not put a uid in the fetch reply.
+	if ctx.Err() == nil && searched > highest {
+		highest = searched
 	}
 
 	// Written even when the loop was cut short, and outside the request's context
