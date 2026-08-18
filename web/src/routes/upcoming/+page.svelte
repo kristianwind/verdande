@@ -1,11 +1,18 @@
 <script>
 	/**
-	 * Kommende: the next seven days as a list, or the month as a grid.
+	 * Kommende: the next seven days as a list, one week as a grid, or the month.
 	 *
-	 * The two views ask for different things and neither is a subset of the other —
-	 * seven days from today, against six whole weeks around a month that can be any
-	 * month — so each loads its own, and switching reloads. Loading both up front
-	 * would mean the list waiting on a month it is not showing.
+	 * The views ask for different things and none is a subset of the others — seven
+	 * days from today, against a chosen week, against six whole weeks around a
+	 * month that can be any month — so each loads its own, and switching reloads.
+	 * Loading them all up front would mean the list waiting on a month it is not
+	 * showing.
+	 *
+	 * The week is the answer to dragging across a month boundary. A month grid is
+	 * anchored to a month, so the two days on either side of its edge sit in
+	 * different grids and moving a task between them means paging mid-drag — which
+	 * cannot be done, because a drag in flight swallows the click that would page.
+	 * A week that straddles the 31st and the 1st has both days in the same row.
 	 */
 	import { api } from '$lib/api.js';
 	import { app, upcomingView } from '$lib/stores.svelte.js';
@@ -25,13 +32,13 @@
 	});
 
 	/**
-	 * Loads the dates the month grid is showing.
+	 * Loads the dates a grid is showing, whichever grid it is.
 	 *
 	 * The limit is raised well above the default: a busy month across every project
 	 * is more than two hundred rows, and a silently truncated grid is a calendar
 	 * that quietly lies about a day being clear.
 	 */
-	function loadMonth({ from, to }) {
+	function loadRange({ from, to }) {
 		app.loadTasks({ due_from: from, due_before: to, limit: 500 });
 	}
 
@@ -71,11 +78,11 @@
 	}
 </script>
 
-<div class="view" class:wide={upcomingView.mode === 'calendar'}>
+<div class="view" class:wide={upcomingView.mode !== 'list'}>
 	<header>
 		<h1>Kommende</h1>
 		<div class="views" role="group" aria-label="Visning">
-			{#each [['list', 'Liste'], ['calendar', 'Kalender']] as [value, label]}
+			{#each [['list', 'Liste'], ['week', 'Uge'], ['calendar', 'Måned']] as [value, label]}
 				<button
 					class:active={upcomingView.mode === value}
 					onclick={() => upcomingView.set(value)}
@@ -88,7 +95,9 @@
 	<QuickAdd />
 
 	{#if upcomingView.mode === 'calendar'}
-		<CalendarView onrange={loadMonth} />
+		<CalendarView onrange={loadRange} />
+	{:else if upcomingView.mode === 'week'}
+		<CalendarView span="week" onrange={loadRange} />
 	{:else}
 		{#each days as day (day.date)}
 			{@const tasks = live(day.date)}

@@ -433,6 +433,37 @@ class AppState {
 		await this.#patchGroup(id, { collapsed: !group.collapsed });
 	}
 
+	/**
+	 * Folds or unfolds one of the sidebar's fixed headings — Projekter, Delt med
+	 * mig, Filtre, Etiketter.
+	 *
+	 * Kept on the account, exactly like a project group's `collapsed`, and for the
+	 * same reason: folding a heading says "this is the part of my work I am not in
+	 * right now", which is true on the laptop and on the desktop both. The
+	 * sidebar's *width* is the opposite case and stays in localStorage.
+	 *
+	 * Optimistic, with a rollback, for the same reason the group toggle is: waiting
+	 * on a round trip to turn an arrow feels like a click that did not land — and
+	 * because this is on the account, a failed save that left it turned would be a
+	 * lie that survives a reload.
+	 */
+	async toggleSection(key) {
+		const before = this.user?.sidebar_collapsed ?? [];
+		const after = before.includes(key) ? before.filter((k) => k !== key) : [...before, key];
+
+		this.user = { ...this.user, sidebar_collapsed: after };
+		try {
+			await api.setSidebarSections(after);
+		} catch (e) {
+			this.user = { ...this.user, sidebar_collapsed: before };
+			this.toast(humanMessage(e));
+		}
+	}
+
+	sectionCollapsed(key) {
+		return (this.user?.sidebar_collapsed ?? []).includes(key);
+	}
+
 	async renameGroup(id, name) {
 		await this.#patchGroup(id, { name });
 	}
@@ -591,23 +622,24 @@ class SidebarLayout {
 export const sidebar = new SidebarLayout();
 
 /**
- * Whether Kommende shows the next seven days as a list, or the month as a grid.
+ * Whether Kommende shows the next seven days as a list, one week as a grid, or the
+ * whole month.
  *
  * In localStorage rather than on the account, and for the same reason as the
- * sidebar's width: a month grid of seven columns needs room, and the answer on a
- * phone is not the answer on a wide monitor. A project keeps its `view_mode` on
- * the row because that is a fact about the project — this is a fact about the
- * screen.
+ * sidebar's width: a grid of seven columns needs room, and the answer on a phone is
+ * not the answer on a wide monitor. A project keeps its `view_mode` on the row
+ * because that is a fact about the project — this is a fact about the screen.
+ *
+ * `calendar` still means the month. It is the value already in people's
+ * localStorage, and renaming it would silently reset everybody who had chosen it.
  */
+const UPCOMING_MODES = ['list', 'week', 'calendar'];
+
 class UpcomingView {
-	mode = $state(
-		typeof localStorage !== 'undefined' && localStorage.getItem('verdande:upcoming') === 'calendar'
-			? 'calendar'
-			: 'list'
-	);
+	mode = $state(read());
 
 	set(next) {
-		if (next !== 'list' && next !== 'calendar') return;
+		if (!UPCOMING_MODES.includes(next)) return;
 		this.mode = next;
 		try {
 			localStorage.setItem('verdande:upcoming', next);
@@ -615,6 +647,12 @@ class UpcomingView {
 			// Private browsing; the choice simply will not persist.
 		}
 	}
+}
+
+function read() {
+	if (typeof localStorage === 'undefined') return 'list';
+	const stored = localStorage.getItem('verdande:upcoming');
+	return UPCOMING_MODES.includes(stored) ? stored : 'list';
 }
 
 export const upcomingView = new UpcomingView();

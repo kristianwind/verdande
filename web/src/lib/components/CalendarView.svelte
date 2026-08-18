@@ -1,10 +1,15 @@
 <script>
 	/**
-	 * A month grid for one project.
+	 * A calendar grid: a whole month, or a single week.
 	 *
 	 * Weeks start on Monday. That is not a preference — it is ISO 8601 and it is
 	 * what every Danish calendar does, and a Sunday-first grid makes a Dane
 	 * misread the whole month at a glance.
+	 *
+	 * One component for both spans rather than two, because the part that is easy
+	 * to get subtly wrong is the same in both: the drag target has to decide from
+	 * `dataTransfer.types` alone whether it accepts a drop, and a second copy of
+	 * that is a second place for it to be almost right.
 	 */
 	import { app } from '$lib/stores.svelte.js';
 	import { TASK, startDrag, carries, dragged, accept } from '$lib/dnd.js';
@@ -31,14 +36,50 @@
 		 * loaded, so a project's month has to say which project it is — Kommende,
 		 * which shows every project, is the one that leaves this out.
 		 */
-		projectId = null
+		projectId = null,
+		/**
+		 * 'month' for the whole month as six weeks, 'week' for one week as a single
+		 * row.
+		 *
+		 * The week exists for dragging across a month boundary. A month grid is
+		 * anchored to a month, so the two days on either side of its edge are in
+		 * different grids and moving a task between them means changing month
+		 * mid-drag — which the browser will not let you do, because a drag in
+		 * flight swallows the click that would page. A week that straddles the
+		 * 31st and the 1st has both days in the same row.
+		 */
+		span = 'month'
 	} = $props();
 
-	let cursor = $state(startOfMonth(new Date()));
+	let cursor = $state(span === 'week' ? startOfWeek(new Date()) : startOfMonth(new Date()));
+
+	const WEEKDAYS = ['man', 'tir', 'ons', 'tor', 'fre', 'lør', 'søn'];
 
 	function startOfMonth(d) {
 		return new Date(d.getFullYear(), d.getMonth(), 1);
 	}
+
+	// getDay() is Sunday-based; this converts to "days since Monday".
+	function startOfWeek(d) {
+		const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+		start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+		return start;
+	}
+
+	function startOfSpan(d) {
+		return span === 'week' ? startOfWeek(d) : startOfMonth(d);
+	}
+
+	// The cursor has to follow the span it is measured in: switching from month to
+	// week with a cursor on the 1st would otherwise show the week containing the
+	// 1st rather than the week you were looking at, and switching back would land
+	// on whichever month that week happened to start in.
+	$effect(() => {
+		const aligned = startOfSpan(cursor);
+		// Compared by value, not identity: assigning a fresh Date on every run would
+		// re-trigger this effect forever, since the effect reads what it writes.
+		if (aligned.getTime() !== cursor.getTime()) cursor = aligned;
+	});
 
 	function iso(d) {
 		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
@@ -46,19 +87,17 @@
 		).padStart(2, '0')}`;
 	}
 
-	// The grid always runs whole weeks, so it starts on the Monday on or before the
-	// first of the month and ends on the Sunday on or after the last.
+	// A month always runs whole weeks, so it starts on the Monday on or before the
+	// first and ends on the Sunday on or after the last. A week is already one.
 	let grid = $derived.by(() => {
-		const first = startOfMonth(cursor);
-		const start = new Date(first);
-		// getDay() is Sunday-based; this converts to "days since Monday".
-		start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+		const start = span === 'week' ? startOfWeek(cursor) : startOfWeek(startOfMonth(cursor));
+		// Six weeks covers every possible month layout, including a 31-day month
+		// that begins on a Sunday.
+		const length = span === 'week' ? 7 : 42;
 
 		const days = [];
 		const cell = new Date(start);
-		// Six weeks covers every possible month layout, including a 31-day month
-		// that begins on a Sunday.
-		for (let i = 0; i < 42; i++) {
+		for (let i = 0; i < length; i++) {
 			days.push(new Date(cell));
 			cell.setDate(cell.getDate() + 1);
 		}
@@ -87,8 +126,52 @@
 		cursor.toLocaleDateString('da-DK', { month: 'long', year: 'numeric' })
 	);
 
-	function step(months) {
-		cursor = new Date(cursor.getFullYear(), cursor.getMonth() + months, 1);
+	// "24. aug. – 30. aug. 2026", collapsed to one month name when the week does not
+	// straddle two. The year is said once, at the end, where it is least in the way.
+	const weekName = $derived.by(() => {
+		const from = grid[0];
+		const to = grid[grid.length - 1];
+		const day = { day: 'numeric', month: 'short' };
+		const left =
+			from.getMonth() === to.getMonth()
+				? from.toLocaleDateString('da-DK', { day: 'numeric' })
+				: from.toLocaleDateString('da-DK', day);
+		return `${left}–${to.toLocaleDateString('da-DK', day)} ${to.getFullYear()}`;
+	});
+
+	/**
+	 * The ISO week number, which is what a Dane means by "uge 35".
+	 *
+	 * Counted from the Thursday of the week, because that is the definition: week 1
+	 * is the one containing the first Thursday of the year, so the Thursday is the
+	 * only day guaranteed to be in the same year as the week it belongs to.
+	 */
+	function isoWeek(d) {
+		const thursday = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+		thursday.setUTCDate(thursday.getUTCDate() - ((thursday.getUTCDay() + 6) % 7) + 3);
+		const first = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 4));
+		first.setUTCDate(first.getUTCDate() - ((first.getUTCDay() + 6) % 7) + 3);
+		return 1 + Math.round((thursday - first) / (7 * 86400000));
+	}
+
+	const heading = $derived(span === 'week' ? weekName : monthName);
+	const weekNumber = $derived(span === 'week' ? isoWeek(grid[0]) : null);
+
+	// A week shows seven cells where a month shows forty-two, so each one has the
+	// height to be a list rather than a hint. Truncating it to three there would
+	// hide work in the empty half of a tall cell.
+	const chipLimit = $derived(span === 'week' ? 10 : 3);
+
+	// One step is one span: a month view pages by month, a week view by week. A week
+	// view that paged by month would be back to the problem it exists to solve.
+	function step(n) {
+		if (span === 'week') {
+			const next = new Date(cursor);
+			next.setDate(next.getDate() + n * 7);
+			cursor = next;
+			return;
+		}
+		cursor = new Date(cursor.getFullYear(), cursor.getMonth() + n, 1);
 	}
 
 	// --- dropping a task on a day ---------------------------------------------------
@@ -111,16 +194,23 @@
 	}
 </script>
 
-<div class="calendar">
+<div class="calendar" class:week={span === 'week'}>
 	<header>
-		<button onclick={() => step(-1)} aria-label="Forrige måned">‹</button>
-		<h2>{monthName}</h2>
-		<button onclick={() => step(1)} aria-label="Næste måned">›</button>
-		<button class="today" onclick={() => (cursor = startOfMonth(new Date()))}>I dag</button>
+		<button onclick={() => step(-1)} aria-label={span === 'week' ? 'Forrige uge' : 'Forrige måned'}
+			>‹</button
+		>
+		<h2 class:week={span === 'week'}>
+			{heading}
+			{#if weekNumber}<span class="weekno">uge {weekNumber}</span>{/if}
+		</h2>
+		<button onclick={() => step(1)} aria-label={span === 'week' ? 'Næste uge' : 'Næste måned'}
+			>›</button
+		>
+		<button class="today" onclick={() => (cursor = startOfSpan(new Date()))}>I dag</button>
 	</header>
 
 	<div class="weekdays" aria-hidden="true">
-		{#each ['man', 'tir', 'ons', 'tor', 'fre', 'lør', 'søn'] as day}
+		{#each WEEKDAYS as day}
 			<span>{day}</span>
 		{/each}
 	</div>
@@ -128,7 +218,8 @@
 	<div class="grid">
 		{#each grid as date (date.toISOString())}
 			{@const tasks = tasksOn(date)}
-			{@const outside = date.getMonth() !== cursor.getMonth()}
+			<!-- A week has no outside: every day in it is the week you asked for. -->
+			{@const outside = span !== 'week' && date.getMonth() !== cursor.getMonth()}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="day"
@@ -140,9 +231,15 @@
 				ondragleave={() => (over = null)}
 				ondrop={(e) => onDrop(e, date)}
 			>
+				<!-- The weekday strip above the grid is enough on a wide screen. A week
+				     stacked into rows on a phone hides it, and a column of bare numbers
+				     is not a week — so the cell carries its own name there. -->
+				{#if span === 'week'}
+					<span class="weekday">{WEEKDAYS[(date.getDay() + 6) % 7]}</span>
+				{/if}
 				<span class="number">{date.getDate()}</span>
 
-				{#each tasks.slice(0, 3) as task (task.id)}
+				{#each tasks.slice(0, chipLimit) as task (task.id)}
 					<!-- Draggable as well as clickable: within a month, moving something
 					     to another day is the whole reason to be looking at a month. The
 					     browser needs a few pixels of movement before it calls a press a
@@ -159,8 +256,8 @@
 					</button>
 				{/each}
 
-				{#if tasks.length > 3}
-					<span class="more">+{tasks.length - 3} mere</span>
+				{#if tasks.length > chipLimit}
+					<span class="more">+{tasks.length - chipLimit} mere</span>
 				{/if}
 			</div>
 		{/each}
@@ -179,6 +276,24 @@
 		font-size: var(--text-lg);
 		text-transform: capitalize;
 		min-width: 180px;
+	}
+
+	/* A date range is not a month name: "24.–30. aug. 2026" is already capitalised
+	   where it should be, and capitalising it again gives "24.–30. Aug. 2026". */
+	h2.week {
+		text-transform: none;
+		min-width: 220px;
+		display: flex;
+		align-items: baseline;
+		gap: var(--s2);
+	}
+
+	.weekno {
+		font-size: var(--text-xs);
+		font-weight: 400;
+		color: var(--ink-faint);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
 	}
 
 	header button {
@@ -242,6 +357,22 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+	}
+
+	/* Seven cells instead of forty-two, so the height a month has to spend on six
+	   rows goes into one. It is what makes the week a view rather than only a wider
+	   drop target. */
+	.calendar.week .day {
+		min-height: 320px;
+	}
+
+	/* Only shown when the grid has stacked; the strip above says it otherwise. */
+	.weekday {
+		display: none;
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
 	}
 
 	/* Days from the neighbouring months stay visible but recede — removing them
@@ -311,9 +442,6 @@
 		padding-left: var(--s1);
 	}
 
-	/* On a phone a seven-column grid of 92px cells is unreadable. The cells shrink
-	   and the chips give way to a count — the month shape is the useful part at
-	   that width, not the titles. */
 	@media (max-width: 620px) {
 		.day {
 			min-height: 56px;
@@ -341,6 +469,60 @@
 
 		.more {
 			font-size: 10px;
+		}
+
+		/* A week on a phone is not seven columns of 45px. It becomes seven rows —
+		   the same information in the shape the screen has room for, and each row
+		   is still a drop target, which is the whole point of the view.
+
+		   The chips stay readable here, unlike in the month grid above: a
+		   full-width row has room for a title, and a week somebody opened on
+		   purpose is one they want to read rather than count. */
+		.calendar.week .grid {
+			grid-template-columns: 1fr;
+		}
+
+		.calendar.week .day {
+			min-height: 0;
+			flex-direction: row;
+			flex-wrap: wrap;
+			align-items: baseline;
+			gap: var(--s2);
+			padding: var(--s2);
+		}
+
+		.calendar.week .weekdays {
+			display: none;
+		}
+
+		.calendar.week .weekday {
+			display: inline;
+		}
+
+		.calendar.week .chip {
+			font-size: var(--text-xs);
+			height: auto;
+			padding: 1px var(--s1);
+			border-radius: var(--radius-sm);
+			border-left: 2px solid var(--line-strong);
+			background: var(--surface-raised);
+		}
+
+		.calendar.week .chip[data-priority='1'] {
+			border-left-color: var(--p1);
+			background: var(--surface-raised);
+		}
+		.calendar.week .chip[data-priority='2'] {
+			border-left-color: var(--p2);
+			background: var(--surface-raised);
+		}
+		.calendar.week .chip[data-priority='3'] {
+			border-left-color: var(--p3);
+			background: var(--surface-raised);
+		}
+
+		.calendar.week .more {
+			font-size: var(--text-xs);
 		}
 	}
 </style>
