@@ -269,3 +269,83 @@ func TestAColourMustBeOneFromThePalette(t *testing.T) {
 		t.Errorf("name = %v", renamed["name"])
 	}
 }
+
+// A group is somewhere you can go, not only a heading.
+func TestAGroupIsAPageWithItsProjectsDescriptionAndFiles(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, group := ts.do(t, "POST", "/api/v1/project-groups", map[string]any{"name": "Arbejde"})
+	groupID := group["id"].(string)
+
+	_, first := ts.do(t, "POST", "/api/v1/projects", map[string]any{
+		"name": "Sæsonstart", "group_id": groupID,
+	})
+	ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Regnskab", "group_id": groupID})
+	// And one outside it, which must not appear.
+	ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Haven"})
+
+	// Two open, one closed — the count is what is left, not what has ever been.
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "skriv oplæg", "project_id": first["id"].(string),
+	})
+	_, done := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "book lokale", "project_id": first["id"].(string),
+	})
+	ts.do(t, "POST", "/api/v1/tasks/"+done["id"].(string)+"/complete", nil)
+
+	resp, page := ts.do(t, "GET", "/api/v1/project-groups/"+groupID, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get group: status %d, body %v", resp.StatusCode, page)
+	}
+	projects, _ := page["projects"].([]any)
+	if len(projects) != 2 {
+		t.Fatalf("the page lists %d projects, want 2", len(projects))
+	}
+	for _, raw := range projects {
+		p := raw.(map[string]any)
+		if p["name"] == "Haven" {
+			t.Error("a project outside the group is on its page")
+		}
+		if p["name"] == "Sæsonstart" && p["open_tasks"] != float64(1) {
+			t.Errorf("open_tasks = %v, want 1 — the closed one must not count", p["open_tasks"])
+		}
+	}
+
+	// The description, which is the part a heading cannot carry.
+	if resp, _ := ts.do(t, "PATCH", "/api/v1/project-groups/"+groupID, map[string]any{
+		"description": "Alt det, der har en faktura for enden.",
+	}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("set description: status %d", resp.StatusCode)
+	}
+	_, again := ts.do(t, "GET", "/api/v1/project-groups/"+groupID, nil)
+	if g, _ := again["group"].(map[string]any); g["description"] != "Alt det, der har en faktura for enden." {
+		t.Errorf("description = %v", g["description"])
+	}
+	// And setting only the description must not lose the name or colour.
+	if g, _ := again["group"].(map[string]any); g["name"] != "Arbejde" {
+		t.Errorf("the name went with the description: %v", g["name"])
+	}
+}
+
+// A group belongs to one person and is never shared, so somebody else's group is
+// not found — including its files.
+func TestAGroupsPageAndFilesAreItsOwnersAlone(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	other := ts.newUser(t, "anden@example.dk", "Anden")
+
+	_, group := ts.do(t, "POST", "/api/v1/project-groups", map[string]any{"name": "Arbejde"})
+	groupID := group["id"].(string)
+
+	for _, c := range []struct{ method, path string }{
+		{"GET", "/api/v1/project-groups/" + groupID},
+		{"PATCH", "/api/v1/project-groups/" + groupID},
+		{"POST", "/api/v1/project-groups/" + groupID + "/attachments"},
+	} {
+		resp, _ := other.do(t, c.method, c.path, map[string]any{"description": "min nu"})
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s %s as somebody else: status %d, want 404", c.method, c.path, resp.StatusCode)
+		}
+	}
+}

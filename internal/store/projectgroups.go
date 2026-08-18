@@ -15,19 +15,23 @@ import (
 // not. That is also why a shared project can never be in a group — see
 // SetProjectGroup.
 type ProjectGroup struct {
-	ID        string
-	OwnerID   string
-	Name      string
-	Color     string
-	Collapsed bool
-	SortOrder float64
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID      string
+	OwnerID string
+	Name    string
+	Color   string
+	// Description is what the group is, in the owner's words. A heading can carry
+	// a name; a page can carry the sentence that says why these projects are the
+	// same body of work.
+	Description string
+	Collapsed   bool
+	SortOrder   float64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 func (db *DB) ListProjectGroups(ctx context.Context, userID string) ([]ProjectGroup, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, owner_id, name, color, collapsed, sort_order, created_at, updated_at
+		`SELECT id, owner_id, name, color, description, collapsed, sort_order, created_at, updated_at
 		 FROM project_groups WHERE owner_id = ?
 		 ORDER BY sort_order, created_at`, userID)
 	if err != nil {
@@ -40,8 +44,8 @@ func (db *DB) ListProjectGroups(ctx context.Context, userID string) ([]ProjectGr
 		var g ProjectGroup
 		var collapsed int
 		var created, updated int64
-		if err := rows.Scan(&g.ID, &g.OwnerID, &g.Name, &g.Color, &collapsed, &g.SortOrder,
-			&created, &updated); err != nil {
+		if err := rows.Scan(&g.ID, &g.OwnerID, &g.Name, &g.Color, &g.Description, &collapsed,
+			&g.SortOrder, &created, &updated); err != nil {
 			return nil, err
 		}
 		g.Collapsed = collapsed == 1
@@ -60,9 +64,10 @@ func (db *DB) GetProjectGroup(ctx context.Context, groupID, userID string) (*Pro
 	var collapsed int
 	var created, updated int64
 	err := db.QueryRowContext(ctx,
-		`SELECT id, owner_id, name, color, collapsed, sort_order, created_at, updated_at
+		`SELECT id, owner_id, name, color, description, collapsed, sort_order, created_at, updated_at
 		 FROM project_groups WHERE id = ? AND owner_id = ?`, groupID, userID).
-		Scan(&g.ID, &g.OwnerID, &g.Name, &g.Color, &collapsed, &g.SortOrder, &created, &updated)
+		Scan(&g.ID, &g.OwnerID, &g.Name, &g.Color, &g.Description, &collapsed, &g.SortOrder,
+			&created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -101,18 +106,20 @@ func (db *DB) CreateProjectGroup(ctx context.Context, g *ProjectGroup) error {
 }
 
 type ProjectGroupUpdate struct {
-	Name      *string
-	Color     *string
-	Collapsed *bool
-	SortOrder *float64
+	Name        *string
+	Color       *string
+	Description *string
+	Collapsed   *bool
+	SortOrder   *float64
 }
 
 func (db *DB) UpdateProjectGroup(ctx context.Context, groupID, userID string, u ProjectGroupUpdate) error {
 	set, args := buildUpdate(map[string]any{
-		"name":       u.Name,
-		"color":      u.Color,
-		"collapsed":  u.Collapsed,
-		"sort_order": u.SortOrder,
+		"name":        u.Name,
+		"color":       u.Color,
+		"description": u.Description,
+		"collapsed":   u.Collapsed,
+		"sort_order":  u.SortOrder,
 	})
 	if len(set) == 0 {
 		return nil
@@ -208,4 +215,38 @@ func (db *DB) SetProjectGroup(ctx context.Context, projectID, groupID, userID st
 		return ErrNotFound
 	}
 	return nil
+}
+
+// OpenTaskCounts is how much is left in each project of a group.
+//
+// One query rather than one per project: the group's page draws a list, and a
+// count per row would be a query per row.
+//
+// Open, not total. "12" beside a project you finished last year is a number that
+// means nothing; the question a list of projects answers is what is still on it.
+// Sub-tasks are excluded for the same reason the project view nests them — they
+// are part of their parent, not another thing to do.
+func (db *DB) OpenTaskCounts(ctx context.Context, groupID, userID string) (map[string]int, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT p.id, count(t.id)
+		FROM projects p
+		LEFT JOIN tasks t ON t.project_id = p.id
+		     AND t.deleted_at IS NULL AND t.completed_at IS NULL AND t.parent_id IS NULL
+		WHERE p.group_id = ? AND p.owner_id = ? AND p.deleted_at IS NULL
+		GROUP BY p.id`, groupID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := map[string]int{}
+	for rows.Next() {
+		var id string
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		counts[id] = n
+	}
+	return counts, rows.Err()
 }

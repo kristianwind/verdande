@@ -1393,6 +1393,37 @@ paths:
   /api/v1/project-groups/{groupID}:
     parameters:
       - { name: groupID, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [projects]
+      summary: The group as a place, with what is in it.
+      description: |
+        A heading can carry a name. A page carries what the group *is*: the
+        sentence saying why these projects are one body of work, the documents
+        that belong to all of them rather than to any one, and the projects
+        themselves.
+
+        The projects come with the group rather than being fetched per row — the
+        page is nothing without them, and two round trips to draw one list is one
+        too many.
+
+        A group that is not yours is not found. That is the rule for every route
+        here, and it is enforced by the lookup rather than by a separate check.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group: { $ref: "#/components/schemas/ProjectGroup" }
+                  projects:
+                    type: array
+                    items: { $ref: "#/components/schemas/Project" }
+                  attachments:
+                    type: array
+                    items: { $ref: "#/components/schemas/Attachment" }
+        "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [projects]
       summary: Rename a group, or fold it.
@@ -1419,6 +1450,41 @@ paths:
       responses:
         "204": { description: Deleted. }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/project-groups/{groupID}/attachments:
+    parameters:
+      - { name: groupID, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [projects]
+      summary: Put a document on the group itself.
+      description: |
+        A file that belongs to the whole group rather than to any one task in it —
+        the contract that governs all of "Arbejde", not a step in it.
+
+        The same storage as every other attachment: content-addressed by hash, so
+        the path never contains anything the uploader chose, and the same file
+        uploaded twice is stored once. 25 MB maximum.
+
+        Downloading and deleting go through `/attachments/{attachmentID}` like any
+        other. A group's attachment is reachable by its owner and nobody else,
+        because a group belongs to one person and is never shared.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201":
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Attachment" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422": { $ref: "#/components/responses/Validation" }
 
   /api/v1/trash/projects:
     get:
@@ -3067,6 +3133,12 @@ components:
         id: { type: string }
         name: { type: string }
         color: { $ref: "#/components/schemas/Color" }
+        description:
+          type: string
+          description: |
+            What the group is, in the owner's words. A heading carries a name; a
+            page carries the sentence that says why these projects are one body of
+            work. Empty until somebody writes one.
         collapsed: { type: boolean }
         sort_order: { type: number }
 
@@ -3075,6 +3147,10 @@ components:
       properties:
         name: { type: string }
         color: { $ref: "#/components/schemas/Color" }
+        description:
+          type: string
+          maxLength: 4000
+          description: What the group is, in the owner's words.
         collapsed: { type: boolean }
 
     Color:

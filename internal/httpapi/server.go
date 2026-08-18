@@ -344,8 +344,10 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Post("/", s.handleCreateProjectGroup)
 				// Above /{groupID}, or chi reads "reorder" as an id.
 				r.Post("/reorder", s.handleReorderProjectGroups)
+				r.Get("/{groupID}", s.handleGetProjectGroup)
 				r.Patch("/{groupID}", s.handleUpdateProjectGroup)
 				r.Delete("/{groupID}", s.handleDeleteProjectGroup)
+				r.Post("/{groupID}/attachments", s.handleUploadGroupAttachment)
 			})
 
 			// The trash is outside the block above: a deleted project is invisible

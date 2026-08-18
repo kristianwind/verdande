@@ -225,7 +225,9 @@ export const api = {
 
 	listProjectGroups: () => get('/project-groups'),
 	createProjectGroup: (name) => post('/project-groups', { name }),
+	getProjectGroup: (id) => get(`/project-groups/${id}`),
 	updateProjectGroup: (id, data) => patch(`/project-groups/${id}`, data),
+	uploadGroupAttachment: (id, file) => upload(`/project-groups/${id}/attachments`, file),
 	deleteProjectGroup: (id) => del(`/project-groups/${id}`),
 	reorderProjectGroups: (ids) => post('/project-groups/reorder', { ids }),
 

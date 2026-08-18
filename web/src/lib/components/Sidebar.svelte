@@ -590,27 +590,33 @@
 					     the heading away from a screen reader. The whole heading folds —
 					     at this size a lone chevron is a target you miss, and the name is
 					     where the eye already is. -->
+					<!-- The chevron folds; the name opens the group's own page. Two
+					     targets in one heading, because they are two different intentions
+					     and the old single one could only ever serve the smaller. -->
+					<button
+						class="chevron-button"
+						onclick={() => app.toggleGroup(group.id)}
+						aria-expanded={!group.collapsed}
+						aria-label={group.collapsed ? `Fold ${group.name} ud` : `Fold ${group.name} sammen`}
+					>
+						<svg
+							class="chevron"
+							class:collapsed={group.collapsed}
+							viewBox="0 0 24 24"
+							aria-hidden="true"
+						>
+							<path d="M6 9l6 6 6-6" />
+						</svg>
+					</button>
 					<h2 class="fold">
-						<button onclick={() => app.toggleGroup(group.id)} aria-expanded={!group.collapsed}>
-							<svg
-								class="chevron"
-								class:collapsed={group.collapsed}
-								viewBox="0 0 24 24"
-								aria-hidden="true"
-							>
-								<path d="M6 9l6 6 6-6" />
-							</svg>
-							<!-- Inside the button rather than before it, so the heading starts
-							     on the same edge as everything else in the sidebar. As a
-							     sibling it pushed the whole row in, and a group heading that
-							     is indented says the heading is inside something. -->
+						<a href="/gruppe/{group.id}" onclick={onnavigate}>
 							<span
 								class="dot group-dot"
 								style="background: {colorVar(group.color)}"
 								aria-hidden="true"
 							></span>
 							{group.name}
-						</button>
+						</a>
 					</h2>
 					<span class="count">{inside.length}</span>
 					<button
@@ -921,6 +927,25 @@
 		min-width: 0;
 	}
 
+	/* The chevron on its own, so the name beside it can be a link to the group's
+	   page. Sized as a target rather than as a glyph: 11px of arrow is something
+	   you miss. */
+	.chevron-button {
+		flex: none;
+		width: 18px;
+		height: 18px;
+		display: grid;
+		place-items: center;
+		border-radius: var(--radius-sm);
+		color: inherit;
+	}
+
+	.chevron-button:hover {
+		color: var(--ink);
+		background: var(--surface);
+	}
+
+	.fold a,
 	.fold button {
 		display: flex;
 		align-items: center;
@@ -936,8 +961,13 @@
 		white-space: nowrap;
 	}
 
+	.fold a:hover,
 	.fold button:hover {
 		color: var(--ink);
+	}
+
+	.fold a {
+		text-decoration: none;
 	}
 
 	.chevron {

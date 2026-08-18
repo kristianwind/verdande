@@ -264,10 +264,15 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	await sidebar.getByLabel('Gruppens navn').fill('Arbejde');
 	await sidebar.getByLabel('Gruppens navn').press('Enter');
 
-	// `exact`, because a group's name is a user-chosen word that can turn up inside
-	// another button's name — Playwright matches an accessible name by substring
-	// unless told otherwise.
-	const heading = sidebar.getByRole('button', { name: 'Arbejde', exact: true });
+	// The name is a link to the group's own page; the chevron beside it is a
+	// separate button that folds. Two intentions, two targets — the single one they
+	// used to share could only ever serve the smaller.
+	//
+	// `exact` on the link, because a group's name is a user-chosen word that can
+	// turn up inside another control's name, and Playwright matches an accessible
+	// name by substring unless told otherwise.
+	const heading = sidebar.getByRole('link', { name: 'Arbejde', exact: true });
+	const fold = sidebar.getByRole('button', { name: /^Fold Arbejde/ });
 	await expect(heading).toBeVisible();
 	await expect(sidebar.getByText('Træk et projekt herop')).toBeVisible();
 
@@ -278,7 +283,9 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	// the "+" icon beside "Projekter", overflowed it, and were drawn overlapping.
 	// Both buttons still worked, so every assertion in this file passed.
 	const boxes = await sidebar.locator('.folder-head').evaluate((el) =>
-		[...el.querySelectorAll('button')].map((b) => {
+		// Links as well as buttons: the group's name is a link to its page now, and
+		// a measurement that skipped it would miss the widest thing in the row.
+		[...el.querySelectorAll('button, a')].map((b) => {
 			const r = b.getBoundingClientRect();
 			return { text: b.textContent.trim(), left: r.left, right: r.right };
 		})
@@ -303,14 +310,14 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 
 	// Folded, reloaded, still folded. localStorage would have passed the first
 	// half of that and failed the second on another machine.
-	await heading.click();
-	await expect(heading).toHaveAttribute('aria-expanded', 'false');
+	await fold.click();
+	await expect(fold).toHaveAttribute('aria-expanded', 'false');
 	await page.reload();
-	await expect(sidebar.getByRole('button', { name: 'Arbejde', exact: true })).toHaveAttribute(
+	await expect(sidebar.getByRole('button', { name: /^Fold Arbejde/ })).toHaveAttribute(
 		'aria-expanded',
 		'false'
 	);
-	await sidebar.getByRole('button', { name: 'Arbejde', exact: true }).click();
+	await sidebar.getByRole('button', { name: /^Fold Arbejde/ }).click();
 
 	// Colour, which is chosen while renaming rather than from the row. Both are
 	// edits to the same thing, and a heading carrying four controls crowded the
@@ -363,14 +370,14 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	const name = sidebar.getByLabel('Gruppens navn');
 	await name.fill('Kontoret');
 	await name.press('Enter');
-	await expect(sidebar.getByRole('button', { name: 'Kontoret', exact: true })).toBeVisible();
+	await expect(sidebar.getByRole('link', { name: 'Kontoret', exact: true })).toBeVisible();
 
 	// Deleting the heading must not take the project filed under it. It is
 	// ungrouped here, which is the case that would look identical either way if
 	// the assertion were only "the group is gone".
 	page.once('dialog', (dialog) => dialog.accept());
 	await sidebar.getByRole('button', { name: 'Slet' }).click();
-	await expect(sidebar.getByRole('button', { name: 'Kontoret', exact: true })).toBeHidden();
+	await expect(sidebar.getByRole('link', { name: 'Kontoret', exact: true })).toBeHidden();
 	await expect(sidebar.getByRole('link', { name: 'Regnskab' })).toBeVisible();
 
 	expect(trouble).toEqual([]);
@@ -399,6 +406,11 @@ test('en opgave kan trækkes ned i en tom sektion, og en fejlet indlæsning sige
 	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
 	await sidebar.getByLabel('Projektnavn').fill('Risteriet');
 	await sidebar.getByLabel('Projektnavn').press('Enter');
+	// Waited for. Creating a project navigates, and `goto` is a promise nobody here
+	// is holding — quick add fired before it landed puts the task in the Inbox with
+	// no date, where the Today view is right not to show it. Intermittent, and it
+	// reads as the quick add having failed.
+	await expect(page.getByRole('heading', { name: 'Risteriet' })).toBeVisible();
 
 	await page.getByLabel('Ny opgave').fill('brænde kaffe');
 	await page.getByLabel('Ny opgave').press('Enter');
@@ -451,6 +463,8 @@ test('en opgave kan trækkes til en anden dag og videre til et projekt', async (
 	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
 	await sidebar.getByLabel('Projektnavn').fill('Ærinder');
 	await sidebar.getByLabel('Projektnavn').press('Enter');
+	// Waited for before navigating away, or the create can lose its own redirect.
+	await expect(sidebar.getByRole('link', { name: 'Ærinder' })).toBeVisible();
 
 	await page.goto('/upcoming');
 	await page.getByRole('button', { name: 'Liste', exact: true }).click();
@@ -761,6 +775,9 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
 	await sidebar.getByLabel('Projektnavn').fill('Fælles');
 	await sidebar.getByLabel('Projektnavn').press('Enter');
+	// Waited for, like everywhere else here: creating a project navigates, and the
+	// controls below only exist once it has.
+	await expect(page.getByRole('heading', { name: 'Fælles' })).toBeVisible();
 
 	await page.getByRole('button', { name: 'Del' }).click();
 	await page.getByLabel('Inviter via e-mail').fill('andreas@example.dk');
@@ -1002,6 +1019,64 @@ test('projektsiden er brugbar på en telefon', async ({ page }) => {
 	await page.getByText('mal væggen', { exact: true }).click();
 	await expect(page.getByRole('complementary', { name: 'Opgave' })).toBeVisible();
 	expect(await sideways(), 'opgaveruden skubber siden sidelæns').toBeLessThanOrEqual(1);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * A group is somewhere you can go.
+ *
+ * It was a heading over some rows: a name, a colour, and whether it was folded.
+ * Enough to tidy a list and not enough to be what people mean by it — "Arbejde" is
+ * a body of work with context of its own, and the documents that belong to all of
+ * it rather than to any one project inside it.
+ */
+test('en gruppe er en side med sine projekter, en beskrivelse og filer', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Ny gruppe' }).click();
+	await sidebar.getByLabel('Gruppens navn').fill('Værksted');
+	await sidebar.getByLabel('Gruppens navn').press('Enter');
+	await expect(sidebar.getByRole('link', { name: 'Værksted' })).toBeVisible();
+
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Drejebænk');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Drejebænk' })).toBeVisible();
+
+	await page.getByLabel('Ny opgave').fill('bestil stål');
+	await page.getByLabel('Ny opgave').press('Enter');
+	await expect(page.getByText('bestil stål', { exact: true })).toBeVisible();
+
+	// Into the group, then onto its page — which is what the heading is a link to
+	// now. The chevron beside it still folds; they are two intentions and the old
+	// single target could only serve the smaller one.
+	await sidebar
+		.getByRole('link', { name: 'Drejebænk' })
+		.dragTo(sidebar.getByRole('link', { name: 'Værksted' }));
+	await sidebar.getByRole('link', { name: 'Værksted' }).click();
+
+	await expect(page.getByRole('heading', { name: 'Værksted', level: 1 })).toBeVisible();
+	const row = page.locator('.projects a').filter({ hasText: 'Drejebænk' });
+	await expect(row).toBeVisible();
+	await expect(row.getByText('1', { exact: true }), 'antallet af åbne opgaver').toBeVisible();
+
+	// The description, which is the part a heading cannot carry. Click to write,
+	// blur to save — the same shape a task's description has.
+	await page.getByRole('button', { name: /Skriv hvad det her er/ }).click();
+	const about = page.getByLabel('Om gruppen');
+	await expect(about).toBeVisible();
+	await about.fill('Alt der larmer og støver.');
+	await about.blur();
+	await expect(page.getByText('Alt der larmer og støver.')).toBeVisible();
+
+	// And it survives a reload, which is the difference between the page keeping up
+	// and the server taking it.
+	await page.reload();
+	await expect(page.getByText('Alt der larmer og støver.')).toBeVisible();
+	await expect(page.locator('.projects a').filter({ hasText: 'Drejebænk' })).toBeVisible();
 
 	expect(trouble).toEqual([]);
 });

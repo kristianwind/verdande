@@ -300,16 +300,48 @@ func (s *Server) storeUpload(file io.Reader) (string, int64, error) {
 	return rel, size, nil
 }
 
-func (s *Server) handleDownloadAttachment(w http.ResponseWriter, r *http.Request) {
-	attachmentID := chi.URLParam(r, "attachmentID")
+// reachAttachment answers whether this person may see an attachment at all, and
+// whether they may change it.
+//
+// An attachment hangs on exactly one of three things, and each has its own idea of
+// who may reach it. A task's is governed by its project's roles, directly or
+// through the comment it hangs on. A group's is governed by nothing but ownership:
+// a group belongs to one person, is never shared, and a group that is not yours is
+// not found — the same rule the rest of the group routes use.
+//
+// Both callers below used to resolve straight to a task, so a group's attachment
+// answered 404 for its own owner.
+func (s *Server) reachAttachment(r *http.Request, attachmentID string) (canEdit bool, err error) {
 	user := userFrom(r.Context())
+
+	a, err := s.db.GetAttachment(r.Context(), attachmentID)
+	if err != nil {
+		return false, err
+	}
+
+	if a.GroupID != "" {
+		if _, err := s.db.GetProjectGroup(r.Context(), a.GroupID, user.ID); err != nil {
+			return false, err
+		}
+		// Nobody else can reach it, so whoever can, can change it.
+		return true, nil
+	}
 
 	taskID, err := s.db.AttachmentTask(r.Context(), attachmentID)
 	if err != nil {
-		s.storeError(w, r, "attachment task", err)
-		return
+		return false, err
 	}
-	if _, err := store.TaskRole(r.Context(), s.db, taskID, user.ID); err != nil {
+	role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
+	if err != nil {
+		return false, err
+	}
+	return role.CanEdit(), nil
+}
+
+func (s *Server) handleDownloadAttachment(w http.ResponseWriter, r *http.Request) {
+	attachmentID := chi.URLParam(r, "attachmentID")
+
+	if _, err := s.reachAttachment(r, attachmentID); err != nil {
 		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
 		return
 	}
@@ -354,15 +386,9 @@ func (s *Server) handleDownloadAttachment(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleDeleteAttachment(w http.ResponseWriter, r *http.Request) {
 	attachmentID := chi.URLParam(r, "attachmentID")
-	user := userFrom(r.Context())
 
-	taskID, err := s.db.AttachmentTask(r.Context(), attachmentID)
-	if err != nil {
-		s.storeError(w, r, "attachment task", err)
-		return
-	}
-	role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
-	if err != nil || !role.CanEdit() {
+	canEdit, err := s.reachAttachment(r, attachmentID)
+	if err != nil || !canEdit {
 		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
 		return
 	}
