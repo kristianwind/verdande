@@ -33,9 +33,14 @@ type taskJSON struct {
 	Completed   bool     `json:"completed"`
 	CompletedAt string   `json:"completed_at,omitempty"`
 	CreatedBy   string   `json:"created_by"`
-	SortOrder   float64  `json:"sort_order"`
-	CreatedAt   string   `json:"created_at"`
-	UpdatedAt   string   `json:"updated_at"`
+	// What the row can say without being opened. Sent with every task rather than
+	// fetched when one is opened, because the point is that you see it in the list.
+	SubtaskCount    int     `json:"subtask_count,omitempty"`
+	SubtaskDone     int     `json:"subtask_done,omitempty"`
+	AttachmentCount int     `json:"attachment_count,omitempty"`
+	SortOrder       float64 `json:"sort_order"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
 }
 
 func toTaskJSON(t store.Task) taskJSON {
@@ -45,9 +50,11 @@ func toTaskJSON(t store.Task) taskJSON {
 		DueDate: t.DueDate, DurationMin: t.DurationMin, Recurrence: t.RecurrenceRule,
 		RepeatText: recurrence.Describe(t.RecurrenceRule),
 		AssigneeID: t.AssigneeID, Completed: t.Completed(), CreatedBy: t.CreatedBy,
-		SortOrder: t.SortOrder,
-		CreatedAt: t.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: t.UpdatedAt.Format(time.RFC3339),
+		SubtaskCount: t.SubtaskCount, SubtaskDone: t.SubtaskDone,
+		AttachmentCount: t.AttachmentCount,
+		SortOrder:       t.SortOrder,
+		CreatedAt:       t.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:       t.UpdatedAt.Format(time.RFC3339),
 		// Never nil: a client iterating labels should not have to null-check first.
 		Labels: t.Labels,
 	}
