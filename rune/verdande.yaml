@@ -11,7 +11,11 @@ gameskill:
     invites and reminders, then start it and open the URL to create the first
     admin account.
   author: "kristianwind"
-  version: 2
+  # Bumped whenever the variables below change. The panel keys its catalogue on
+  # this: a manifest with new fields and an unchanged version is a manifest the
+  # panel has no reason to re-read, so the fields never appear and the failure is
+  # silent — the server's settings page simply does not offer them.
+  version: 3
   icon: "app"
 
   # The image is distroless — no shell — so keep_entrypoint runs the binary the
