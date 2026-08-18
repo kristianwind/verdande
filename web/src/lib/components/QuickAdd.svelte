@@ -14,6 +14,7 @@
 	 */
 	import { api } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
+	import { t } from '$lib/i18n.svelte.js';
 	let { projectId = undefined, onadded = undefined, autofocus = false } = $props();
 
 	let text = $state('');
@@ -143,15 +144,15 @@
 			bind:value={text}
 			{onkeydown}
 			type="text"
-			placeholder="Tilføj en opgave — prøv “betal moms i morgen kl 10 p1 #Firma”"
-			aria-label="Ny opgave"
+			placeholder={t('task.placeholder')}
+			aria-label={t('task.new')}
 			autocomplete="off"
 			spellcheck="false"
 		/>
 	</div>
 
 	{#if text.trim()}
-		<button type="submit" class="submit" disabled={submitting}>Tilføj</button>
+		<button type="submit" class="submit" disabled={submitting}>{t('task.add')}</button>
 	{/if}
 </form>
 

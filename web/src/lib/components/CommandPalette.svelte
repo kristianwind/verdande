@@ -1,6 +1,7 @@
 <script>
 	/** Cmd+K: search across everything the user can see. */
 	import { api } from '$lib/api.js';
+	import { t } from '$lib/i18n.svelte.js';
 	import { goto } from '$app/navigation';
 
 	let { open = $bindable(false) } = $props();
@@ -87,13 +88,13 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="scrim" onclick={() => (open = false)}>
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-		<div class="palette" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Søg">
+		<div class="palette" onclick={(e) => e.stopPropagation()} role="dialog" aria-label={t('nav.search')}>
 			<input
 				bind:this={input}
 				bind:value={query}
 				{onkeydown}
-				placeholder="Søg i opgaver og projekter"
-				aria-label="Søg"
+				placeholder={t('nav.searchLong')}
+				aria-label={t('nav.search')}
 				autocomplete="off"
 				spellcheck="false"
 			/>
@@ -115,7 +116,7 @@
 					{/each}
 				</ul>
 			{:else if query.trim()}
-				<p class="empty">Ingen resultater.</p>
+				<p class="empty">{t('nav.noResults')}</p>
 			{/if}
 		</div>
 	</div>

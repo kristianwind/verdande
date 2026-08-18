@@ -4,6 +4,7 @@
 	import { TASK, PROJECT, GROUP, startDrag, carries, dragged, accept } from '$lib/dnd.js';
 	import { COLORS, colorVar } from '$lib/colors.js';
 	import { focusOnMount } from '$lib/focus.js';
+	import { t } from '$lib/i18n.svelte.js';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
@@ -109,11 +110,9 @@
 		// Says what happens to the projects, because "slet gruppen" reads like it
 		// might take them with it. It does not: only the heading goes.
 		const kept =
-			count === 1
-				? 'Projektet i den bliver, men ligger bagefter uden gruppe.'
-				: `De ${count} projekter bliver, men ligger bagefter uden gruppe.`;
-		if (!confirm(count ? `Slet gruppen "${group.name}"? ${kept}` : `Slet gruppen "${group.name}"?`))
-			return;
+			count === 1 ? t('sidebar.deleteGroupOne') : t('sidebar.deleteGroupMany', { n: count });
+		const question = t('sidebar.deleteGroup', { name: group.name });
+		if (!confirm(count ? `${question} ${kept}` : question)) return;
 		await app.deleteGroup(group.id);
 	}
 
@@ -354,11 +353,11 @@
 			ondrop={onDropOnToday}
 		>
 			<span class="dot today" aria-hidden="true"></span>
-			I dag
+			{t('nav.today')}
 		</a>
 		<a href="/upcoming" class:active={current === '/upcoming'} onclick={onnavigate}>
 			<span class="dot" aria-hidden="true"></span>
-			Kommende
+			{t('nav.upcoming')}
 		</a>
 		{#if app.projects.some((p) => p.shared)}
 			<!-- Only where delegating is possible at all. On an instance with one
@@ -366,7 +365,7 @@
 			     entry is a question the sidebar keeps asking and answering "no". -->
 			<a href="/uddelegeret" class:active={current === '/uddelegeret'} onclick={onnavigate}>
 				<span class="dot" aria-hidden="true"></span>
-				Venter på andre
+				{t('nav.delegated')}
 			</a>
 		{/if}
 		{#if app.inbox}
@@ -457,14 +456,14 @@
 			ondragleave={() => (overGroup = null)}
 			ondrop={(e) => onDropInGroup(e, '')}
 		>
-			{@render foldHeading('projects', 'Projekter')}
+			{@render foldHeading('projects', t('sidebar.projects'))}
 			<button
 				class="icon"
 				onclick={() => {
 					adding = !adding;
 					addingGroup = false;
 				}}
-				aria-label="Nyt projekt">+</button
+				aria-label={t('sidebar.newProject')}>+</button
 			>
 			<button
 				class="icon new-group"
@@ -473,8 +472,8 @@
 					adding = false;
 					newGroupName = '';
 				}}
-				aria-label="Ny gruppe"
-				title="Ny gruppe"
+				aria-label={t('sidebar.newGroup')}
+				title={t('sidebar.newGroup')}
 			>
 				<svg viewBox="0 0 24 24" aria-hidden="true">
 					<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
@@ -487,8 +486,8 @@
 				<input
 					bind:value={newName}
 					use:focusOnMount
-					placeholder="Projektnavn"
-					aria-label="Projektnavn"
+					placeholder={t('sidebar.projectName')}
+					aria-label={t('sidebar.projectName')}
 					onblur={() => !newName.trim() && (adding = false)}
 					onkeydown={(e) => e.key === 'Escape' && (adding = false)}
 				/>
@@ -500,8 +499,8 @@
 				<input
 					bind:value={newGroupName}
 					use:focusOnMount
-					placeholder="Gruppens navn"
-					aria-label="Gruppens navn"
+					placeholder={t('sidebar.groupName')}
+					aria-label={t('sidebar.groupName')}
 					onblur={() => !newGroupName.trim() && (addingGroup = false)}
 					onkeydown={(e) => e.key === 'Escape' && (addingGroup = false)}
 				/>
@@ -514,7 +513,7 @@
 			{/each}
 
 			{#if own.length === 0 && !adding}
-				<p class="empty">Ingen projekter endnu.</p>
+				<p class="empty">{t('sidebar.noProjects')}</p>
 			{/if}
 		{/if}
 	</div>
@@ -564,10 +563,10 @@
 						<input
 							bind:value={groupName}
 							use:focusOnMount
-							aria-label="Gruppens navn"
+							aria-label={t('sidebar.groupName')}
 							onkeydown={(e) => e.key === 'Escape' && (renamingGroup = null)}
 						/>
-						<div class="swatches" role="group" aria-label="Farve på {group.name}">
+						<div class="swatches" role="group" aria-label={t('group.colorOf', { name: group.name })}>
 							{#each COLORS as color (color.id)}
 								<button
 									type="button"
@@ -597,7 +596,9 @@
 						class="chevron-button"
 						onclick={() => app.toggleGroup(group.id)}
 						aria-expanded={!group.collapsed}
-						aria-label={group.collapsed ? `Fold ${group.name} ud` : `Fold ${group.name} sammen`}
+						aria-label={group.collapsed
+							? t('sidebar.unfold', { name: group.name })
+							: t('sidebar.fold', { name: group.name })}
 					>
 						<svg
 							class="chevron"
@@ -624,9 +625,9 @@
 						onclick={() => {
 							renamingGroup = group.id;
 							groupName = group.name;
-						}}>Omdøb</button
+						}}>{t('sidebar.rename')}</button
 					>
-					<button class="group-action remove" onclick={() => removeGroup(group)}>Slet</button>
+					<button class="group-action remove" onclick={() => removeGroup(group)}>{t('sidebar.delete')}</button>
 				{/if}
 			</div>
 
@@ -635,7 +636,7 @@
 					{@render projectRow(project, true)}
 				{/each}
 				{#if !inside.length}
-					<p class="empty">Tom — træk et projekt herop.</p>
+					<p class="empty">{t('sidebar.emptyGroup')}</p>
 				{/if}
 			{/if}
 		</div>
@@ -643,7 +644,7 @@
 
 	{#if shared.length}
 		<div class="group">
-			<div class="group-head">{@render foldHeading('shared', 'Delt med mig')}</div>
+			<div class="group-head">{@render foldHeading('shared', t('sidebar.shared'))}</div>
 			{#if !app.sectionCollapsed('shared')}
 				{#each shared as project (project.id)}
 					{@render projectRow(project, false)}
@@ -654,7 +655,7 @@
 
 	{#if filters.length}
 		<div class="group">
-			<div class="group-head">{@render foldHeading('filters', 'Filtre')}</div>
+			<div class="group-head">{@render foldHeading('filters', t('sidebar.filters'))}</div>
 			{#if !app.sectionCollapsed('filters')}
 				{#each filters as filter (filter.id)}
 					<a
@@ -672,7 +673,7 @@
 
 	{#if labels.length}
 		<div class="group">
-			<div class="group-head">{@render foldHeading('labels', 'Etiketter')}</div>
+			<div class="group-head">{@render foldHeading('labels', t('sidebar.labels'))}</div>
 			{#if !app.sectionCollapsed('labels')}
 				{#each labels.filter((l) => l.task_count > 0) as label (label.id)}
 					<a
@@ -702,20 +703,20 @@
 					d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"
 				/>
 			</svg>
-			Indstillinger
+			{t('nav.settings')}
 		</a>
 
 		<!-- A quiet indicator, not an alarm: losing the socket for a moment is
 		     normal, and the app keeps working without it. -->
 		{#if !app.connected}
-			<span class="offline" title="Ændringer fra andre vises ikke lige nu">Offline</span>
+			<span class="offline" title={t('nav.offlineHint')}>{t('nav.offline')}</span>
 		{/if}
 		<button class="user" onclick={signOut}>
 			<span class="avatar" style="background: {app.user?.avatar_color}">
 				{app.user?.name?.[0]?.toUpperCase() ?? '?'}
 			</span>
 			<span class="user-name">{app.user?.name}</span>
-			<span class="signout">Log ud</span>
+			<span class="signout">{t('nav.signOut')}</span>
 		</button>
 	</div>
 	<!-- Also a slider for the keyboard: arrow keys move it, and Home puts it back.
@@ -726,7 +727,7 @@
 		class:resizing
 		role="separator"
 		aria-orientation="vertical"
-		aria-label="Bredde på sidebjælken"
+		aria-label={t('nav.sidebarWidth')}
 		tabindex="0"
 		onpointerdown={startResize}
 		onpointermove={onResize}

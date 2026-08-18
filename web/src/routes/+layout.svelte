@@ -7,6 +7,7 @@
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import SignIn from '$lib/components/SignIn.svelte';
 	import TaskDetail from '$lib/components/TaskDetail.svelte';
+	import { t } from '$lib/i18n.svelte.js';
 
 	let { children } = $props();
 
@@ -106,9 +107,9 @@
 				<button
 					class="fold"
 					onclick={() => sidebar.toggle()}
-					aria-label={sidebar.collapsed ? 'Vis sidebjælken' : 'Skjul sidebjælken'}
+					aria-label={sidebar.collapsed ? t('nav.showSidebar') : t('nav.hideSidebar')}
 					aria-pressed={sidebar.collapsed}
-					title={sidebar.collapsed ? 'Vis sidebjælken' : 'Skjul sidebjælken'}
+					title={sidebar.collapsed ? t('nav.showSidebar') : t('nav.hideSidebar')}
 				>
 					<svg viewBox="0 0 24 24" aria-hidden="true">
 						<rect x="3" y="4" width="18" height="16" rx="2" />
@@ -117,14 +118,14 @@
 				</button>
 
 				<button class="search" onclick={() => (paletteOpen = true)}>
-					<span>Søg</span>
+					<span>{t('nav.search')}</span>
 					<kbd>⌘K</kbd>
 				</button>
 
 				<button
 					class="theme"
 					onclick={() => theme.toggle()}
-					aria-label="Skift mellem lyst og mørkt tema"
+					aria-label={t('nav.toggleTheme')}
 				>
 					<svg viewBox="0 0 24 24" aria-hidden="true">
 						<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />

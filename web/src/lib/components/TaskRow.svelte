@@ -9,12 +9,13 @@
 	 * feels like a mis-click rather than an accomplishment.
 	 */
 	import { app } from '$lib/stores.svelte.js';
+	import { t, tag } from '$lib/i18n.svelte.js';
 
 	let { task, onedit } = $props();
 
 	let leaving = $state(false);
 
-	const PRIORITY_LABEL = { 1: 'Prioritet 1', 2: 'Prioritet 2', 3: 'Prioritet 3', 4: 'Ingen prioritet' };
+	const priorityLabel = (p) => (p === 4 ? t('task.noPriority') : t('task.priority', { n: p }));
 
 	async function toggle() {
 		if (task.completed) {
@@ -33,17 +34,17 @@
 		const due = new Date(date + 'T00:00:00');
 		const days = Math.round((due - new Date(today.toDateString())) / 86400000);
 
-		if (days === 0) return { text: 'I dag', tone: 'today' };
-		if (days === 1) return { text: 'I morgen', tone: 'soon' };
-		if (days === -1) return { text: 'I går', tone: 'overdue' };
-		if (days < 0) return { text: `${Math.abs(days)} dage forsinket`, tone: 'overdue' };
+		if (days === 0) return { text: t('task.today'), tone: 'today' };
+		if (days === 1) return { text: t('task.tomorrow'), tone: 'soon' };
+		if (days === -1) return { text: t('task.yesterday'), tone: 'overdue' };
+		if (days < 0) return { text: t('task.overdue', { n: Math.abs(days) }), tone: 'overdue' };
 		if (days < 7)
 			return {
-				text: due.toLocaleDateString('da-DK', { weekday: 'long' }),
+				text: due.toLocaleDateString(tag(), { weekday: 'long' }),
 				tone: 'soon'
 			};
 		return {
-			text: due.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' }),
+			text: due.toLocaleDateString(tag(), { day: 'numeric', month: 'short' }),
 			tone: 'later'
 		};
 	}
@@ -53,7 +54,7 @@
 	let due = $derived(dueLabel(task.due_date));
 	let time = $derived(
 		task.due_datetime
-			? new Date(task.due_datetime).toLocaleTimeString('da-DK', {
+			? new Date(task.due_datetime).toLocaleTimeString(tag(), {
 					hour: '2-digit',
 					minute: '2-digit'
 				})
@@ -66,8 +67,8 @@
 		class="check"
 		class:checked={task.completed || leaving}
 		onclick={toggle}
-		aria-label={task.completed ? 'Genåbn opgave' : 'Markér som færdig'}
-		title={PRIORITY_LABEL[task.priority]}
+		aria-label={task.completed ? t('task.reopen') : t('task.complete')}
+		title={priorityLabel(task.priority)}
 	>
 		<svg viewBox="0 0 24 24" aria-hidden="true">
 			<path class="tick" d="M6 12.5l4 4 8-8.5" />
@@ -89,7 +90,7 @@
 					<!-- First in the row, because "who" changes what the rest of the line
 					     means: a date on somebody else's task is their deadline, not
 					     yours. -->
-					<span class="assignee" title="Ansvarlig: {assignee.name}">
+					<span class="assignee" title={t('task.assignee', { name: assignee.name })}>
 						<span class="face" style="background: {assignee.avatar_color}">
 							{assignee.name[0]?.toUpperCase() ?? '?'}
 						</span>
@@ -102,7 +103,7 @@
 					</span>
 				{/if}
 				{#if task.recurrence_text}
-					<span class="repeat" title="Gentages {task.recurrence_text}">
+					<span class="repeat" title={t('task.repeats', { rule: task.recurrence_text })}>
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M17 2l4 4-4 4" />
 							<path d="M3 11V9a4 4 0 014-4h14" />
@@ -119,7 +120,7 @@
 					<span
 						class="badge"
 						class:all-done={task.subtask_done === task.subtask_count}
-						title="{task.subtask_done} af {task.subtask_count} undertasks er lukket"
+						title={t('task.subtasks', { done: task.subtask_done, total: task.subtask_count })}
 					>
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M9 6h11" />
@@ -133,7 +134,7 @@
 					</span>
 				{/if}
 				{#if task.attachment_count}
-					<span class="badge" title="{task.attachment_count} vedhæftet">
+					<span class="badge" title={t('task.attachments', { n: task.attachment_count })}>
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path
 								d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"
