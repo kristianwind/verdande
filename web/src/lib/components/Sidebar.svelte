@@ -105,16 +105,17 @@
 		await app.renameGroup(group.id, name);
 	}
 
-	async function removeGroup(group) {
-		const count = inGroup(group.id).length;
-		// Says what happens to the projects, because "slet gruppen" reads like it
-		// might take them with it. It does not: only the heading goes.
-		const kept =
-			count === 1 ? t('sidebar.deleteGroupOne') : t('sidebar.deleteGroupMany', { n: count });
-		const question = t('sidebar.deleteGroup', { name: group.name });
-		if (!confirm(count ? `${question} ${kept}` : question)) return;
-		await app.deleteGroup(group.id);
+	/** Double-click, or F2 with the row focused. The colour is chosen in the same
+	 *  form, because it is the same edit to the same thing. */
+	/** Cleared by a second click, which means the double was a rename. */
+	let navTimer;
+
+	function startRename(group) {
+		clearTimeout(navTimer);
+		renamingGroup = group.id;
+		groupName = group.name;
 	}
+
 
 	// --- resizing -------------------------------------------------------------------
 
@@ -547,6 +548,13 @@
 					overId = null;
 				}}
 				ondrop={(e) => onGroupDrop(e, group)}
+				ondblclick={() => startRename(group)}
+				onkeydown={(e) => {
+					if (e.key === 'F2') {
+						e.preventDefault();
+						startRename(group);
+					}
+				}}
 			>
 				{#if renamingGroup === group.id}
 					<!-- Renaming is where the colour is chosen too.
@@ -618,7 +626,24 @@
 						</svg>
 					</button>
 					<h2 class="fold">
-						<a href="/gruppe/{group.id}" onclick={onnavigate}>
+						<!-- Navigation waits two tenths of a second for a second click. A
+						     link cannot know a double is coming without pausing, and the
+						     alternative was worse than the pause: the first click opened the
+						     page while the rename form was appearing, and the colour swatches
+						     moved out from under the pointer. Two tenths is under the double
+						     click threshold and over the threshold of noticing. -->
+						<a
+							href="/gruppe/{group.id}"
+							onclick={(e) => {
+								e.preventDefault();
+								clearTimeout(navTimer);
+								if (e.detail > 1) return;
+								navTimer = setTimeout(() => {
+									onnavigate();
+									goto(`/gruppe/${group.id}`);
+								}, 200);
+							}}
+						>
 							<span
 								class="dot group-dot"
 								style="background: {colorVar(group.color)}"
@@ -628,14 +653,6 @@
 						</a>
 					</h2>
 					<span class="count">{inside.length}</span>
-					<button
-						class="group-action"
-						onclick={() => {
-							renamingGroup = group.id;
-							groupName = group.name;
-						}}>{t('sidebar.rename')}</button
-					>
-					<button class="group-action remove" onclick={() => removeGroup(group)}>{t('sidebar.delete')}</button>
 				{/if}
 			</div>
 
@@ -1013,43 +1030,6 @@
 
 	/* Hidden until the heading is hovered, like the section actions on a project
 	   page: two buttons permanently beside a label stop it reading as a label. */
-	/* Hidden but still in the flow, these two reserved their own width at all
-	   times — enough that ARBEJDE was drawn as "ARBE". They are lifted out of the
-	   flow and sit over the right end of the row, so the name has the whole line
-	   until somebody actually reaches for them. */
-	.group-action {
-		position: absolute;
-		right: var(--s2);
-		font-size: var(--text-xs);
-		color: var(--ink-faint);
-		padding: 0 var(--s1);
-		flex: none;
-		opacity: 0;
-		background: var(--surface);
-		transition: opacity var(--fast) var(--ease);
-	}
-
-	.group-action.remove {
-		right: var(--s2);
-	}
-
-	.group-action:not(.remove) {
-		right: calc(var(--s2) + 3.2em);
-	}
-
-	.folder-head:hover .group-action,
-	.group-action:focus-visible {
-		opacity: 1;
-	}
-
-	.group-action:hover {
-		color: var(--ink);
-	}
-
-	.group-action.remove:hover {
-		color: var(--danger);
-	}
-
 	.folder-head .count {
 		margin-left: auto;
 	}

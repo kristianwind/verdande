@@ -12,6 +12,7 @@
 	 * projects answers is what is left.
 	 */
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { api, humanMessage } from '$lib/api.js';
 	import { app, projectName } from '$lib/stores.svelte.js';
 	import { colorVar } from '$lib/colors.js';
@@ -28,6 +29,18 @@
 	$effect(() => {
 		load(id);
 	});
+
+	/** Says what happens to the projects, because "delete the group" reads like it
+	 *  might take them with it. It does not: only the heading goes. */
+	async function removeGroup() {
+		const count = projects.length;
+		const kept =
+			count === 1 ? t('sidebar.deleteGroupOne') : t('sidebar.deleteGroupMany', { n: count });
+		const question = t('sidebar.deleteGroup', { name: group.name });
+		if (!confirm(count ? `${question} ${kept}` : question)) return;
+		await app.deleteGroup(group.id);
+		goto('/');
+	}
 
 	async function load(groupId) {
 		if (!groupId) return;
@@ -208,6 +221,14 @@
 				<span>{uploading ? t('group.uploading') : t('group.addFile')}</span>
 			</label>
 		</section>
+	
+		<!-- Deleting lives here rather than in the sidebar, where two words sat on
+		     top of the group's name and where you could press them without having
+		     seen what the group holds. Here the projects are on the screen above
+		     it, which is the whole argument for the button being here. -->
+		<section class="danger">
+			<button class="remove" onclick={removeGroup}>{t('sidebar.delete')}</button>
+		</section>
 	{/if}
 </div>
 
@@ -228,6 +249,22 @@
 		align-items: baseline;
 		flex-wrap: wrap;
 		gap: var(--s3);
+	}
+
+	.danger {
+		margin-top: var(--s4);
+		padding-top: var(--s4);
+		border-top: 1px solid var(--line);
+	}
+
+	.danger .remove {
+		font-size: var(--text-sm);
+		color: var(--ink-faint);
+		padding: var(--s2) 0;
+	}
+
+	.danger .remove:hover {
+		color: var(--danger);
 	}
 
 	h1 {

@@ -363,7 +363,9 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	// Colour, which is chosen while renaming rather than from the row. Both are
 	// edits to the same thing, and a heading carrying four controls crowded the
 	// name it exists to show.
-	await sidebar.getByRole('button', { name: 'Omdøb' }).click();
+	// Double-click on the row opens it; the two words that used to sit on top of
+	// the name are gone from the sidebar entirely.
+	await sidebar.getByRole('link', { name: 'Arbejde', exact: true }).dblclick();
 	await sidebar.getByRole('button', { name: 'Petrol' }).click();
 	// Still open: picking a colour must not close the form under the pointer, which
 	// is what a plain blur-to-cancel does in the two browsers that do not focus a
@@ -407,7 +409,7 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 
 	// Renaming writes one row rather than one per project, which is the reason a
 	// group is a table and not a string repeated on every project.
-	await sidebar.getByRole('button', { name: 'Omdøb' }).click();
+	await sidebar.getByRole('link', { name: 'Arbejde', exact: true }).dblclick();
 	const name = sidebar.getByLabel('Gruppens navn');
 	await name.fill('Kontoret');
 	await name.press('Enter');
@@ -416,8 +418,11 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	// Deleting the heading must not take the project filed under it. It is
 	// ungrouped here, which is the case that would look identical either way if
 	// the assertion were only "the group is gone".
+	// Deleting is on the group's own page now, where the projects it will not take
+	// with it are on the screen above the button.
+	await sidebar.getByRole('link', { name: 'Kontoret', exact: true }).click();
 	page.once('dialog', (dialog) => dialog.accept());
-	await sidebar.getByRole('button', { name: 'Slet' }).click();
+	await page.getByRole('button', { name: 'Slet' }).click();
 	await expect(sidebar.getByRole('link', { name: 'Kontoret', exact: true })).toBeHidden();
 	await expect(sidebar.getByRole('link', { name: 'Regnskab' })).toBeVisible();
 
