@@ -20,6 +20,7 @@
 	import { app } from '$lib/stores.svelte.js';
 	import { focusOnMount } from '$lib/focus.js';
 	import { t } from '$lib/i18n.svelte.js';
+	import { available, signIn } from '$lib/passkey.js';
 
 	// loading | login | setup | totp | forgot | sent | invite | reset | done
 	let mode = $state('loading');
@@ -30,6 +31,41 @@
 	let error = $state('');
 	let fields = $state({});
 	let busy = $state(false);
+
+	// --- passkey -----------------------------------------------------------------
+
+	let passkeyReady = $state(false);
+
+	$effect(() => {
+		available().then((ok) => (passkeyReady = ok));
+	});
+
+	/**
+	 * No email is asked for and none is sent: the device knows which account its
+	 * key belongs to. That is not only convenience — it means this page cannot be
+	 * used to find out who has an account here.
+	 */
+	async function signInWithPasskey() {
+		error = '';
+		busy = true;
+		try {
+			const result = await signIn();
+			if (result.totp_required) {
+				mode = 'totp';
+			} else {
+				app.user = result.user;
+				await app.load();
+			}
+		} catch (e) {
+			// A cancelled prompt is not a failure. Somebody changed their mind, and
+			// an error for that reads as though the key was rejected.
+			if (e?.name !== 'NotAllowedError' && e?.message !== 'cancelled') {
+				error = humanMessage(e);
+			}
+		} finally {
+			busy = false;
+		}
+	}
 
 	/**
 	 * The token from an emailed link, if this is one.
@@ -267,6 +303,15 @@
 			</label>
 
 			<button type="submit" disabled={busy}>{t('auth.signIn')}</button>
+
+			<!-- Only when the browser has somewhere to keep a key. Offering it where
+			     it cannot work is a button that fails for reasons nobody can act on. -->
+			{#if passkeyReady}
+				<button type="button" class="passkey" disabled={busy} onclick={signInWithPasskey}>
+					{busy ? t('passkey.signingIn') : t('passkey.signIn')}
+				</button>
+			{/if}
+
 			<button type="button" class="link" onclick={() => (mode = 'forgot')}>
 				{t('auth.forgot')}
 			</button>
@@ -379,6 +424,22 @@
 	button[type='submit']:disabled {
 		opacity: 0.6;
 		cursor: default;
+	}
+
+	/* Set apart from the primary button but not made secondary: it is an equal way
+	   in, not a fallback. */
+	.passkey {
+		width: 100%;
+		padding: var(--s2) var(--s4);
+		border: 1px solid var(--line-strong);
+		border-radius: var(--radius);
+		font-size: var(--text-sm);
+		color: var(--ink);
+		transition: border-color var(--fast) var(--ease);
+	}
+
+	.passkey:hover {
+		border-color: var(--accent);
 	}
 
 	.link {

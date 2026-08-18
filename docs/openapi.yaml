@@ -388,6 +388,195 @@ paths:
         "204": { description: Off. }
         "422": { $ref: "#/components/responses/Validation" }
 
+  /api/v1/auth/passkeys:
+    get:
+      tags: [auth]
+      summary: The keys registered on this account.
+      description: |
+        A passkey is a key on a device rather than a secret in a head. The private
+        half never leaves the device, and the signature is bound to the origin that
+        asked for it — so a convincing copy of the sign-in page at another address
+        gets a signature it cannot use.
+
+        One row per credential, because a person has a laptop and a phone and losing
+        one must not mean losing the way in. The name is theirs to write: a list
+        nobody can read is a list nobody revokes from.
+
+        Sessions only, like `/tokens` — a leaked API token must not be able to add
+        its own way in, which would turn a theft into a tenancy.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  passkeys:
+                    type: array
+                    items: { $ref: "#/components/schemas/Passkey" }
+                  available:
+                    type: boolean
+                    description: |
+                      Whether this deployment can offer passkeys at all. False when
+                      `VERDANDE_BASE_URL` is an IP address or otherwise not a
+                      domain an authenticator will accept — the interface asks once
+                      rather than discovering it from a 503 it caused by offering a
+                      button.
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/auth/passkeys/register/begin:
+    post:
+      tags: [auth]
+      summary: Start registering a key. Returns the options and a challenge id.
+      description: |
+        Registration is done by somebody already signed in: you cannot be handed a
+        way into an account you have not proved you own.
+
+        The challenge is kept server-side rather than in a cookie, because the whole
+        point of it is that the server chose it and remembers choosing it. It is
+        answerable once and expires after five minutes.
+      responses:
+        "200":
+          description: Pass `options` to `navigator.credentials.create()`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challenge_id: { type: string }
+                  options: { type: object, additionalProperties: true }
+        "503":
+          description: |
+            `VERDANDE_BASE_URL` is not an address an authenticator will accept. 503
+            rather than 404: this version has passkeys, this deployment cannot offer
+            them, and those are different things to fix.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/auth/passkeys/register/finish:
+    post:
+      tags: [auth]
+      summary: Finish registering a key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                challenge_id: { type: string }
+                name:
+                  type: string
+                  description: What to call it in the list — "min bærbare".
+                credential:
+                  type: object
+                  additionalProperties: true
+                  description: The response from `navigator.credentials.create()`.
+      responses:
+        "201":
+          description: Registered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Passkey" }
+        "400":
+          description: The attempt expired, was already used, or did not verify.
+        "503":
+          description: Passkeys are unavailable on this instance.
+
+  /api/v1/auth/passkeys/{passkeyID}:
+    parameters:
+      - { name: passkeyID, in: path, required: true, schema: { type: string } }
+    patch:
+      tags: [auth]
+      summary: Rename a key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      responses:
+        "204": { description: Renamed. }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [auth]
+      summary: Remove a key.
+      description: |
+        Scoped in the SQL rather than checked first: an id read in one step and
+        deleted in the next is a window, and the reason somebody is on this screen
+        is usually that they think a device is gone.
+      responses:
+        "204": { description: Removed. }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/auth/passkey/login/begin:
+    post:
+      tags: [auth]
+      summary: Start signing in with a key. No session, and no email.
+      description: |
+        A discoverable login: nobody has said who they are yet, and that is the
+        point. The device knows which account its key belongs to, so there is no
+        address to type and no list of accounts for anybody to probe.
+      responses:
+        "200":
+          description: Pass `options` to `navigator.credentials.get()`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challenge_id: { type: string }
+                  options: { type: object, additionalProperties: true }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: Passkeys are unavailable on this instance.
+
+  /api/v1/auth/passkey/login/finish:
+    post:
+      tags: [auth]
+      summary: Finish signing in with a key.
+      description: |
+        A key that verified its owner — a PIN, a fingerprint, a face — is both
+        factors at once, and completes the login outright. One that only proved
+        possession still stops at the TOTP step, exactly as a password does.
+
+        A counter that has gone backwards means the credential has been cloned. It
+        is refused rather than logged: that counter is the only signal this design
+        gives.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                challenge_id: { type: string }
+                credential:
+                  type: object
+                  additionalProperties: true
+                  description: The response from `navigator.credentials.get()`.
+      responses:
+        "200":
+          description: Signed in, or `totp_required` when the key was possession only.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+                  totp_required: { type: boolean }
+        "401":
+          description: |
+            One message for an unknown key and for a bad signature. Telling them
+            apart is a way to learn which credentials exist here.
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: Passkeys are unavailable on this instance.
+
   /api/v1/auth/sessions:
     get:
       tags: [auth]
@@ -3126,6 +3315,32 @@ components:
             out of one — `null` cannot mean that, because absent and null are the
             same thing once decoded, and telling "put it nowhere" apart from "I
             did not mention it" is what makes this a PATCH.
+
+    Passkey:
+      type: object
+      properties:
+        id: { type: string }
+        name:
+          type: string
+          description: What the owner called it. "min bærbare" is what makes a list reviewable.
+        aaguid:
+          type: string
+          description: |
+            Identifies the authenticator model, which is what lets a list say
+            something recognisable beside a key somebody named months ago.
+        discoverable:
+          type: boolean
+          description: |
+            Whether the credential lives on the device. Only these can start a login
+            with no email typed first.
+        user_verified:
+          type: boolean
+          description: |
+            Whether the authenticator verified the person — a PIN, a fingerprint, a
+            face. One that did is both factors at once; one that only proved
+            possession is a first factor and still meets the TOTP step.
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: string, format: date-time }
 
     ProjectGroup:
       type: object

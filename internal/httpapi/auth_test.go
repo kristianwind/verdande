@@ -46,7 +46,9 @@ func newTestServerWith(t *testing.T, configure func(*config.Config)) *testServer
 	t.Cleanup(func() { db.Close() })
 
 	cfg := &config.Config{
-		BaseURL:    "http://127.0.0.1",
+		// `localhost`, not a loopback IP: passkeys refuse an IP address as a relying
+		// party id, and every browser makes the same exception for localhost.
+		BaseURL:    "http://localhost",
 		DataDir:    t.TempDir(),
 		SessionTTL: 24 * time.Hour,
 		InviteTTL:  7 * 24 * time.Hour,

@@ -50,9 +50,16 @@ function watchForTrouble(page) {
 	page.on('pageerror', (error) => trouble.push(String(error)));
 	page.on('response', (response) => {
 		const url = response.url();
-		if (url.includes('/api/') && !response.ok()) {
-			trouble.push(`${response.request().method()} ${new URL(url).pathname} → ${response.status()}`);
-		}
+		if (!url.includes('/api/') || response.ok()) return;
+
+		// A 401 from /auth/me is the app asking "am I signed in?" and being told no,
+		// which is the correct answer on the sign-in page and after signing out.
+		// Every other non-ok response is worth failing over — that is what this
+		// watcher is for.
+		const path = new URL(url).pathname;
+		if (path.endsWith('/auth/me') && response.status() === 401) return;
+
+		trouble.push(`${response.request().method()} ${path} → ${response.status()}`);
 	});
 	return trouble;
 }
@@ -577,7 +584,7 @@ test('et invitationslink opretter kontoen og giver adgang til projektet', async 
 	await invitee.goto(link);
 
 	await expect(invitee.getByText('Du er inviteret')).toBeVisible();
-	await invitee.getByLabel('Navn').fill('Nabo');
+	await invitee.getByLabel('Navn', { exact: true }).fill('Nabo');
 	await invitee.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
 	await invitee.getByRole('button', { name: 'Opret konto' }).click();
 
@@ -734,7 +741,7 @@ test('en administrator kan invitere en bruger til instansen', async ({ browser, 
 	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
 	const invitee = await context.newPage();
 	await invitee.goto(link);
-	await invitee.getByLabel('Navn').fill('Anders');
+	await invitee.getByLabel('Navn', { exact: true }).fill('Anders');
 	await invitee.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
 	await invitee.getByRole('button', { name: 'Opret konto' }).click();
 
@@ -807,7 +814,7 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
 	const andreas = await context.newPage();
 	await andreas.goto(link);
-	await andreas.getByLabel('Navn').fill('andreas');
+	await andreas.getByLabel('Navn', { exact: true }).fill('andreas');
 	await andreas.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
 	await andreas.getByRole('button', { name: 'Opret konto' }).click();
 	await expect(andreas.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
@@ -964,7 +971,7 @@ test('historik-siden viser hændelser fra et projekt, administratoren ikke er me
 	expect(link).toContain('/invite?token=');
 
 	await theirs.goto(link);
-	await theirs.getByLabel('Navn').fill('Sigrid');
+	await theirs.getByLabel('Navn', { exact: true }).fill('Sigrid');
 	await theirs.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
 	await theirs.getByRole('button', { name: 'Opret konto' }).click();
 	await expect(theirs.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
@@ -1448,6 +1455,97 @@ test('en opgave lukket ved et uheld kan hentes tilbage', async ({ page }) => {
 });
 
 /**
+ * A passkey, registered and then signed in with, end to end.
+ *
+ * The Go tests cover who may reach these endpoints and that a challenge is spent
+ * when it is used. What they cannot do is produce a signature — that needs an
+ * authenticator. Chrome has a virtual one behind CDP, and it is the only way to
+ * find out whether the encoding is right: every boundary here is a base64url
+ * conversion, and one wrong byte produces a signature that will not verify,
+ * reported as "that key was not accepted" — which reads as a broken key rather
+ * than a broken encoder.
+ *
+ * Chromium only, and deliberately so: this is testing our ceremony, not WebKit's
+ * authenticator.
+ */
+test('en passkey kan registreres og logges ind med', async ({ browser, browserName }) => {
+	test.skip(browserName !== 'chromium', 'den virtuelle authenticator findes kun i Chromium');
+
+	// Its own context, at `localhost` rather than the loopback address the rest of
+	// the suite uses. WebAuthn refuses an IP as a relying party id — the browser
+	// throws `SecurityError: This is an invalid domain` — and localhost is the
+	// exception every browser makes. It is not the shared baseURL because
+	// resolving `localhost` is slow enough here to cost the whole suite minutes.
+	//
+	// Cookies are bound to an origin, so the signed-in state from the setup project
+	// does not carry across: this signs in with a password first, which is also the
+	// honest order — you register a key on an account you have already proved you
+	// own.
+	const origin = 'http://localhost:8097';
+	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const page = await context.newPage();
+	const trouble = watchForTrouble(page);
+
+	await page.goto(`${origin}/`);
+	await page.getByLabel(/E-mail/).fill(USER.email);
+	await page.getByLabel(/Adgangskode/).fill(USER.password);
+	await page.getByRole('button', { name: 'Log ind', exact: true }).click();
+	await expect(page.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+
+	// A virtual authenticator that verifies its owner, so the key counts as both
+	// factors — which is what lets the login complete without a password.
+	const client = await page.context().newCDPSession(page);
+	await client.send('WebAuthn.enable');
+	const { authenticatorId } = await client.send('WebAuthn.addVirtualAuthenticator', {
+		options: {
+			protocol: 'ctap2',
+			transport: 'internal',
+			hasResidentKey: true,
+			hasUserVerification: true,
+			isUserVerified: true,
+			automaticPresenceSimulation: true
+		}
+	});
+
+	await page.goto(`${origin}/indstillinger`);
+	await page.getByLabel('Navn på nøglen').fill('Testnøglen');
+	await page.getByRole('button', { name: 'Tilføj en nøgle' }).click();
+
+	// It is in the list, and it counts as both factors — the virtual authenticator
+	// verifies, so the login below needs no password.
+	const key = page.locator('li').filter({ hasText: 'Testnøglen' });
+	await expect(key).toBeVisible();
+	await expect(key.getByText('begge faktorer')).toBeVisible();
+
+	// It survives a reload, so this is the server's row and not the page's state.
+	await page.reload();
+	await expect(page.locator('li').filter({ hasText: 'Testnøglen' })).toBeVisible();
+
+	// Now sign out and back in with it. No email typed: the device knows which
+	// account its key belongs to, which is also why this page cannot be used to
+	// find out who has an account here.
+	await page.getByRole('navigation', { name: 'Hovedmenu' }).getByText('Log ud').click();
+	// `exact`, because "Log ind" is a substring of "Log ind med en passkey" and
+	// Playwright matches an accessible name loosely unless told otherwise.
+	await expect(page.getByRole('button', { name: 'Log ind', exact: true })).toBeVisible();
+
+	await page.getByRole('button', { name: 'Log ind med en passkey' }).click();
+	await expect(page.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'I dag' })).toBeVisible();
+
+	// And the key records that it was used, which is what makes the list worth
+	// reading when somebody wonders whether a device is still in play.
+	await page.goto(`${origin}/indstillinger`);
+	await expect(
+		page.locator('li').filter({ hasText: 'Testnøglen' }).getByText(/sidst brugt/)
+	).toBeVisible();
+
+	await client.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
+	await context.close();
+	expect(trouble).toEqual([]);
+});
+
+/**
  * The sidebar never scrolls sideways.
  *
  * It grew a horizontal scrollbar on an ordinary desktop, under the whole menu.
@@ -1465,7 +1563,9 @@ test('sidebjælken kan ikke scrolles vandret', async ({ page }) => {
 	await page.goto('/indstillinger');
 
 	// A name long enough to overflow the column at its default width.
-	await page.getByLabel('Navn').fill('Kristian Vinterberg-Skovgaard');
+	// `exact`, or this also matches "Navn på nøglen" in the passkey panel — and an
+	// ambiguous locator waits for one of them to go away rather than failing.
+	await page.getByLabel('Navn', { exact: true }).fill('Kristian Vinterberg-Skovgaard');
 	await page.getByRole('button', { name: 'Gem' }).first().click();
 	await expect(page.getByText('Kristian Vinterberg-Skovgaard').first()).toBeVisible();
 
@@ -1480,7 +1580,7 @@ test('sidebjælken kan ikke scrolles vandret', async ({ page }) => {
 	expect(page_sideways, 'siden kan scrolles vandret').toBeLessThanOrEqual(1);
 
 	// Put the name back, so the tests after this one see the account they expect.
-	await page.getByLabel('Navn').fill(USER.name);
+	await page.getByLabel('Navn', { exact: true }).fill(USER.name);
 	await page.getByRole('button', { name: 'Gem' }).first().click();
 
 	expect(trouble).toEqual([]);
@@ -1535,6 +1635,16 @@ test('et projekt kan have flere sektioner @forms', async ({ page }) => {
 	// inside a board was exactly true.
 	await page.getByRole('button', { name: 'Board', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Uden sektion' })).toBeVisible();
+
+	// A board gets the width a reading column withholds. This was `.view:has(.board)`
+	// for as long as the board has existed and never once matched: `.board` is inside
+	// a child component, and Svelte scopes a selector to the component that wrote it.
+	// The rule read correctly, compiled, and could not fire.
+	const wide = await page.locator('.view').evaluate((el) => el.getBoundingClientRect().width);
+	await page.getByRole('button', { name: 'Liste', exact: true }).click();
+	const narrow = await page.locator('.view').evaluate((el) => el.getBoundingClientRect().width);
+	expect(wide, 'board-visningen er ikke bredere end listen').toBeGreaterThan(narrow);
+	await page.getByRole('button', { name: 'Board', exact: true }).click();
 	await page.getByRole('button', { name: '+ Tilføj sektion' }).click();
 	const field = page.getByLabel('Ny sektion');
 	await expect(field, 'boardet har ingen måde at lave en sektion på').toBeVisible();

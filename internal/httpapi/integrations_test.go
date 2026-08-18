@@ -1172,7 +1172,7 @@ func TestTheGmailClientCanBeSetFromTheInterface(t *testing.T) {
 	}
 	// The single most likely thing to be wrong, so it is spelled out rather than
 	// left for somebody to reconstruct.
-	if empty["redirect_uri"] != "http://127.0.0.1/oauth/gmail/callback" {
+	if empty["redirect_uri"] != "http://localhost/oauth/gmail/callback" {
 		t.Errorf("redirect_uri = %v", empty["redirect_uri"])
 	}
 

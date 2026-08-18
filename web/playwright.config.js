@@ -34,6 +34,9 @@ if (process.env.TEST_WORKER_INDEX === undefined) {
 }
 
 const PORT = 8097;
+// `localhost`, not `127.0.0.1`. WebAuthn refuses an IP address as a relying party
+// id — `SecurityError: This is an invalid domain` — and localhost is the exception
+// every browser makes. The passkey test cannot run against a loopback address.
 const baseURL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
@@ -118,7 +121,15 @@ export default defineConfig({
 		stderr: 'pipe',
 		env: {
 			VERDANDE_ADDR: `:${PORT}`,
-			VERDANDE_BASE_URL: baseURL,
+			// `localhost`, while the suite itself drives `127.0.0.1`. These are two
+			// different things: the suite's address is where the browser goes, and
+			// this one is what the server calls itself — which is now also the
+			// WebAuthn relying party id, and WebAuthn refuses an IP address.
+			//
+			// The passkey test navigates to localhost explicitly so its origin
+			// matches. Everything else stays on the loopback address, where it has
+			// always been.
+			VERDANDE_BASE_URL: `http://localhost:${PORT}`,
 			VERDANDE_DATA_DIR: dataDir,
 			// Off: an update check would reach out to GitHub from a test run.
 			VERDANDE_UPDATE_CHECK: 'false'

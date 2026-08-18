@@ -613,5 +613,27 @@ export const da = {
 	'done.title': 'Færdige',
 	'done.hint': 'Alt du har lukket, nyeste først. Klik cirklen for at åbne en igen.',
 	'done.empty': 'Du har ikke lukket noget endnu.',
-	'done.unknownDay': 'Uden dato'
+	'done.unknownDay': 'Uden dato',
+
+	// --- passkeys ----------------------------------------------------------------------
+	'passkey.title': 'Passkeys',
+	'passkey.hint':
+		'En nøgle på en enhed i stedet for en hemmelighed i et hoved. Den private halvdel forlader aldrig enheden, og signaturen er bundet til adressen — så en overbevisende kopi af login-siden et andet sted får ingenting.',
+	'passkey.unsupported': 'Denne browser understøtter ikke passkeys.',
+	'passkey.none': 'Ingen nøgler endnu.',
+	'passkey.name': 'Navn på nøglen',
+	'passkey.namePlaceholder': 'fx min bærbare',
+	'passkey.add': 'Tilføj en nøgle',
+	'passkey.registering': 'Venter på enheden…',
+	'passkey.remove': 'Fjern',
+	'passkey.removeQuestion': 'Fjern "{name}"? Enheden kan ikke logge ind med den bagefter.',
+	'passkey.bothFactors': 'begge faktorer',
+	'passkey.possessionOnly': 'kun besiddelse — koden bliver stadig krævet',
+	'passkey.lastUsed': 'sidst brugt {when}',
+	'passkey.neverUsed': 'aldrig brugt',
+	'passkey.signIn': 'Log ind med en passkey',
+	'passkey.signingIn': 'Venter på enheden…',
+
+	'passkey.unavailable':
+		'Passkeys kan ikke bruges her — enten understøtter browseren dem ikke, eller også er serverens adresse en IP frem for et domænenavn, hvilket ingen authenticator accepterer.'
 };

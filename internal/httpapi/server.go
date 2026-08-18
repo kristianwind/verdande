@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/kristianwind/verdande/internal/auth"
 	"github.com/kristianwind/verdande/internal/config"
 	"github.com/kristianwind/verdande/internal/mail"
 	"github.com/kristianwind/verdande/internal/mcp"
@@ -38,6 +39,12 @@ type Server struct {
 	hub     *realtime.Hub
 	mcp     *mcp.Server
 	updates *update.Checker
+
+	// Nil when the base URL is not something an authenticator will accept — a bare
+	// hostname with no scheme, say. The endpoints answer 503 rather than the
+	// process refusing to start: passkeys are one way in among three, and an
+	// instance should not be unreachable because one of them cannot be offered.
+	passkeys *auth.WebAuthn
 
 	// Password guessing is the attack this application is actually exposed to, so
 	// the endpoints that check a secret are limited separately and more tightly
@@ -63,6 +70,11 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 		resetLimiter: newLimiter(5, time.Hour),
 	}
 	s.csp = contentSecurityPolicy(scriptHashes(web))
+	if w, err := auth.NewWebAuthn(cfg.BaseURL, "verdande"); err == nil {
+		s.passkeys = w
+	} else {
+		log.Warn("passkeys are unavailable", "err", err, "base_url", cfg.BaseURL)
+	}
 	s.mcp = s.buildMCP()
 	s.updates = update.New(Version, cfg.UpdateCheck)
 
@@ -132,6 +144,14 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			r.Method(http.MethodPost, "/password/reset",
 				s.rateLimit(s.resetLimiter, http.HandlerFunc(s.handleResetPassword)))
 
+			// Signing in with a passkey. Rate-limited like the password path: a
+			// signature cannot be guessed, but the endpoint can still be used to
+			// hammer the database.
+			r.Method(http.MethodPost, "/passkey/login/begin",
+				s.rateLimit(s.loginLimiter, http.HandlerFunc(s.handleBeginPasskeyLogin)))
+			r.Method(http.MethodPost, "/passkey/login/finish",
+				s.rateLimit(s.loginLimiter, http.HandlerFunc(s.handleFinishPasskeyLogin)))
+
 			// The second step of a login: a session that has passed the password
 			// but not yet the code, and can reach nothing else.
 			r.Group(func(r chi.Router) {
@@ -160,6 +180,15 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 					r.Use(s.requireSession)
 					r.Get("/sessions", s.handleListSessions)
 					r.Delete("/sessions/{sessionID}", s.handleDeleteSession)
+
+					// Registering a key, and the list of them. Sessions only, for
+					// the same reason: a leaked token must not be able to add its
+					// own way in — that would turn a theft into a tenancy.
+					r.Get("/passkeys", s.handleListPasskeys)
+					r.Post("/passkeys/register/begin", s.handleBeginPasskeyRegistration)
+					r.Post("/passkeys/register/finish", s.handleFinishPasskeyRegistration)
+					r.Patch("/passkeys/{passkeyID}", s.handleRenamePasskey)
+					r.Delete("/passkeys/{passkeyID}", s.handleDeletePasskey)
 				})
 			})
 		})

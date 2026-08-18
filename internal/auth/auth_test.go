@@ -280,3 +280,33 @@ func codeAt(t *testing.T, secret string, now time.Time) string {
 	}
 	return code
 }
+
+// The relying party is derived from the instance's own base URL, and the two ways
+// that goes wrong are both silent until a browser refuses.
+func TestPasskeysRefuseAnAddressNoBrowserWillAccept(t *testing.T) {
+	for _, c := range []struct {
+		base string
+		ok   bool
+		why  string
+	}{
+		{"https://verdande.example.dk", true, "a real domain"},
+		{"http://localhost:5173", true, "localhost, which every browser excepts"},
+		{"https://verdande.example.dk:8443", true, "a port is dropped from the RP ID"},
+
+		// An IP address is not a domain. The browser throws SecurityError long
+		// after the server has happily issued a challenge, so it is refused here
+		// and the endpoints answer 503 instead.
+		{"http://127.0.0.1:8080", false, "an IPv4 literal"},
+		{"http://[::1]:8080", false, "an IPv6 literal"},
+		{"", false, "no address at all"},
+		{"not a url", false, "not an address"},
+	} {
+		_, err := NewWebAuthn(c.base, "verdande")
+		if c.ok && err != nil {
+			t.Errorf("NewWebAuthn(%q) refused %s: %v", c.base, c.why, err)
+		}
+		if !c.ok && err == nil {
+			t.Errorf("NewWebAuthn(%q) accepted %s, which a browser will not", c.base, c.why)
+		}
+	}
+}

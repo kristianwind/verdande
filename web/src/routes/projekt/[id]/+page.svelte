@@ -402,7 +402,12 @@
 	}
 </script>
 
-<div class="view">
+<!-- Wide for a board and a month grid, narrow for a list. Decided here rather than
+     in CSS: this was `.view:has(.board)` for as long as the board has existed and
+     never once matched, because `.board` is inside a child component and Svelte
+     scopes a selector to the component that wrote it. The rule read correctly,
+     compiled, and could not fire. Kommende has done it this way all along. -->
+<div class="view" class:wide={mode !== 'list'}>
 	{#if project}
 		<header>
 			<!-- A heading first, a field second. Swapping the h1 out for an input
@@ -814,6 +819,12 @@
 		max-width: var(--content-max);
 		margin: 0 auto;
 		padding: var(--s6) var(--s4) var(--s8);
+	}
+
+	/* A board and a month grid need the room a reading column deliberately
+	   withholds. Same allowance Kommende makes. */
+	.view.wide {
+		max-width: 1400px;
 	}
 
 	/* A board and a month grid need the room; a list is easier to read narrow. */

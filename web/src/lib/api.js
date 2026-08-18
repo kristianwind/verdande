@@ -181,6 +181,15 @@ export const api = {
 	totpConfirm: (code) => post('/auth/totp/confirm', { code }),
 	totpDisable: (password) => post('/auth/totp/disable', { password }),
 	listSessions: () => get('/auth/sessions'),
+
+	// --- passkeys
+	listPasskeys: () => get('/auth/passkeys'),
+	beginPasskeyRegistration: () => post('/auth/passkeys/register/begin'),
+	finishPasskeyRegistration: (data) => post('/auth/passkeys/register/finish', data),
+	renamePasskey: (id, name) => patch(`/auth/passkeys/${id}`, { name }),
+	deletePasskey: (id) => del(`/auth/passkeys/${id}`),
+	beginPasskeyLogin: () => post('/auth/passkey/login/begin'),
+	finishPasskeyLogin: (data) => post('/auth/passkey/login/finish', data),
 	endSession: (id) => del(`/auth/sessions/${id}`),
 
 	// --- users, administrators only

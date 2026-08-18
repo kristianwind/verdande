@@ -608,5 +608,27 @@ export const en = {
 	'done.title': 'Done',
 	'done.hint': 'Everything you have closed, newest first. Click the circle to reopen one.',
 	'done.empty': 'You have not closed anything yet.',
-	'done.unknownDay': 'No date'
+	'done.unknownDay': 'No date',
+
+	// --- passkeys ----------------------------------------------------------------------
+	'passkey.title': 'Passkeys',
+	'passkey.hint':
+		'A key on a device instead of a secret in a head. The private half never leaves the device, and the signature is bound to the address that asked for it — so a convincing copy of the sign-in page somewhere else gets nothing.',
+	'passkey.unsupported': 'This browser does not support passkeys.',
+	'passkey.none': 'No keys yet.',
+	'passkey.name': 'Name for the key',
+	'passkey.namePlaceholder': 'e.g. my laptop',
+	'passkey.add': 'Add a key',
+	'passkey.registering': 'Waiting for the device…',
+	'passkey.remove': 'Remove',
+	'passkey.removeQuestion': 'Remove "{name}"? That device cannot sign in with it afterwards.',
+	'passkey.bothFactors': 'both factors',
+	'passkey.possessionOnly': 'possession only — the code is still required',
+	'passkey.lastUsed': 'last used {when}',
+	'passkey.neverUsed': 'never used',
+	'passkey.signIn': 'Sign in with a passkey',
+	'passkey.signingIn': 'Waiting for the device…',
+
+	'passkey.unavailable':
+		'Passkeys cannot be used here — either this browser does not support them, or the server’s address is an IP rather than a domain name, which no authenticator will accept.'
 };

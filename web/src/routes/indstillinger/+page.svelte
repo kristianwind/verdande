@@ -3,12 +3,67 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app, theme, THEMES } from '$lib/stores.svelte.js';
 	import { t, plural, i18n } from '$lib/i18n.svelte.js';
+	import { supported, register } from '$lib/passkey.js';
+	import { ago } from '$lib/when.js';
 
 	// --- profile ---------------------------------------------------------------
 
 	let name = $state('');
 	let timezone = $state('');
 	let locale = $state('da');
+
+	// --- passkeys -------------------------------------------------------------------
+
+	let passkeys = $state([]);
+	let passkeyName = $state('');
+	let passkeyError = $state('');
+	let registering = $state(false);
+	let passkeySupported = $state(true);
+
+	$effect(() => {
+		passkeySupported = supported();
+		if (!passkeySupported) return;
+		api
+			.listPasskeys()
+			.then((r) => {
+				passkeys = r.passkeys;
+				// The server has the other half of the answer: this browser can do
+				// passkeys, and this deployment may still be on an address no
+				// authenticator will accept.
+				passkeySupported = r.available;
+			})
+			.catch(() => {});
+	});
+
+	async function addPasskey(event) {
+		event.preventDefault();
+		passkeyError = '';
+		registering = true;
+		try {
+			passkeys = [...passkeys, await register(passkeyName.trim())];
+			passkeyName = '';
+		} catch (e) {
+			// A cancelled prompt is not a failure — the person changed their mind,
+			// and an error message for that reads as though something broke.
+			if (e?.name !== 'NotAllowedError' && e?.message !== 'cancelled') {
+				passkeyError = humanMessage(e);
+			}
+		} finally {
+			registering = false;
+		}
+	}
+
+	async function removePasskey(key) {
+		if (!confirm(t('passkey.removeQuestion', { name: key.name }))) return;
+		const previous = passkeys;
+		passkeys = passkeys.filter((k) => k.id !== key.id);
+		try {
+			await api.deletePasskey(key.id);
+		} catch (e) {
+			passkeys = previous;
+			app.toast(humanMessage(e));
+		}
+	}
 	let profileErrors = $state({});
 	let profileSaved = $state(false);
 	let savingProfile = $state(false);
@@ -187,16 +242,6 @@
 	 * older than a week gets its date instead: "for 23 dage siden" is a number
 	 * nobody can place.
 	 */
-	function ago(iso) {
-		const then = new Date(iso);
-		const seconds = Math.round((Date.now() - then) / 1000);
-
-		if (seconds < 60) return 'lige nu';
-		if (seconds < 3600) return `for ${Math.floor(seconds / 60)} min. siden`;
-		if (seconds < 86400) return `for ${Math.floor(seconds / 3600)} timer siden`;
-		if (seconds < 604800) return `for ${Math.floor(seconds / 86400)} dage siden`;
-		return then.toLocaleDateString('da-DK', { day: 'numeric', month: 'short', year: 'numeric' });
-	}
 </script>
 
 <section class="panel">
@@ -410,6 +455,47 @@
 		<div class="row">
 			<button class="primary" onclick={beginTOTP}>{t('account.totpOn')}</button>
 		</div>
+	{/if}
+</section>
+
+<!-- Between two-factor and the device list, because it belongs to both: a passkey
+     is a way in, and it is a thing on a device you might later want to revoke. -->
+<section class="panel">
+	<header>
+		<h2>{t('passkey.title')}</h2>
+		<p class="hint">{t('passkey.hint')}</p>
+	</header>
+
+	{#if !passkeySupported}
+		<p class="hint">{t('passkey.unavailable')}</p>
+	{:else}
+		{#if passkeys.length}
+			<ul class="list">
+				{#each passkeys as key (key.id)}
+					<li>
+						<div class="what">
+							<span class="primary-line">{key.name}</span>
+							<span class="secondary">
+								{key.user_verified ? t('passkey.bothFactors') : t('passkey.possessionOnly')}
+								·
+								{key.last_used_at ? t('passkey.lastUsed', { when: ago(key.last_used_at) }) : t('passkey.neverUsed')}
+							</span>
+						</div>
+						<button class="secondary" onclick={() => removePasskey(key)}>{t('passkey.remove')}</button>
+					</li>
+				{/each}
+			</ul>
+		{:else}
+			<p class="empty">{t('passkey.none')}</p>
+		{/if}
+
+		<form class="row" onsubmit={addPasskey}>
+			<input bind:value={passkeyName} placeholder={t('passkey.namePlaceholder')} aria-label={t('passkey.name')} />
+			<button class="primary" type="submit" disabled={registering}>
+				{registering ? t('passkey.registering') : t('passkey.add')}
+			</button>
+		</form>
+		{#if passkeyError}<p class="error">{passkeyError}</p>{/if}
 	{/if}
 </section>
 
