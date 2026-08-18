@@ -1814,3 +1814,35 @@ test('man kan skrive hvor som helst, og feltet fortæller hvad det forstår', as
 
 	expect(trouble).toEqual([]);
 });
+
+test('en postkasse kan tilføjes, og værtens afvisning når frem til skærmen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/indstillinger/integrationer');
+
+	await expect(page.getByRole('heading', { name: 'Postkasser' })).toBeVisible();
+	await page.getByRole('button', { name: 'Tilføj en postkasse' }).click();
+
+	// Nothing is listening there, so the dial fails at once. The point is not the
+	// failure but where it is reported: the server tests the connection before it
+	// saves, so this is refused at the door rather than accepted and then silently
+	// failing every ten minutes.
+	await page.getByLabel('IMAP-server').fill('127.0.0.1:1');
+	await page.getByLabel('Brugernavn').fill('kw');
+	await page.getByLabel('App-kodeord').fill('hemmelig');
+	// `exact`, because "Forbind" is a prefix of "Forbind Gmail" one panel up and
+	// Playwright matches an accessible name by substring unless told otherwise.
+	await page.getByRole('button', { name: 'Forbind', exact: true }).click();
+
+	// The host's own words, not "noget gik galt". This is the whole reason
+	// upstream refusals are answered as 422: a proxy may replace the body of a 5xx,
+	// and then the person is told nothing.
+	await expect(page.getByText(/Postkassen svarede/)).toBeVisible();
+
+	// And nothing was saved on the way past.
+	await page.reload();
+	await expect(page.getByText('127.0.0.1:1')).toBeHidden();
+
+	// The 422 above is the point of the test, not a symptom. Everything else the
+	// watcher caught still has to be empty.
+	expect(trouble.filter((t) => !t.includes('/mailboxes → 422'))).toEqual([]);
+});

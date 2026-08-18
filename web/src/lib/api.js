@@ -58,6 +58,9 @@ const MESSAGES = {
 	// The fallback for when Gmail refused and said nothing usable. When it did say
 	// something, `humanMessage` quotes it instead — see below.
 	gmail_failed: 'error.gmailRefused',
+	// Same shape for a mailbox read over IMAP: quoted when the host said something,
+	// this when it did not.
+	mailbox_failed: 'error.mailboxRefused',
 	last_admin: 'error.lastAdmin'
 };
 
@@ -75,6 +78,9 @@ export function humanMessage(err) {
 	// authentication scopes" — and a generic sentence in their place throws away
 	// the only thing that says what to do. Wrapped so it reads as a quotation
 	// rather than as a stray English string in a Danish interface.
+	if (err.code === 'mailbox_failed' && err.message) {
+		return t('error.mailboxSaid', { what: err.message });
+	}
 	if (err.code === 'gmail_failed' && err.message) {
 		return t('error.gmailSaid', { what: err.message });
 	}
@@ -353,6 +359,13 @@ export const api = {
 	disconnectGmail: () => del('/gmail'),
 	authorizeGmail: () => post('/gmail/authorize'),
 	syncGmail: () => post('/gmail/sync'),
+
+	// Mailboxes read over IMAP. Each belongs to the person who connected it, so
+	// there is no instance-wide registration behind these the way Gmail has one.
+	mailboxes: () => get('/mailboxes'),
+	addMailbox: (body) => post('/mailboxes', body),
+	deleteMailbox: (id) => del(`/mailboxes/${id}`),
+	syncMailbox: (id) => post(`/mailboxes/${id}/sync`),
 
 	getAISettings: () => get('/ai/settings'),
 	setAISettings: (data) => put('/ai/settings', data),

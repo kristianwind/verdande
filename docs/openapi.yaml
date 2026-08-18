@@ -2477,6 +2477,86 @@ paths:
                   created: { type: integer }
         "502": { $ref: "#/components/responses/Upstream" }
 
+  /api/v1/mailboxes:
+    get:
+      tags: [integrations]
+      summary: The mailboxes this person has connected.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mailboxes:
+                    type: array
+                    items: { $ref: "#/components/schemas/Mailbox" }
+    post:
+      tags: [integrations]
+      summary: Connect a mailbox over IMAP.
+      description: >
+        The connection is tested before it is saved, so a mailbox that cannot be
+        read is refused here rather than failing quietly every ten minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [host, username, password]
+              properties:
+                name: { type: string }
+                host: { type: string, example: "imap.mail.me.com:993" }
+                username: { type: string }
+                password: { type: string, description: "An app-specific password on every host worth naming. Stored sealed." }
+                folder: { type: string, default: INBOX }
+      responses:
+        "201":
+          description: Connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Mailbox" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: That mailbox is already connected }
+        "422": { $ref: "#/components/responses/Upstream" }
+
+  /api/v1/mailboxes/{mailboxID}:
+    delete:
+      tags: [integrations]
+      summary: Disconnect a mailbox. The tasks it made stay.
+      parameters:
+        - name: mailboxID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Disconnected }
+
+  /api/v1/mailboxes/{mailboxID}/sync:
+    post:
+      tags: [integrations]
+      summary: Read one mailbox now.
+      parameters:
+        - name: mailboxID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created: { type: integer }
+                  partial:
+                    type: boolean
+                    description: The run hit its time budget. What it made is kept.
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Upstream" }
+
   /api/v1/ai/settings:
     get:
       tags: [integrations]
@@ -3082,6 +3162,20 @@ components:
                 items: { type: string }
 
   schemas:
+    Mailbox:
+      type: object
+      description: One connected mailbox. The password and any token are never returned.
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [gmail, imap] }
+        name: { type: string }
+        host: { type: string }
+        username: { type: string }
+        folder: { type: string }
+        last_uid: { type: integer }
+        last_sync_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+
     Error:
       type: object
       description: |

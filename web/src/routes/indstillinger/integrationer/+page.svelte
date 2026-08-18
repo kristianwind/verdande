@@ -182,6 +182,73 @@
 			app.toast(t('int.copyFailed'));
 		}
 	}
+
+	// --- mailboxes ----------------------------------------------------------------
+
+	let mailboxes = $state([]);
+	let addingMailbox = $state(false);
+	let connecting = $state(false);
+	let syncingId = $state(null);
+	let newMailbox = $state({ host: '', username: '', password: '' });
+
+	$effect(() => {
+		loadMailboxes();
+	});
+
+	async function loadMailboxes() {
+		try {
+			mailboxes = (await api.mailboxes()).mailboxes ?? [];
+		} catch {
+			// A settings page that will not render because one panel could not load
+			// is worse than a panel that is empty.
+			mailboxes = [];
+		}
+	}
+
+	async function addMailbox(event) {
+		event.preventDefault();
+		connecting = true;
+		try {
+			// The server dials before it saves, so an error here is the host's own
+			// refusal — a wrong app password, a host that is not listening.
+			await api.addMailbox({ ...newMailbox });
+			newMailbox = { host: '', username: '', password: '' };
+			addingMailbox = false;
+			await loadMailboxes();
+			app.toast(t('int.mailboxConnected'));
+		} catch (e) {
+			app.toast(humanMessage(e));
+		} finally {
+			connecting = false;
+		}
+	}
+
+	async function syncMailbox(box) {
+		syncingId = box.id;
+		try {
+			const result = await api.syncMailbox(box.id);
+			app.toast(
+				result?.created
+					? plural(result.created, 'int.gmailFetchedOne', 'int.gmailFetchedMany')
+					: t('int.gmailNothingNew')
+			);
+			await loadMailboxes();
+		} catch (e) {
+			app.toast(humanMessage(e));
+		} finally {
+			syncingId = null;
+		}
+	}
+
+	async function removeMailbox(box) {
+		if (!confirm(t('int.disconnectMailbox', { name: box.name }))) return;
+		try {
+			await api.deleteMailbox(box.id);
+			await loadMailboxes();
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
 </script>
 
 <section class="panel">
@@ -350,6 +417,66 @@
 			{t('int.caldavAuth')}
 		</p>
 	</div>
+</section>
+
+<!-- Mailboxes read over IMAP: iCloud, Fastmail, any ordinary host. Its own panel
+     rather than a second mode inside the Gmail one, because they are not the same
+     thing wearing different clothes — one is an app you sign in through, the other
+     is a password you hold. -->
+<section class="panel">
+	<header>
+		<h2>{t('int.mailboxes')}</h2>
+		<p class="hint">{t('int.mailboxesHint')}</p>
+	</header>
+
+	{#if mailboxes.length}
+		<ul class="mailboxes">
+			{#each mailboxes as box (box.id)}
+				<li>
+					<div class="what">
+						<strong>{box.name}</strong>
+						<span class="hint">{box.username} · {box.host}</span>
+					</div>
+					<button class="ghost" onclick={() => syncMailbox(box)} disabled={syncingId === box.id}>
+						{syncingId === box.id ? t('int.fetching') : t('int.fetchNow')}
+					</button>
+					<button class="ghost remove" onclick={() => removeMailbox(box)}>
+						{t('int.disconnect')}
+					</button>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+
+	{#if addingMailbox}
+		<form class="add-mailbox" onsubmit={addMailbox}>
+			<div class="field">
+				<label for="mb-host">{t('int.host')}</label>
+				<input id="mb-host" bind:value={newMailbox.host} placeholder="imap.mail.me.com:993" />
+			</div>
+			<div class="field">
+				<label for="mb-user">{t('int.username')}</label>
+				<input id="mb-user" bind:value={newMailbox.username} autocomplete="off" />
+			</div>
+			<div class="field">
+				<label for="mb-pass">{t('int.appPassword')}</label>
+				<input id="mb-pass" type="password" bind:value={newMailbox.password} autocomplete="off" />
+				<p class="hint">{t('int.appPasswordHint')}</p>
+			</div>
+			<div class="row">
+				<button type="submit" class="primary" disabled={connecting}>
+					{connecting ? t('int.connecting') : t('int.connect')}
+				</button>
+				<button type="button" class="ghost" onclick={() => (addingMailbox = false)}>
+					{t('account.cancel')}
+				</button>
+			</div>
+		</form>
+	{:else}
+		<div class="row">
+			<button class="ghost" onclick={() => (addingMailbox = true)}>{t('int.addMailbox')}</button>
+		</div>
+	{/if}
 </section>
 
 <style>

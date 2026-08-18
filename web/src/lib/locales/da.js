@@ -459,6 +459,22 @@ export const da = {
 	'detail.attachFile': 'Vedhæft en fil',
 
 	// --- settings: integrations --------------------------------------------------------
+	'int.mailboxes': 'Postkasser',
+	'int.mailboxesHint':
+		'Flag en mail i iCloud, Fastmail eller enhver anden udbyder, og den bliver en opgave. Én vej: fjerner du flaget, sker der ikke noget med opgaven. Office 365 kan ikke bruges her — Microsoft har lukket for kodeord på IMAP.',
+	'int.addMailbox': 'Tilføj en postkasse',
+	'int.host': 'IMAP-server',
+	'int.username': 'Brugernavn',
+	'int.appPassword': 'App-kodeord',
+	'int.appPasswordHint':
+		'Ikke dit almindelige kodeord. iCloud og de fleste andre laver et særskilt et til programmer, som du kan trække tilbage alene. Det gemmes krypteret.',
+	'int.connect': 'Forbind',
+	'int.connecting': 'Forbinder …',
+	'int.disconnect': 'Kobl fra',
+	'int.disconnectMailbox': 'Kobl {name} fra? Opgaverne, den har lavet, bliver.',
+	'int.mailboxConnected': 'Postkassen er forbundet.',
+	'int.fetchNow': 'Hent nu',
+	'int.fetching': 'Henter …',
 	'int.gmail': 'Gmail',
 	'int.gmailHint':
 		'Stjernemarkér en mail, eller giv den en etiket, og den bliver en opgave. Envejs: at fjerne stjernen gør ikke noget ved opgaven.',
@@ -663,6 +679,8 @@ export const da = {
 
 	'error.gmailSaid': 'Gmail svarede: {what}',
 
+	'error.mailboxRefused': 'Postkassen kunne ikke læses.',
+	'error.mailboxSaid': 'Postkassen svarede: {what}',
 	'error.gmailRefused': 'Gmail afviste kaldet. Prøv at forbinde postkassen igen.',
 
 	'int.newAddressQuestion': 'Ny adresse? Mail til den gamle bliver afvist.',

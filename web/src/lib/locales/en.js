@@ -455,6 +455,22 @@ export const en = {
 	'detail.attachFile': 'Attach a file',
 
 	// --- settings: integrations --------------------------------------------------------
+	'int.mailboxes': 'Mailboxes',
+	'int.mailboxesHint':
+		'Flag an email in iCloud, Fastmail or any other provider and it becomes a task. One way: removing the flag does nothing to the task. Office 365 cannot be used here — Microsoft has closed IMAP to passwords.',
+	'int.addMailbox': 'Add a mailbox',
+	'int.host': 'IMAP server',
+	'int.username': 'Username',
+	'int.appPassword': 'App password',
+	'int.appPasswordHint':
+		'Not your ordinary password. iCloud and most others issue a separate one for applications, which you can withdraw on its own. It is stored encrypted.',
+	'int.connect': 'Connect',
+	'int.connecting': 'Connecting …',
+	'int.disconnect': 'Disconnect',
+	'int.disconnectMailbox': 'Disconnect {name}? The tasks it made will stay.',
+	'int.mailboxConnected': 'The mailbox is connected.',
+	'int.fetchNow': 'Fetch now',
+	'int.fetching': 'Fetching …',
 	'int.gmail': 'Gmail',
 	'int.gmailHint':
 		'Star an email, or give it a label, and it becomes a task. One way: removing the star does nothing to the task.',
@@ -658,6 +674,8 @@ export const en = {
 
 	'error.gmailSaid': 'Gmail said: {what}',
 
+	'error.mailboxRefused': 'The mailbox could not be read.',
+	'error.mailboxSaid': 'The mailbox answered: {what}',
 	'error.gmailRefused': 'Gmail refused the call. Try connecting the mailbox again.',
 
 	'int.newAddressQuestion': 'A new address? Mail to the old one is refused.',
