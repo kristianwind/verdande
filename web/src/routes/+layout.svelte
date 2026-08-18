@@ -29,16 +29,31 @@
 	});
 
 	/**
-	 * Global shortcuts, mapped the way Todoist maps them so muscle memory carries
-	 * over. They are ignored while a text field has focus — otherwise typing "t"
-	 * in a task title would navigate away mid-sentence.
+	 * Global keys.
+	 *
+	 * Typing anywhere starts a task, with the letter already in the field. That is
+	 * the whole gesture: no button to hit first, no shortcut to remember, and the
+	 * thought you had while looking at a list does not have to survive a journey to
+	 * find somewhere to put it.
+	 *
+	 * It costs the single-letter navigation. "t" for today and "u" for upcoming
+	 * cannot also be the first letter of "tal med Anders" — one keyboard cannot
+	 * serve both, and capturing is the thing done fifty times a day. Navigation
+	 * lives in the palette, which does more and is one keystroke away.
+	 *
+	 * Ignored while a field already has focus, while a task is open — the drawer is
+	 * a place you are, not one you pass through — and for anything held with a
+	 * modifier, which belongs to the browser and the system.
 	 */
 	function onkeydown(event) {
 		const el = event.target;
-		const typing =
-			el instanceof HTMLInputElement ||
-			el instanceof HTMLTextAreaElement ||
-			el?.isContentEditable;
+		// Only when nothing has focus. The first version asked the narrower question
+		// — "is this a text field?" — and so captured a letter typed at a focused
+		// select, button or link, which is where that letter belongs. A key pressed
+		// at something is meant for it; only a key pressed at the page itself is
+		// spare.
+		const idle = el === document.body || el === document.documentElement;
+		const typing = !idle;
 
 		if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
 			event.preventDefault();
@@ -46,25 +61,24 @@
 			return;
 		}
 		if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
-		// The navigation shortcuts are for the list. With a task open, "t" means the
-		// letter t — the drawer is a place you are, not a place you pass through.
 		if (app.detailId) return;
 
-		switch (event.key) {
-			case 'q':
-				event.preventDefault();
-				document.querySelector('input[aria-label="Ny opgave"]')?.focus();
-				break;
-			case 't':
-				goto('/');
-				break;
-			case 'u':
-				goto('/upcoming');
-				break;
-			case '?':
-				goto('/genveje');
-				break;
-		}
+		// One character, so Tab, Escape, the arrows and the function keys stay
+		// themselves. Space is excluded too: a task that begins with a space begins
+		// with a mis-hit, and space is what people press to scroll a long list.
+		if (event.key.length !== 1 || event.key === ' ') return;
+
+		// Found by a marker rather than by its label. This used to look the field up
+		// by aria-label="Ny opgave", which meant the shortcut quietly did nothing for
+		// anybody running the interface in English.
+		const field = document.querySelector('[data-quickadd]');
+		if (!field) return;
+
+		event.preventDefault();
+		field.focus();
+		field.value += event.key;
+		// Svelte binds on input, and setting .value in script does not raise one.
+		field.dispatchEvent(new Event('input', { bubbles: true }));
 	}
 </script>
 

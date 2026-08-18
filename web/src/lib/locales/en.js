@@ -53,6 +53,12 @@ export const en = {
 	// --- a task in a list ----------------------------------------------------------
 	'task.add': 'Add',
 	'task.new': 'New task',
+	'task.syntaxProject': 'project',
+	'task.syntaxSection': 'section',
+	'task.syntaxLabel': 'label',
+	'task.syntaxPriority': 'priority',
+	'task.syntaxDateMark': 'tomorrow at 10',
+	'task.syntaxDate': 'due',
 	'task.placeholder': 'Add a task — try “pay VAT tomorrow at 10 p1 #Company”',
 	'task.complete': 'Mark as done',
 	'task.reopen': 'Reopen task',
@@ -366,6 +372,8 @@ export const en = {
 	'data.templatesHint':
 		'A project saved as a shape you can use again. The dates in a template are relative, so they are worked out from the start date you pick.',
 
+	'keys.anyLetter': 'any letter',
+	'keys.typeToCapture': 'starts a task, with the letter already in the field',
 	'keys.navigation': 'Navigation',
 	'keys.jumpToQuickAdd': 'Jump to the “add a task” field',
 	'keys.thisPage': 'This page',

@@ -21,6 +21,19 @@
 	let spans = $state([]);
 	let submitting = $state(false);
 	let input;
+	let focused = $state(false);
+
+	// Kept beside the parser's own vocabulary on purpose: a legend that promises
+	// something internal/quickadd cannot read is worse than no legend. These four
+	// are what Parse recognises as marks; dates it reads as prose, which is why the
+	// last entry is an example rather than a symbol.
+	let syntax = $derived([
+		{ mark: '#', what: t('task.syntaxProject') },
+		{ mark: '/', what: t('task.syntaxSection') },
+		{ mark: '@', what: t('task.syntaxLabel') },
+		{ mark: 'p1', what: t('task.syntaxPriority') },
+		{ mark: t('task.syntaxDateMark'), what: t('task.syntaxDate') }
+	]);
 
 	let previewController = null;
 	let previewTimer = null;
@@ -143,7 +156,10 @@
 			bind:this={input}
 			bind:value={text}
 			{onkeydown}
+			onfocus={() => (focused = true)}
+			onblur={() => (focused = false)}
 			type="text"
+			data-quickadd
 			placeholder={t('task.placeholder')}
 			aria-label={t('task.new')}
 			autocomplete="off"
@@ -154,10 +170,52 @@
 	{#if text.trim()}
 		<button type="submit" class="submit" disabled={submitting}>{t('task.add')}</button>
 	{/if}
+
+	<!-- What the parser understands, spelled out while somebody is typing into it.
+	     It was in the placeholder before, which is the one place a hint cannot be:
+	     the placeholder disappears at the first keystroke, so the help was gone
+	     exactly when it started being useful.
+
+	     Floated rather than in the flow. In the flow it pushed the whole list down
+	     the moment the field took focus, and a click aimed at the first task landed
+	     on the second — twelve tests caught it, which is twelve more than the eye
+	     would have. -->
+	{#if focused}
+		<p class="syntax">
+			{#each syntax as item}
+				<span><kbd>{item.mark}</kbd> {item.what}</span>
+			{/each}
+		</p>
+	{/if}
 </form>
 
 <style>
+	/* Sits under the field it explains, in the same rhythm as a hint anywhere else. */
+	.syntax {
+		/* Nothing to click, and it floats over the first task in the list — which it
+		   promptly swallowed the clicks of. Legends are for reading. */
+		pointer-events: none;
+		position: absolute;
+		top: 100%;
+		left: 0;
+		right: 0;
+		z-index: 2;
+		background: var(--surface);
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--s1) var(--s3);
+		padding: var(--s1) 0 0 var(--s4);
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+	}
+
+	.syntax kbd {
+		font-family: var(--mono, ui-monospace, monospace);
+		color: var(--ink-muted);
+	}
+
 	.quickadd {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: var(--s3);

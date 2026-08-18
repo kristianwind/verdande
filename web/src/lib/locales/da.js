@@ -57,6 +57,12 @@ export const da = {
 	// --- a task in a list ----------------------------------------------------------
 	'task.add': 'Tilføj',
 	'task.new': 'Ny opgave',
+	'task.syntaxProject': 'projekt',
+	'task.syntaxSection': 'sektion',
+	'task.syntaxLabel': 'etiket',
+	'task.syntaxPriority': 'prioritet',
+	'task.syntaxDateMark': 'i morgen kl 10',
+	'task.syntaxDate': 'forfalder',
 	'task.placeholder': 'Tilføj en opgave — prøv “betal moms i morgen kl 10 p1 #Firma”',
 	'task.complete': 'Markér som færdig',
 	'task.reopen': 'Genåbn opgave',
@@ -371,6 +377,8 @@ export const da = {
 	'data.templatesHint':
 		'Et projekt gemt som en form, der kan bruges igen. Datoerne i skabelonen er relative, så de bliver regnet ud fra den startdato, du vælger.',
 
+	'keys.anyLetter': 'et bogstav',
+	'keys.typeToCapture': 'begynder en opgave, med bogstavet i feltet',
 	'keys.navigation': 'Navigation',
 	'keys.jumpToQuickAdd': 'Hop til feltet “tilføj opgave”',
 	'keys.thisPage': 'Denne side',

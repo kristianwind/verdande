@@ -1768,3 +1768,49 @@ test('MCP-adressen svarer JSON, ikke app-skallen', async ({ request }) => {
 	expect(response.headers()['content-type']).toContain('application/json');
 	expect((await response.json()).code).toBe('unauthorized');
 });
+
+test('man kan skrive hvor som helst, og feltet fortæller hvad det forstår', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	// Nothing focused, nothing clicked: just type. The thought does not have to
+	// survive a journey to find somewhere to put it.
+	await page.locator('body').click({ position: { x: 5, y: 5 } });
+	// "i dag" because this is the Today view: a task parsed onto no date at all is
+	// correctly absent from it, which would read as the capture having failed.
+	await page.keyboard.type('ring til Anders i dag');
+
+	const field = page.locator('[data-quickadd]');
+	await expect(field).toBeFocused();
+	// Every letter arrives, including the first — which is the one a naive
+	// implementation drops while it is busy moving focus.
+	await expect(field).toHaveValue('ring til Anders i dag');
+
+	// And the legend appears with the field, saying what the parser can read. It
+	// used to live in the placeholder, which vanishes at the first keystroke —
+	// exactly when the help starts being useful.
+	await expect(page.getByText('projekt', { exact: false }).first()).toBeVisible();
+
+	await page.keyboard.press('Enter');
+	await expect(page.getByText('ring til Anders', { exact: true })).toBeVisible();
+
+	// In English too. The shortcut used to find the field by its Danish label, so
+	// it silently did nothing for anybody running the interface in English.
+	await page.goto('/indstillinger');
+	await page.getByLabel('Sprog').selectOption('en');
+	await page.getByRole('button', { name: 'Gem' }).first().click();
+	await page.goto('/');
+	await page.locator('body').click({ position: { x: 5, y: 5 } });
+	await page.keyboard.type('call Anders');
+	await expect(page.locator('[data-quickadd]')).toHaveValue('call Anders');
+
+	// Back to Danish. The account is shared with every test after this one, and
+	// leaving it in English made three of them hunt for buttons by names that no
+	// longer existed — a failure that looks like the feature under test and is not.
+	await page.goto('/indstillinger');
+	await page.getByLabel('Language').selectOption('da');
+	await page.getByRole('button', { name: 'Save' }).first().click();
+	await expect(page.getByRole('button', { name: 'Gem' }).first()).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});

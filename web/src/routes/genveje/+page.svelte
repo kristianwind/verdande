@@ -1,16 +1,20 @@
 <script>
-	/** The shortcuts, listed. Mapped to Todoist's so muscle memory carries over. */
+	/**
+	 * The shortcuts, listed.
+	 *
+	 * The single-letter navigation this page used to carry — q, t, u — is gone.
+	 * Typing anywhere now starts a task, and one keyboard cannot both spell "tal
+	 * med Anders" and jump to Today on the same "t". Navigation moved into the
+	 * palette, which does more and costs one keystroke.
+	 */
 	import { t } from '$lib/i18n.svelte.js';
 
 	const groups = $derived([
 		{
 			title: t('keys.navigation'),
 			keys: [
-				['q', t('keys.jumpToQuickAdd')],
-				['t', t('nav.today')],
-				['u', t('nav.upcoming')],
-				['⌘K / Ctrl+K', t('nav.search')],
-				['?', t('keys.thisPage')]
+				[t('keys.anyLetter'), t('keys.typeToCapture')],
+				['⌘K / Ctrl+K', t('nav.search')]
 			]
 		},
 		{
