@@ -89,6 +89,55 @@
 
 	let version = $state(null);
 
+	// --- restarting from here ---------------------------------------------------
+
+	let panel = $state(null);
+	let restarting = $state(false);
+	let restartNote = $state('');
+
+	$effect(() => {
+		api
+			.panelStatus()
+			.then((p) => (panel = p))
+			.catch(() => {});
+	});
+
+	/**
+	 * Asks the panel to recreate this container, then waits for it to come back.
+	 *
+	 * The reply may never arrive — the panel stops this container as part of
+	 * answering — so the answer is not believed either way. `/healthz` is polled
+	 * until it responds, which is the only thing that actually says "it is up".
+	 */
+	async function restart() {
+		if (!confirm(t('update.restartQuestion'))) return;
+		restarting = true;
+		restartNote = t('update.asking');
+		try {
+			await api.restartFromPanel();
+		} catch (e) {
+			// A request cut off mid-flight is the successful case wearing a
+			// failure's clothes. The poll below decides.
+			restartNote = humanMessage(e);
+		}
+
+		restartNote = t('update.waiting');
+		for (let i = 0; i < 60; i++) {
+			await new Promise((r) => setTimeout(r, 2000));
+			try {
+				const response = await fetch('/healthz', { cache: 'no-store' });
+				if (response.ok) {
+					location.reload();
+					return;
+				}
+			} catch {
+				// Still down, which is expected for the first few seconds.
+			}
+		}
+		restarting = false;
+		restartNote = t('update.stillDown');
+	}
+
 	$effect(() => {
 		api.version().then((v) => (version = v)).catch(() => {});
 	});
@@ -181,6 +230,20 @@
 				{t('push.upToDate')}
 			{/if}
 		</p>
+
+		<!-- Restarting is what makes a new version arrive: a container cannot replace
+		     its own image, and the panel pulls `:latest` when it recreates one. The
+		     button is here rather than in another browser tab. -->
+		{#if panel?.configured}
+			<div class="row">
+				<button class="secondary" onclick={restart} disabled={restarting}>
+					{restarting ? t('update.restarting') : t('update.restart')}
+				</button>
+				{#if restartNote}<span class="saved">{restartNote}</span>{/if}
+			</div>
+		{:else if panel}
+			<p class="hint">{t('update.notConfigured', { missing: panel.missing.join(', ') })}</p>
+		{/if}
 
 		{#if version.update_available}
 			{#if version.notes}

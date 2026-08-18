@@ -630,5 +630,16 @@ export const en = {
 	'passkey.signingIn': 'Waiting for the device…',
 
 	'passkey.unavailable':
-		'Passkeys cannot be used here — either this browser does not support them, or the server’s address is an IP rather than a domain name, which no authenticator will accept.'
+		'Passkeys cannot be used here — either this browser does not support them, or the server’s address is an IP rather than a domain name, which no authenticator will accept.',
+
+	// --- restarting from the interface ---------------------------------------------
+	'update.restart': 'Restart and pull the latest version',
+	'update.restarting': 'Restarting…',
+	'update.restartQuestion':
+		'Restart now? The server is down for about half a minute, and pulls the newest version on the way back up.',
+	'update.asking': 'Asking the panel to restart…',
+	'update.waiting': 'Waiting for the server to come back…',
+	'update.stillDown': 'The server has not come back yet. Have a look in the panel.',
+	'update.notConfigured':
+		'This instance cannot restart itself: {missing} are not set. A container cannot replace its own image — the panel does the work, and this is only the way to ask.'
 };

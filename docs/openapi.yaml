@@ -1337,6 +1337,67 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/panel:
+    get:
+      tags: [auth]
+      summary: Whether this instance can restart itself. Administrators only.
+      description: |
+        A container cannot replace its own image from the inside, so "update" is
+        really "ask whoever owns the container to recreate it" — Yggdrasil pulls
+        `:latest` on the way, which is what makes a restart an update at all.
+
+        This says whether the three settings are present. The token is never sent:
+        the page needs to know whether the button can work, not what the credential
+        is. When it cannot, the missing variables are named — an operator reading
+        "not configured" should not have to go and find out which of three.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured: { type: boolean }
+                  panel_url: { type: string }
+                  missing:
+                    type: array
+                    items: { type: string }
+                    description: The environment variables that are not set.
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/panel/restart:
+    post:
+      tags: [auth]
+      summary: Ask the panel to recreate this container. Administrators only.
+      description: |
+        The panel does the work and records who asked; this removes the second
+        browser tab, not the panel's authority.
+
+        Answers 202 rather than waiting: the panel stops this container as part of
+        answering, so the reply may never arrive. A request cut off mid-flight is
+        the successful case wearing a failure's clothes — the interface polls
+        `/healthz` rather than believing either answer.
+
+        Sessions only, like the rest of this group. A leaked API token that could
+        restart the server is a denial of service in one request.
+      responses:
+        "202":
+          description: The panel accepted, or was already restarting this container.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restarting: { type: boolean }
+                  note: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "502":
+          description: |
+            The panel refused. Usually a token without control of this server.
+        "503":
+          description: The three settings are not all present.
+
   /api/v1/errors:
     get:
       tags: [auth]

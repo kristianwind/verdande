@@ -347,6 +347,11 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			r.Group(func(r chi.Router) {
 				r.Use(s.requireSession, s.requireAdmin)
 				r.Get("/errors", s.handleListErrors)
+				// Restarting this instance from its own interface. The panel does
+				// the work — a container cannot replace its own image — and pulls
+				// `:latest` on the way, which is what makes a restart an update.
+				r.Get("/panel", s.handlePanelStatus)
+				r.Post("/panel/restart", s.handleRestartFromPanel)
 				// A backup file is a complete copy of the database, so this whole
 				// group is sessions-only as well as administrators-only: a leaked
 				// token must not be able to download everybody's data.

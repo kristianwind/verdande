@@ -199,6 +199,8 @@ export const api = {
 	deleteUser: (id) => del(`/users/${id}`),
 	revokeInvite: (id) => del(`/invites/${id}`),
 	listErrors: () => get('/errors'),
+	panelStatus: () => get('/panel'),
+	restartFromPanel: () => post('/panel/restart'),
 
 	// The nightly backup, which ran since the beginning with nothing to show it.
 	// The OAuth client itself, which is the instance's registration with Google

@@ -38,6 +38,22 @@ type Config struct {
 	// the deal its operator made by self-hosting.
 	UpdateCheck bool
 
+	// The Yggdrasil panel this instance runs under, so it can ask to be restarted
+	// from its own interface rather than from another browser tab.
+	//
+	// A container cannot replace its own image from the inside. Restarting is the
+	// panel's job — it recreates the container and pulls `:latest` on the way — so
+	// what this needs is a way to ask. All three are required together; any one
+	// alone cannot do anything.
+	//
+	// The token is a panel credential with control over that server. Anybody who
+	// can read this environment can restart it, which is true of anybody with the
+	// host anyway. It is never sent to a browser: the settings page is told only
+	// whether it is set.
+	PanelURL      string
+	PanelToken    string
+	PanelServerID string
+
 	// TrashRetention is how long a soft-deleted task or project stays recoverable.
 	TrashRetention time.Duration
 
@@ -69,6 +85,9 @@ func Load() (*Config, error) {
 		Dev:            envBool("VERDANDE_DEV", false),
 
 		GmailClientID:     env("VERDANDE_GMAIL_CLIENT_ID", ""),
+		PanelURL:          strings.TrimSuffix(env("VERDANDE_PANEL_URL", ""), "/"),
+		PanelToken:        env("VERDANDE_PANEL_TOKEN", ""),
+		PanelServerID:     env("VERDANDE_PANEL_SERVER_ID", ""),
 		GmailClientSecret: env("VERDANDE_GMAIL_CLIENT_SECRET", ""),
 		UpdateCheck:       envBool("VERDANDE_UPDATE_CHECK", false),
 	}

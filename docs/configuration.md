@@ -60,6 +60,18 @@ own mailbox from **Settings → Gmail**. The redirect URI is derived from
 | Variable | Default | What it does |
 |---|---|---|
 | `VERDANDE_UPDATE_CHECK` | `false` | Ask GitHub whether a newer release exists. |
+| `VERDANDE_PANEL_URL` | — | The Yggdrasil panel this instance runs under. |
+| `VERDANDE_PANEL_TOKEN` | — | An API token from that panel, belonging to somebody with control of this server. |
+| `VERDANDE_PANEL_SERVER_ID` | — | Which server to restart — the id in the panel's URL. |
+
+All three together let **Indstillinger → Notifikationer** restart this instance,
+which is also how it picks up a new version: a container cannot replace its own
+image, so the panel recreates it and pulls `:latest` on the way. Any one of the
+three alone does nothing, and the page names the ones that are missing.
+
+The token is a panel credential with control over that server. Anybody who can
+read this environment can restart it — which is true of anybody with the host
+anyway — and it is never sent to a browser.
 
 Off unless you turn it on. When on, verdande asks the public GitHub releases API
 at most every six hours and sends nothing about your instance — no identifier, no

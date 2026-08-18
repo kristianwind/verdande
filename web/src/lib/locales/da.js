@@ -635,5 +635,16 @@ export const da = {
 	'passkey.signingIn': 'Venter på enheden…',
 
 	'passkey.unavailable':
-		'Passkeys kan ikke bruges her — enten understøtter browseren dem ikke, eller også er serverens adresse en IP frem for et domænenavn, hvilket ingen authenticator accepterer.'
+		'Passkeys kan ikke bruges her — enten understøtter browseren dem ikke, eller også er serverens adresse en IP frem for et domænenavn, hvilket ingen authenticator accepterer.',
+
+	// --- restarting from the interface ---------------------------------------------
+	'update.restart': 'Genstart og hent nyeste version',
+	'update.restarting': 'Genstarter…',
+	'update.restartQuestion':
+		'Genstart nu? Serveren er nede i omkring et halvt minut, og henter den nyeste version på vejen op.',
+	'update.asking': 'Beder panelet om at genstarte…',
+	'update.waiting': 'Venter på at serveren kommer op igen…',
+	'update.stillDown': 'Serveren er ikke kommet op endnu. Kig i panelet.',
+	'update.notConfigured':
+		'Denne instans kan ikke genstarte sig selv: {missing} er ikke sat. En container kan ikke udskifte sit eget image — panelet gør arbejdet, og det her er kun måden at bede om det.'
 };

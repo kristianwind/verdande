@@ -197,6 +197,9 @@ to put one that the operator would ever see.
 | `VERDANDE_GMAIL_CLIENT_ID` | — | OAuth client from Google Cloud, if anyone will connect a mailbox. |
 | `VERDANDE_GMAIL_CLIENT_SECRET` | — | |
 | `VERDANDE_UPDATE_CHECK` | `false` | Ask GitHub whether a newer release exists. Sends nothing about your instance. |
+| `VERDANDE_PANEL_URL` | — | The Yggdrasil panel this instance runs under, so it can ask to be restarted from its own settings. |
+| `VERDANDE_PANEL_TOKEN` | — | An API token from that panel, belonging to somebody with control of this server. |
+| `VERDANDE_PANEL_SERVER_ID` | — | Which server to restart — the id in the panel's URL. |
 | `VERDANDE_DEV` | `false` | Human-readable logs at debug level. |
 
 ## What lives in `/data`

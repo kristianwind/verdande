@@ -78,6 +78,24 @@ gameskill:
       type: bool
       default: false
 
+    # Restarting from verdande's own settings, which is also how it picks up a new
+    # version: a container cannot replace its own image, so the panel recreates it
+    # and pulls :latest on the way. All three are needed together; the page names
+    # whichever are missing.
+    - key: VERDANDE_PANEL_URL
+      name: "Panel address, so verdande can ask to be restarted from its own settings"
+      type: string
+      default: ""
+    - key: VERDANDE_PANEL_TOKEN
+      name: "Panel API token — from an account with control of this server"
+      type: string
+      secret: true
+      default: ""
+    - key: VERDANDE_PANEL_SERVER_ID
+      name: "This server's id in the panel (the one in its URL)"
+      type: string
+      default: ""
+
   install:
     # The image has no shell, so the install step borrows one. It only has to make
     # the directory layout exist; verdande creates and migrates its own database on
