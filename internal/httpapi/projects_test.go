@@ -283,3 +283,85 @@ func TestTheOwnersStandingCannotBeChanged(t *testing.T) {
 		t.Errorf("a non-member was given a role: status %d, want 404", resp.StatusCode)
 	}
 }
+
+// A project can have more than one section.
+//
+// Reported from use: sections "have no function, because you cannot create more
+// than one". Every test here made exactly one, which is the shape of test that
+// cannot see this — and so is every smoke test.
+func TestAProjectCanHaveSeveralSections(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Ombygning"})
+	id := project["id"].(string)
+
+	names := []string{"Planlægning", "I gang", "Til gennemsyn"}
+	for _, name := range names {
+		resp, body := ts.do(t, "POST", "/api/v1/projects/"+id+"/sections",
+			map[string]any{"name": name})
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create section %q: status %d, body %v", name, resp.StatusCode, body)
+		}
+	}
+
+	_, listed := ts.do(t, "GET", "/api/v1/projects/"+id+"/sections", nil)
+	got, _ := listed["sections"].([]any)
+	if len(got) != len(names) {
+		t.Fatalf("the project has %d sections, want %d", len(got), len(names))
+	}
+	// In the order they were made, and each with its own place: a sort_order that
+	// came out the same for all three would put them in an arbitrary order that
+	// changes between reads.
+	seen := map[float64]bool{}
+	for i, raw := range got {
+		s := raw.(map[string]any)
+		if s["name"] != names[i] {
+			t.Errorf("section %d is %v, want %q", i, s["name"], names[i])
+		}
+		order, _ := s["sort_order"].(float64)
+		if seen[order] {
+			t.Errorf("two sections share sort_order %v", order)
+		}
+		seen[order] = true
+	}
+}
+
+// A project can be created straight into a group.
+//
+// `group_id` was declared on the request type, documented on it, and applied by
+// the update handler — but the create handler ignored it, so a client that asked
+// for a project in a group got a 201 and a project in no group. A field that is
+// accepted and thrown away is worse than one that is refused: nothing reports it.
+func TestAProjectCanBeCreatedIntoAGroup(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, group := ts.do(t, "POST", "/api/v1/project-groups", map[string]any{"name": "Arbejde"})
+	groupID := group["id"].(string)
+
+	resp, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{
+		"name": "Sæsonstart", "group_id": groupID,
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create: status %d, body %v", resp.StatusCode, project)
+	}
+	if project["group_id"] != groupID {
+		t.Errorf("the response says group_id = %v, want %q", project["group_id"], groupID)
+	}
+
+	// And it is really filed there, not just claimed in the reply.
+	_, listed := ts.do(t, "GET", "/api/v1/projects", nil)
+	var found map[string]any
+	for _, raw := range listed["projects"].([]any) {
+		if p := raw.(map[string]any); p["id"] == project["id"] {
+			found = p
+		}
+	}
+	if found == nil {
+		t.Fatal("the new project is not in the list")
+	}
+	if found["group_id"] != groupID {
+		t.Errorf("the stored project has group_id = %v, want %q", found["group_id"], groupID)
+	}
+}

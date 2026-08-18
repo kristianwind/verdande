@@ -141,6 +141,18 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, "create project", err)
 		return
 	}
+	// Filed under a group in the same call. `group_id` was declared on this
+	// request type, documented on it, applied by the update handler — and silently
+	// dropped here, so creating a project into a group answered 201 and put it
+	// nowhere. A field that is accepted and thrown away is worse than one that is
+	// refused.
+	if req.GroupID != nil && *req.GroupID != "" {
+		if err := s.db.SetProjectGroup(r.Context(), p.ID, *req.GroupID, user.ID); err != nil {
+			s.storeError(w, r, "set project group", err)
+			return
+		}
+		p.GroupID = *req.GroupID
+	}
 	s.activity(r, p.ID, "", "project.created", map[string]any{"name": p.Name})
 	s.publishToOwner(r, "project.created", toProjectJSON(*p))
 	writeJSON(w, http.StatusCreated, toProjectJSON(*p))
