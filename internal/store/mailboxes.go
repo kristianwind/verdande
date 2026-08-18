@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -23,6 +24,12 @@ type Mailbox struct {
 	AccessToken  string    `json:"-"`
 	ExpiresAt    time.Time `json:"-"`
 	Label        string    `json:"label,omitempty"`
+	Trigger      string    `json:"trigger,omitempty"` // "starred" or "label"
+
+	// Seen is the message ids Gmail has already turned into tasks. IMAP does not
+	// need it — uids are monotonic, so LastUID says the same in one number — but
+	// Gmail's query is a rolling window rather than a marker.
+	Seen []string `json:"-"`
 
 	LastUID    uint32    `json:"last_uid,omitempty"`
 	LastSyncAt time.Time `json:"last_sync_at,omitempty"`
@@ -30,7 +37,8 @@ type Mailbox struct {
 }
 
 const mailboxColumns = `id, user_id, kind, name, host, username, password, folder,
-	refresh_token, access_token, expires_at, label, last_uid, last_sync_at, created_at`
+	refresh_token, access_token, expires_at, label, trigger_kind, seen,
+	last_uid, last_sync_at, created_at`
 
 // Mailboxes returns everything one person has connected, oldest first.
 func (db *DB) Mailboxes(ctx context.Context, userID string) ([]Mailbox, error) {
@@ -93,10 +101,19 @@ func (db *DB) SaveMailbox(ctx context.Context, m *Mailbox) error {
 	if err != nil {
 		return fmt.Errorf("seal access_token: %w", err)
 	}
+	// Not sealed: which mails have been read is not a secret, and a column of
+	// ciphertext here would only make the table harder to look at.
+	seen, err := json.Marshal(m.Seen)
+	if err != nil {
+		return err
+	}
+	if m.Trigger == "" {
+		m.Trigger = "starred"
+	}
 
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO mailboxes (`+mailboxColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 		    name = excluded.name,
 		    host = excluded.host,
@@ -107,10 +124,12 @@ func (db *DB) SaveMailbox(ctx context.Context, m *Mailbox) error {
 		    access_token = excluded.access_token,
 		    expires_at = excluded.expires_at,
 		    label = excluded.label,
+		    trigger_kind = excluded.trigger_kind,
+		    seen = excluded.seen,
 		    last_uid = excluded.last_uid,
 		    last_sync_at = excluded.last_sync_at`,
 		m.ID, m.UserID, m.Kind, m.Name, m.Host, m.Username, password, m.Folder,
-		refresh, access, unixOrZero(m.ExpiresAt), m.Label,
+		refresh, access, unixOrZero(m.ExpiresAt), m.Label, m.Trigger, string(seen),
 		m.LastUID, unixOrZero(m.LastSyncAt), m.CreatedAt.Unix())
 	return err
 }
@@ -157,12 +176,16 @@ type scanner interface {
 func (db *DB) scanMailbox(row scanner) (Mailbox, error) {
 	var m Mailbox
 	var expires, lastSync, created int64
+	var seen string
 	err := row.Scan(&m.ID, &m.UserID, &m.Kind, &m.Name, &m.Host, &m.Username,
 		&m.Password, &m.Folder, &m.RefreshToken, &m.AccessToken, &expires,
-		&m.Label, &m.LastUID, &lastSync, &created)
+		&m.Label, &m.Trigger, &seen, &m.LastUID, &lastSync, &created)
 	if err != nil {
 		return m, err
 	}
+	// A row that somehow holds nonsense here is not worth failing a whole sync
+	// over: an empty list means everything looks new, which is recoverable.
+	_ = json.Unmarshal([]byte(seen), &m.Seen)
 
 	for _, field := range []*string{&m.Password, &m.RefreshToken, &m.AccessToken} {
 		plain, err := db.unsealValue(*field)
