@@ -25,15 +25,18 @@ type DB struct {
 	path string
 }
 
-// Open prepares the database at path and brings the schema up to date.
+// dsn is the connection string.
 //
 // SQLite is a single file, but it is being driven by an HTTP server with concurrent
 // readers and a WebSocket fan-out, so the pragmas below matter more than usual:
 // WAL lets readers run while a write is in flight, busy_timeout turns the "database
 // is locked" race into a short wait, and foreign_keys is off by default in SQLite
 // and has to be asked for on every connection.
-func Open(path string) (*DB, error) {
-	dsn := "file:" + filepath.ToSlash(path) + "?" + strings.Join([]string{
+//
+// Its own function so the migration tests can open a database with exactly the
+// pragmas production runs with.
+func dsn(path string) string {
+	return "file:" + filepath.ToSlash(path) + "?" + strings.Join([]string{
 		"_pragma=journal_mode(WAL)",
 		"_pragma=busy_timeout(5000)",
 		"_pragma=foreign_keys(ON)",
@@ -56,8 +59,11 @@ func Open(path string) (*DB, error) {
 		// spilling them into the data volume.
 		"_pragma=temp_store(MEMORY)",
 	}, "&")
+}
 
-	sqlDB, err := sql.Open("sqlite", dsn)
+// Open prepares the database at path and brings the schema up to date.
+func Open(path string) (*DB, error) {
+	sqlDB, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
@@ -91,11 +97,36 @@ func Open(path string) (*DB, error) {
 
 func (db *DB) Path() string { return db.path }
 
+// rebuildMarker opts a migration out of foreign key enforcement for the length of
+// its transaction.
+//
+// SQLite cannot alter a column's foreign key action, so changing one means
+// rebuilding the table: copy it, drop the original, rename the copy back. With
+// foreign keys on, the drop is a cascading delete — every row in every table that
+// references `tasks` would go with it, which is the opposite of what a migration
+// that exists to *stop* losing rows should do. `PRAGMA foreign_keys` is a no-op
+// inside a transaction, so it has to be set on the connection before BEGIN; that
+// is why migrations run on a connection of their own rather than on the pool.
+//
+// `PRAGMA foreign_key_check` runs before the commit, so a rebuild that leaves a
+// dangling reference fails the migration instead of writing it.
+const rebuildMarker = "-- verdande:rebuild-tables"
+
 // migrate applies every embedded migration that has not run yet, in filename order,
 // each inside its own transaction. A migration that fails leaves the schema at the
 // last version that succeeded rather than half-applied.
+//
+// Everything here runs on one connection: a migration marked with rebuildMarker
+// needs a pragma to hold across its transaction, and a pragma only applies to the
+// connection it was issued on.
 func (db *DB) migrate(ctx context.Context) error {
-	if _, err := db.ExecContext(ctx, `
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			name       TEXT PRIMARY KEY,
 			applied_at INTEGER NOT NULL
@@ -104,7 +135,7 @@ func (db *DB) migrate(ctx context.Context) error {
 	}
 
 	applied := map[string]bool{}
-	rows, err := db.QueryContext(ctx, `SELECT name FROM schema_migrations`)
+	rows, err := conn.QueryContext(ctx, `SELECT name FROM schema_migrations`)
 	if err != nil {
 		return fmt.Errorf("read schema_migrations: %w", err)
 	}
@@ -136,25 +167,67 @@ func (db *DB) migrate(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
+		if err := db.applyMigration(ctx, conn, name, string(body)); err != nil {
 			return err
-		}
-		if _, err := tx.ExecContext(ctx, string(body)); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("migration %s: %w", name, err)
-		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO schema_migrations (name, applied_at) VALUES (?, unixepoch())`, name); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("record migration %s: %w", name, err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit migration %s: %w", name, err)
 		}
 	}
 	return nil
+}
+
+func (db *DB) applyMigration(ctx context.Context, conn *sql.Conn, name, body string) error {
+	if strings.Contains(body, rebuildMarker) {
+		if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+			return fmt.Errorf("migration %s: disable foreign keys: %w", name, err)
+		}
+		// Back on whatever happens below: this connection goes back to the pool.
+		defer conn.ExecContext(ctx, `PRAGMA foreign_keys = ON`)
+	}
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, body); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("migration %s: %w", name, err)
+	}
+	if strings.Contains(body, rebuildMarker) {
+		if err := foreignKeyCheck(ctx, tx); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("migration %s: %w", name, err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO schema_migrations (name, applied_at) VALUES (?, unixepoch())`, name); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("record migration %s: %w", name, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit migration %s: %w", name, err)
+	}
+	return nil
+}
+
+// foreignKeyCheck reports the first row that references something that is not
+// there. It names the table and the rowid, because a rebuild that drops rows on the
+// floor is otherwise indistinguishable from one that worked.
+func foreignKeyCheck(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		return fmt.Errorf("foreign key check: %w", err)
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var table, parent string
+		var rowid sql.NullInt64
+		var fkid int
+		if err := rows.Scan(&table, &rowid, &parent, &fkid); err != nil {
+			return fmt.Errorf("foreign key check: %w", err)
+		}
+		return fmt.Errorf("foreign key check: %s row %d references a missing %s",
+			table, rowid.Int64, parent)
+	}
+	return rows.Err()
 }
 
 // Tx runs fn inside a transaction, rolling back on error or panic.

@@ -2,9 +2,13 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"io/fs"
 	"path/filepath"
+	"sort"
 	"testing"
+	"time"
 )
 
 // openTest gives each test its own database file. In-memory SQLite would be faster,
@@ -409,4 +413,163 @@ func ftsCount(t *testing.T, db *DB, query string) int {
 		t.Fatalf("fts query %q (expr %q): %v", query, expr, err)
 	}
 	return n
+}
+
+// The rebuild in 0008 is the one migration that does not just add: it copies the
+// tasks table, drops the original and renames the copy back. Every test above this
+// one starts from an empty database, where a rebuild that loses rows looks exactly
+// like a rebuild that works — so this one carries data across it.
+//
+// What can go wrong, in the order it would: the drop cascades and takes the child
+// rows with it; the copy misses a column; the FTS index is left keyed on rowids the
+// rebuilt table no longer hands out; and finally the thing the migration is for,
+// which is that deleting an account stops deleting other people's work.
+func TestTheTasksRebuildCarriesTheDataAcross(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "upgrade.db")
+
+	// A database at 0007: the schema as it shipped in v0.10.2.
+	sqlDB, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer sqlDB.Close()
+	if _, err := sqlDB.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			name       TEXT PRIMARY KEY,
+			applied_at INTEGER NOT NULL
+		)`); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := fs.Glob(migrationFS, "migrations/*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(entries)
+	for _, entry := range entries {
+		name := filepath.Base(entry)
+		if name >= "0008" {
+			break
+		}
+		body, err := migrationFS.ReadFile(entry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := sqlDB.ExecContext(ctx, string(body)); err != nil {
+			t.Fatalf("apply %s: %v", name, err)
+		}
+		if _, err := sqlDB.ExecContext(ctx,
+			`INSERT INTO schema_migrations (name, applied_at) VALUES (?, unixepoch())`, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Two people, one project each, and a task in each project written by the
+	// other — which is the shape the migration exists for. Plus a label, a comment
+	// and a sub-task, so the child tables have something to lose.
+	now := time.Now().Unix()
+	for _, stmt := range []string{
+		`INSERT INTO users (id, email, name, password_hash, avatar_color, is_admin, created_at, updated_at)
+		 VALUES ('u1', 'en@example.dk', 'En', 'x', 'graphite', 1, ` + fmt.Sprint(now) + `, ` + fmt.Sprint(now) + `),
+		        ('u2', 'to@example.dk', 'To', 'x', 'graphite', 0, ` + fmt.Sprint(now) + `, ` + fmt.Sprint(now) + `)`,
+		`INSERT INTO projects (id, owner_id, name, color, created_at, updated_at)
+		 VALUES ('p1', 'u1', 'Ens', 'graphite', ` + fmt.Sprint(now) + `, ` + fmt.Sprint(now) + `),
+		        ('p2', 'u2', 'Tos', 'graphite', ` + fmt.Sprint(now) + `, ` + fmt.Sprint(now) + `)`,
+		`INSERT INTO tasks (id, project_id, content, description, created_by, priority, sort_order, created_at, updated_at)
+		 VALUES ('t1', 'p1', 'grøn hæk', 'i ens eget', 'u1', 2, 1.0, ` + fmt.Sprint(now) + `, ` + fmt.Sprint(now) + `),
+		        ('t2', 'p2', 'skrevet af en anden', '', 'u1', 4, 2.0, ` + fmt.Sprint(now) + `, ` + fmt.Sprint(now) + `)`,
+		`INSERT INTO tasks (id, project_id, parent_id, content, created_by, sort_order, created_at, updated_at)
+		 VALUES ('t3', 'p1', 't1', 'undertask', 'u1', 3.0, ` + fmt.Sprint(now) + `, ` + fmt.Sprint(now) + `)`,
+		`INSERT INTO labels (id, user_id, name, created_at) VALUES ('l1', 'u1', 'have', ` + fmt.Sprint(now) + `)`,
+		`INSERT INTO task_labels (task_id, label_id) VALUES ('t1', 'l1')`,
+		`INSERT INTO comments (id, task_id, user_id, body, created_at, updated_at)
+		 VALUES ('c1', 't1', 'u1', 'en kommentar', ` + fmt.Sprint(now) + `, ` + fmt.Sprint(now) + `)`,
+	} {
+		if _, err := sqlDB.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("seed: %v\n%s", err, stmt)
+		}
+	}
+	sqlDB.Close()
+
+	// Now the upgrade, through the real runner.
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+	defer db.Close()
+
+	var tasks, labels, comments int
+	if err := db.QueryRow(`SELECT count(*) FROM tasks`).Scan(&tasks); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM task_labels`).Scan(&labels); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM comments`).Scan(&comments); err != nil {
+		t.Fatal(err)
+	}
+	if tasks != 3 || labels != 1 || comments != 1 {
+		t.Fatalf("after the rebuild: %d tasks, %d labels, %d comments — want 3, 1, 1. "+
+			"A drop that cascaded would look exactly like this", tasks, labels, comments)
+	}
+
+	// Every column came across, including the generated one and the sub-task's
+	// self-reference.
+	var content, description, parent string
+	var priority int
+	if err := db.QueryRow(
+		`SELECT content, description, priority FROM tasks WHERE id = 't1'`).
+		Scan(&content, &description, &priority); err != nil {
+		t.Fatal(err)
+	}
+	if content != "grøn hæk" || description != "i ens eget" || priority != 2 {
+		t.Errorf("t1 came across as %q/%q/%d", content, description, priority)
+	}
+	if err := db.QueryRow(`SELECT parent_id FROM tasks WHERE id = 't3'`).Scan(&parent); err != nil {
+		t.Fatal(err)
+	}
+	if parent != "t1" {
+		t.Errorf("the sub-task lost its parent: %q", parent)
+	}
+
+	// The FTS index was rebuilt against the new rowids. Searching the fold column
+	// is the sharpest check: it is generated, so a copy that skipped it would still
+	// have the row and not the index entry.
+	for _, q := range []string{"grøn", "gron", "haek"} {
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM tasks_fts WHERE tasks_fts MATCH ?`, q).Scan(&n); err != nil {
+			t.Fatalf("search %q: %v", q, err)
+		}
+		if n != 1 {
+			t.Errorf("search for %q found %d rows, want 1 — the index is keyed on rowids "+
+				"the rebuilt table no longer hands out", q, n)
+		}
+	}
+
+	// And the point of the whole thing.
+	if err := db.DeleteUser(ctx, "u1"); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+	var survived int
+	if err := db.QueryRow(`SELECT count(*) FROM tasks WHERE id = 't2'`).Scan(&survived); err != nil {
+		t.Fatal(err)
+	}
+	if survived != 1 {
+		t.Fatal("a task written in somebody else's project went with the account")
+	}
+	var author sql.NullString
+	if err := db.QueryRow(`SELECT created_by FROM tasks WHERE id = 't2'`).Scan(&author); err != nil {
+		t.Fatal(err)
+	}
+	if author.Valid {
+		t.Errorf("created_by = %q, want null", author.String)
+	}
+	// Their own project still goes, and everything in it with it.
+	var own int
+	if err := db.QueryRow(`SELECT count(*) FROM tasks WHERE project_id = 'p1'`).Scan(&own); err != nil {
+		t.Fatal(err)
+	}
+	if own != 0 {
+		t.Errorf("%d tasks survived in the deleted account's own project", own)
+	}
 }

@@ -30,11 +30,13 @@ type adminUserJSON struct {
 	Self       bool   `json:"self"`
 	CreatedAt  string `json:"created_at"`
 	LastSeenAt string `json:"last_seen_at,omitempty"`
-	// ProjectCount and TaskCount are what a delete would destroy. Sent with the
-	// list rather than fetched when the button is pressed, so the confirmation can
-	// name real numbers without a round trip in the middle of a decision.
-	ProjectCount int `json:"project_count"`
-	TaskCount    int `json:"task_count"`
+	// ProjectCount and TaskCount are what a delete would destroy, and
+	// AuthoredElsewhere is what it would leave behind without an author. Sent with
+	// the list rather than fetched when the button is pressed, so the confirmation
+	// can name real numbers without a round trip in the middle of a decision.
+	ProjectCount      int `json:"project_count"`
+	TaskCount         int `json:"task_count"`
+	AuthoredElsewhere int `json:"authored_elsewhere"`
 }
 
 type pendingInviteJSON struct {
@@ -70,6 +72,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 			IsAdmin: u.IsAdmin, Self: u.ID == me.ID,
 			CreatedAt:    u.CreatedAt.Format(time.RFC3339),
 			ProjectCount: u.ProjectCount, TaskCount: u.TaskCount,
+			AuthoredElsewhere: u.AuthoredElsewhere,
 		}
 		// Zero means never signed in, which is not a time and must not be sent as
 		// one — 1970 in an interface reads as a bug rather than as "never".

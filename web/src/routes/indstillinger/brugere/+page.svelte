@@ -68,18 +68,26 @@
 	/**
 	 * Deleting an account is the only thing in this app that cannot be undone.
 	 *
-	 * Everything else is soft-deleted with a trash behind it. This is not, and it
-	 * takes more than the person's own work: `tasks.created_by` cascades, so what
-	 * they wrote in projects somebody else owns goes too. The confirmation says the
-	 * numbers out loud, which is why the list carries them.
+	 * Everything else is soft-deleted with a trash behind it. This is not: the
+	 * person's own projects go, and every task in them. What they wrote in somebody
+	 * else's project stays and loses its author — `tasks.created_by` is ON DELETE
+	 * SET NULL since migration 0008. Both numbers are said out loud, because they
+	 * are two different sentences and the second one is a reassurance rather than a
+	 * warning.
 	 */
 	async function remove(user) {
 		const parts = [`Slet ${user.name} <${user.email}> for altid?`, ''];
 		if (user.project_count || user.task_count) {
 			parts.push(
 				`Det sletter ${count(user.project_count, 'projekt', 'projekter')} og ` +
-					`${count(user.task_count, 'opgave', 'opgaver')} — også opgaver, personen har ` +
-					`skrevet i projekter, andre ejer.`,
+					`${count(user.task_count, 'opgave', 'opgaver')} i dem.`,
+				''
+			);
+		}
+		if (user.authored_elsewhere) {
+			parts.push(
+				`${count(user.authored_elsewhere, 'opgave', 'opgaver')} i andres projekter ` +
+					`bliver stående uden forfatter.`,
 				''
 			);
 		}

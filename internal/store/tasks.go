@@ -29,11 +29,23 @@ type Task struct {
 	AssigneeID     string
 	CompletedAt    *time.Time
 	CompletedBy    string
-	CreatedBy      string
-	SortOrder      float64
-	Labels         []string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// CreatedBy is empty when the author's account has been deleted: `created_by`
+	// is ON DELETE SET NULL so the task survives the person who wrote it.
+	CreatedBy string
+	SortOrder float64
+	// SubtaskCount and SubtaskDone are what a row can say without being opened:
+	// that there is something underneath it, and how much of it is left. Counted
+	// for every task in a list, in the same query — a hundred extra lookups to draw
+	// a badge is not a badge worth having.
+	SubtaskCount int
+	SubtaskDone  int
+	// AttachmentCount is the same idea for files. A task with a drawing on it looks
+	// exactly like one without, and the whole reason to attach something is that
+	// somebody should find it.
+	AttachmentCount int
+	Labels          []string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 func (t *Task) Completed() bool { return t.CompletedAt != nil }
@@ -173,7 +185,7 @@ func (db *DB) ListTasks(ctx context.Context, userID string, f TaskFilter) ([]Tas
 		SELECT t.id, t.project_id, t.section_id, t.parent_id, t.content, t.description,
 		       t.priority, t.due_date, t.due_datetime, t.due_timezone, t.duration_min,
 		       t.recurrence_rule, t.assignee_id, t.completed_at, t.completed_by,
-		       t.created_by, t.sort_order, t.created_at, t.updated_at
+		       t.created_by, t.sort_order, t.created_at, t.updated_at,` + taskCounts + `
 		FROM tasks t
 		JOIN projects p ON p.id = t.project_id
 		WHERE ` + strings.Join(where, " AND ") + `
@@ -264,11 +276,11 @@ func (db *DB) GetTask(ctx context.Context, taskID, userID string) (*Task, error)
 		return nil, err
 	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, project_id, section_id, parent_id, content, description,
-		       priority, due_date, due_datetime, due_timezone, duration_min,
-		       recurrence_rule, assignee_id, completed_at, completed_by,
-		       created_by, sort_order, created_at, updated_at
-		FROM tasks WHERE id = ? AND deleted_at IS NULL`, taskID)
+		SELECT t.id, t.project_id, t.section_id, t.parent_id, t.content, t.description,
+		       t.priority, t.due_date, t.due_datetime, t.due_timezone, t.duration_min,
+		       t.recurrence_rule, t.assignee_id, t.completed_at, t.completed_by,
+		       t.created_by, t.sort_order, t.created_at, t.updated_at,`+taskCounts+`
+		FROM tasks t WHERE t.id = ? AND t.deleted_at IS NULL`, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -317,9 +329,29 @@ func (db *DB) taskLabels(ctx context.Context, taskID string) ([]string, error) {
 	return out, rows.Err()
 }
 
+// taskCounts are what a row can say about itself without being opened.
+//
+// Correlated subqueries rather than a second round of lookups: a list of fifty
+// tasks would otherwise be a hundred more queries, and the whole point is that a
+// row shows this without anybody asking for it. `idx_tasks_parent` covers the
+// first two; the attachment count is a small table with a task_id on it.
+//
+// Sub-tasks are counted whether they are open or closed, and the finished ones
+// again separately, because "3" and "1 of 3" are different sentences and only the
+// second one says whether there is anything left to do.
+const taskCounts = `
+	(SELECT count(*) FROM tasks c
+	  WHERE c.parent_id = t.id AND c.deleted_at IS NULL),
+	(SELECT count(*) FROM tasks c
+	  WHERE c.parent_id = t.id AND c.deleted_at IS NULL AND c.completed_at IS NOT NULL),
+	(SELECT count(*) FROM attachments a WHERE a.task_id = t.id)`
+
 func scanTask(rows *sql.Rows) (Task, error) {
 	var t Task
 	var sectionID, parentID, dueDate, dueTZ, recurrence, assignee, completedBy sql.NullString
+	// createdBy is null on a task whose author's account has been deleted. The work
+	// stays; it loses its author.
+	var createdBy sql.NullString
 	var dueDatetime, completedAt sql.NullInt64
 	var duration sql.NullInt64
 	var created, updated int64
@@ -327,13 +359,15 @@ func scanTask(rows *sql.Rows) (Task, error) {
 	err := rows.Scan(&t.ID, &t.ProjectID, &sectionID, &parentID, &t.Content, &t.Description,
 		&t.Priority, &dueDate, &dueDatetime, &dueTZ, &duration,
 		&recurrence, &assignee, &completedAt, &completedBy,
-		&t.CreatedBy, &t.SortOrder, &created, &updated)
+		&createdBy, &t.SortOrder, &created, &updated,
+		&t.SubtaskCount, &t.SubtaskDone, &t.AttachmentCount)
 	if err != nil {
 		return t, err
 	}
 
 	t.SectionID = sectionID.String
 	t.ParentID = parentID.String
+	t.CreatedBy = createdBy.String
 	t.DueDate = dueDate.String
 	t.DueTimezone = dueTZ.String
 	t.RecurrenceRule = recurrence.String
@@ -384,7 +418,7 @@ func (db *DB) CreateTask(ctx context.Context, t *Task, labelNames []string) erro
 			t.ID, t.ProjectID, nullString(t.SectionID), nullString(t.ParentID),
 			t.Content, t.Description, t.Priority, nullString(t.DueDate),
 			nullTime(t.DueDatetime), nullString(t.DueTimezone), nullInt(t.DurationMin),
-			nullString(t.RecurrenceRule), nullString(t.AssigneeID), t.CreatedBy,
+			nullString(t.RecurrenceRule), nullString(t.AssigneeID), nullString(t.CreatedBy),
 			t.SortOrder, now.Unix(), now.Unix())
 		if err != nil {
 			return err

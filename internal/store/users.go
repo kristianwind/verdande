@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -28,8 +29,15 @@ type User struct {
 	Timezone     string
 	Locale       string
 	IsAdmin      bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// SidebarCollapsed is the sidebar headings this person has folded away, by
+	// key. On the account rather than in localStorage, for the same reason a
+	// project group carries `collapsed` on its row: folding a heading is a
+	// statement about the work — "I am not in Etiketter at the moment" — and that
+	// is as true on the laptop as on the desktop. The sidebar's *width* is the
+	// opposite case and is stored per browser.
+	SidebarCollapsed []string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // NormalizeEmail is the one place an address is canonicalised. Addresses arrive
@@ -96,7 +104,7 @@ func (db *DB) UserByID(ctx context.Context, id string) (*User, error) {
 }
 
 const userColumns = `id, email, name, password_hash, totp_secret, totp_enabled,
-	avatar_color, timezone, locale, is_admin, created_at, updated_at`
+	avatar_color, timezone, locale, is_admin, sidebar_collapsed, created_at, updated_at`
 
 func (db *DB) scanUser(ctx context.Context, query string, args ...any) (*User, error) {
 	var u User
@@ -104,9 +112,11 @@ func (db *DB) scanUser(ctx context.Context, query string, args ...any) (*User, e
 	var totpEnabled, isAdmin int
 	var created, updated int64
 
+	var collapsed string
+
 	err := db.QueryRowContext(ctx, query, args...).Scan(
 		&u.ID, &u.Email, &u.Name, &u.PasswordHash, &secret, &totpEnabled,
-		&u.AvatarColor, &u.Timezone, &u.Locale, &isAdmin, &created, &updated)
+		&u.AvatarColor, &u.Timezone, &u.Locale, &isAdmin, &collapsed, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -117,9 +127,39 @@ func (db *DB) scanUser(ctx context.Context, query string, args ...any) (*User, e
 	u.TOTPSecret = secret.String
 	u.TOTPEnabled = totpEnabled == 1
 	u.IsAdmin = isAdmin == 1
+	// A malformed value is read as "nothing folded" rather than as an error: the
+	// worst case is a sidebar that opens fully, which is the state it shipped in.
+	u.SidebarCollapsed = []string{}
+	_ = json.Unmarshal([]byte(collapsed), &u.SidebarCollapsed)
 	u.CreatedAt = time.Unix(created, 0).UTC()
 	u.UpdatedAt = time.Unix(updated, 0).UTC()
 	return &u, nil
+}
+
+// SetSidebarCollapsed records which sidebar headings are folded.
+//
+// Its own method rather than a field on UpdateProfile: that one backs a form with
+// a save button and validates three fields together, and this is a toggle that
+// writes on every click. Sharing the path would mean a fold sending a name and a
+// timezone it was never asked to change.
+func (db *DB) SetSidebarCollapsed(ctx context.Context, userID string, sections []string) error {
+	if sections == nil {
+		sections = []string{}
+	}
+	raw, err := json.Marshal(sections)
+	if err != nil {
+		return err
+	}
+	res, err := db.ExecContext(ctx,
+		`UPDATE users SET sidebar_collapsed = ?, updated_at = ? WHERE id = ?`,
+		string(raw), time.Now().Unix(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Person is the public half of a user: what somebody else is allowed to see when
@@ -175,12 +215,17 @@ type UserSummary struct {
 	// ProjectCount excludes the Inbox: every account has one, so counting it would
 	// make "1 project" mean "nothing".
 	ProjectCount int
-	// TaskCount is everything a delete would destroy, which is not the same as
-	// "their tasks": it is the tasks in projects they own *plus* every task they
-	// wrote anywhere, because tasks.created_by cascades. A number that counted
-	// only the first would understate the damage in exactly the case that matters
-	// — a colleague leaving a shared project.
+	// TaskCount is everything a delete would destroy: the tasks in the projects
+	// they own, which go with those projects. Tasks they merely *wrote* in
+	// somebody else's project are not counted, because they no longer go —
+	// `created_by` is ON DELETE SET NULL, so that work stays and loses its author.
 	TaskCount int
+	// AuthoredElsewhere is what a delete leaves behind unattributed: tasks they
+	// wrote in projects other people own. Separate from TaskCount because it is a
+	// different sentence — "this much disappears" and "this much stays without a
+	// name on it" — and running them together was what made the old number sound
+	// like a threat it no longer is.
+	AuthoredElsewhere int
 }
 
 // ListUsers returns every account on the instance. Administrators only — this is
@@ -192,8 +237,9 @@ func (db *DB) ListUsers(ctx context.Context) ([]UserSummary, error) {
 		       (SELECT count(*) FROM projects p
 		         WHERE p.owner_id = u.id AND p.is_inbox = 0 AND p.deleted_at IS NULL),
 		       (SELECT count(*) FROM tasks t JOIN projects p ON p.id = t.project_id
-		         WHERE t.deleted_at IS NULL
-		           AND (p.owner_id = u.id OR t.created_by = u.id))
+		         WHERE t.deleted_at IS NULL AND p.owner_id = u.id),
+		       (SELECT count(*) FROM tasks t JOIN projects p ON p.id = t.project_id
+		         WHERE t.deleted_at IS NULL AND t.created_by = u.id AND p.owner_id <> u.id)
 		FROM users u
 		ORDER BY u.is_admin DESC, u.name`)
 	if err != nil {
@@ -207,7 +253,7 @@ func (db *DB) ListUsers(ctx context.Context) ([]UserSummary, error) {
 		var isAdmin int
 		var created, lastSeen int64
 		if err := rows.Scan(&s.ID, &s.Email, &s.Name, &s.AvatarColor, &isAdmin, &created,
-			&lastSeen, &s.ProjectCount, &s.TaskCount); err != nil {
+			&lastSeen, &s.ProjectCount, &s.TaskCount, &s.AuthoredElsewhere); err != nil {
 			return nil, err
 		}
 		s.IsAdmin = isAdmin == 1
@@ -249,20 +295,18 @@ func (db *DB) SetUserAdmin(ctx context.Context, userID string, admin bool) error
 // there is no way back — which is why the handler sends the counts to the
 // interface first.
 //
-// What goes is wider than it looks. `projects.owner_id` cascades, so their
-// projects go and every task in them goes too. But `tasks.created_by` cascades as
-// well, so **every task they ever wrote goes, including in projects somebody else
-// owns**. Retiring a colleague's account therefore removes their contributions
-// from shared projects rather than leaving them behind unattributed.
+// What goes: `projects.owner_id` cascades, so their projects go and every task in
+// them goes too. That is the whole of it, and the handler sends the count to the
+// interface first.
 //
-// That is the schema as it stands rather than a decision made here. Changing it —
-// `created_by` as ON DELETE SET NULL, so the work stays and loses its author —
-// means rebuilding the tasks table, which carries the FTS triggers with it. Worth
-// doing; not worth doing quietly as part of adding a screen.
+// What stays: everything they wrote in somebody else's project. `tasks.created_by`
+// used to cascade as well, which meant retiring a colleague's account removed
+// their contributions from shared work — see migration 0008, which rebuilt the
+// table to make it ON DELETE SET NULL. The task survives and loses its author,
+// which is the honest record of what happened.
 //
-// What survives: tasks merely *assigned* to them, which are unassigned by
-// `assignee_id ON DELETE SET NULL`, and completions, by the same rule on
-// `completed_by`.
+// Tasks merely *assigned* to them are unassigned by `assignee_id ON DELETE SET
+// NULL`, and completions by the same rule on `completed_by`.
 func (db *DB) DeleteUser(ctx context.Context, userID string) error {
 	res, err := db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, userID)
 	if err != nil {

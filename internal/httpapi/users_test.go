@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"net/url"
 	"testing"
 )
 
@@ -125,8 +126,8 @@ func TestASecondAdministratorCanBeDemoted(t *testing.T) {
 	}
 }
 
-// Deleting an account takes more than its own projects, and the list says so
-// before anybody presses the button.
+// Deleting an account takes its own projects and leaves everything else behind.
+// The list says both numbers before anybody presses the button.
 func TestTheDeleteCountsSayWhatWouldGo(t *testing.T) {
 	ts := newTestServer(t)
 	ts.bootstrap(t)
@@ -143,9 +144,10 @@ func TestTheDeleteCountsSayWhatWouldGo(t *testing.T) {
 		"content": "deres egen", "project_id": theirs["id"].(string),
 	})
 
-	// And a task they wrote in a project somebody else owns. tasks.created_by
-	// cascades, so this one goes too — and a count that missed it would understate
-	// the damage in exactly the case that matters.
+	// And a task they wrote in a project somebody else owns. This one survives —
+	// `created_by` is ON DELETE SET NULL — and it is counted separately, because
+	// "this much disappears" and "this much stays unattributed" are two different
+	// things to tell somebody who is about to press delete.
 	_, mine := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Fælles"})
 	sharedID := mine["id"].(string)
 	ts.do(t, "POST", "/api/v1/projects/"+sharedID+"/invites", map[string]any{
@@ -168,18 +170,52 @@ func TestTheDeleteCountsSayWhatWouldGo(t *testing.T) {
 	if found["project_count"] != float64(1) {
 		t.Errorf("project_count = %v, want 1 — the Inbox must not be counted", found["project_count"])
 	}
-	if found["task_count"] != float64(2) {
-		t.Errorf("task_count = %v, want 2 — the task in the shared project cascades too",
+	if found["task_count"] != float64(1) {
+		t.Errorf("task_count = %v, want 1 — only the task in their own project goes",
 			found["task_count"])
 	}
+	if found["authored_elsewhere"] != float64(1) {
+		t.Errorf("authored_elsewhere = %v, want 1 — the task in the shared project stays",
+			found["authored_elsewhere"])
+	}
 
-	// And the delete really does take it.
+	// And the delete leaves it standing, without an author.
 	if resp, _ := ts.do(t, "DELETE", "/api/v1/users/"+otherUser.ID, nil); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete: status %d", resp.StatusCode)
 	}
 	_, tasks := ts.do(t, "GET", "/api/v1/tasks?project_id="+sharedID, nil)
-	if got, _ := tasks["tasks"].([]any); len(got) != 0 {
-		t.Errorf("a task written by the deleted account survived in a shared project: %v", got)
+	got, _ := tasks["tasks"].([]any)
+	if len(got) != 1 {
+		t.Fatalf("a task written by the deleted account should survive in a shared project, got %v", got)
+	}
+	surviving := got[0].(map[string]any)
+	if surviving["content"] != "skrevet i et delt projekt" {
+		t.Errorf("the surviving task is not the one that was written: %v", surviving["content"])
+	}
+	if surviving["created_by"] != "" {
+		t.Errorf("created_by = %q, want empty — the author is gone, the work is not",
+			surviving["created_by"])
+	}
+}
+
+// The tasks table was rebuilt to change created_by's delete action, and a rebuild
+// is where an index quietly stops matching its table: tasks_fts is external-content
+// and keyed on tasks.rowid, which a rebuilt table hands out afresh. Search is the
+// only place that would notice.
+func TestSearchStillFindsTasksAfterTheTableRebuild(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Have"})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "beskær det grønne hegn", "project_id": project["id"].(string),
+	})
+
+	for _, q := range []string{"grønne", "gronne", "hegn"} {
+		_, found := ts.do(t, "GET", "/api/v1/search?q="+url.QueryEscape(q), nil)
+		if got, _ := found["tasks"].([]any); len(got) != 1 {
+			t.Errorf("search for %q found %d tasks, want 1", q, len(got))
+		}
 	}
 }
 
