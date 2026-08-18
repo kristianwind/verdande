@@ -360,6 +360,8 @@ export const da = {
 		'Slettede projekter, med deres opgaver. De bliver hentet tilbage præcis som de var — bortset fra opgaver, du havde slettet hver for sig først; dem var der en grund til.',
 	'data.backupsHint':
 		'Databasen kopieres hver nat og de seneste fjorten gemmes. Kopierne er talt, ikke dateret: en container, der har stået slukket en måned, må ikke komme tilbage og slette dem alle for at være for gamle.',
+	'data.backupsSecrets':
+		'Tokens og kodeord til postkasser ligger krypteret i kopien, og nøglen gør ikke: den ligger i en fil ved siden af databasen. Det er meningen — en kopi, der kommer på afveje, åbner ikke din mail. Men gendanner du en kopi et sted uden den fil, skal postkasserne forbindes forfra.',
 	'data.backupsAttachments':
 		'Vedhæftede filer er ikke med. De er indholdsadresserede og bliver kun lagt til, så fjorten ens kopier af dem ville fylde det drev op, de skulle beskytte — tag hele /data, hvis du vil have det hele.',
 	'data.restoreHint':

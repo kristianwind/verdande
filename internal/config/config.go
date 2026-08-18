@@ -33,6 +33,10 @@ type Config struct {
 	GmailClientID     string
 	GmailClientSecret string
 
+	// SecretKey seals the tokens and passwords in the database, 32 bytes of base64.
+	// Empty means a key file beside the data — see internal/secret.
+	SecretKey string
+
 	// UpdateCheck asks GitHub whether a newer release exists. Off unless asked
 	// for: a self-hosted app that reaches out without being told to has broken
 	// the deal its operator made by self-hosting.
@@ -100,6 +104,7 @@ func Load() (*Config, error) {
 		PanelToken:        env("VERDANDE_PANEL_TOKEN", ""),
 		PanelServerID:     env("VERDANDE_PANEL_SERVER_ID", ""),
 		GmailClientSecret: env("VERDANDE_GMAIL_CLIENT_SECRET", ""),
+		SecretKey:         env("VERDANDE_SECRET_KEY", ""),
 		UpdateCheck:       envBool("VERDANDE_UPDATE_CHECK", false),
 	}
 

@@ -355,6 +355,8 @@ export const en = {
 		'Deleted projects, with their tasks. They come back exactly as they were — except for tasks you had deleted individually first; there was a reason for those.',
 	'data.backupsHint':
 		'The database is copied every night and the most recent fourteen are kept. Counted, not dated: a container that has been off for a month must not come back and delete all of them for being too old.',
+	'data.backupsSecrets':
+		'Tokens and mailbox passwords are encrypted inside the copy, and the key is not: it sits in a file beside the database. That is the point — a copy that goes astray does not open your mail. But restore a copy somewhere without that file and the mailboxes must be connected again.',
 	'data.backupsAttachments':
 		'Attachments are not included. They are content-addressed and only ever added to, so fourteen identical copies would fill the volume they were meant to protect — take the whole of /data if you want everything.',
 	'data.restoreHint':

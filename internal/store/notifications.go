@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/kristianwind/verdande/internal/auth"
@@ -313,6 +314,65 @@ func (db *DB) UsersWithGmail(ctx context.Context) ([]User, error) {
 
 // UserSettings reads one scope of a person's integration settings. A missing row is
 // an empty map, not an error: nobody has settings until they set some.
+// --- sealed values ----------------------------------------------------------------
+
+// secretFields are the keys whose values never leave this process in the clear.
+//
+// A named set rather than "seal everything": the rest of a settings blob is what
+// somebody reads when a mailbox misbehaves — which folder, which label, which
+// address — and turning all of it into ciphertext would buy nothing and cost the
+// ability to look.
+var secretFields = map[string]bool{
+	"refresh_token": true,
+	"access_token":  true,
+	"password":      true,
+	"client_secret": true,
+}
+
+// seal returns a copy of values with the secret fields sealed. Without a key it
+// returns them untouched, which is what the tests that never set one expect.
+func (db *DB) seal(values map[string]any) (map[string]any, error) {
+	if db.box == nil {
+		return values, nil
+	}
+	out := make(map[string]any, len(values))
+	for k, v := range values {
+		s, ok := v.(string)
+		if !secretFields[k] || !ok {
+			out[k] = v
+			continue
+		}
+		sealed, err := db.box.Seal(s)
+		if err != nil {
+			return nil, fmt.Errorf("seal %s: %w", k, err)
+		}
+		out[k] = sealed
+	}
+	return out, nil
+}
+
+// unseal is seal's other direction. Values written before there was a key come
+// back as themselves; the next write puts them away properly, so the column
+// converts itself as it is used rather than in one migration that has to be right
+// about every row at once.
+func (db *DB) unseal(values map[string]any) (map[string]any, error) {
+	if db.box == nil {
+		return values, nil
+	}
+	for k, v := range values {
+		s, ok := v.(string)
+		if !secretFields[k] || !ok {
+			continue
+		}
+		plain, err := db.box.Unseal(s)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", k, err)
+		}
+		values[k] = plain
+	}
+	return values, nil
+}
+
 func (db *DB) UserSettings(ctx context.Context, userID, scope string) (map[string]any, error) {
 	var raw string
 	err := db.QueryRowContext(ctx,
@@ -329,10 +389,14 @@ func (db *DB) UserSettings(ctx context.Context, userID, scope string) (map[strin
 	if err := json.Unmarshal([]byte(raw), &values); err != nil {
 		return map[string]any{}, nil
 	}
-	return values, nil
+	return db.unseal(values)
 }
 
 func (db *DB) SetUserSettings(ctx context.Context, userID, scope string, values map[string]any) error {
+	values, err := db.seal(values)
+	if err != nil {
+		return err
+	}
 	raw, err := json.Marshal(values)
 	if err != nil {
 		return err
@@ -370,10 +434,14 @@ func (db *DB) InstanceSettings(ctx context.Context, scope string) (map[string]an
 	if err := json.Unmarshal([]byte(raw), &values); err != nil {
 		return map[string]any{}, nil
 	}
-	return values, nil
+	return db.unseal(values)
 }
 
 func (db *DB) SetInstanceSettings(ctx context.Context, scope string, values map[string]any) error {
+	values, err := db.seal(values)
+	if err != nil {
+		return err
+	}
 	raw, err := json.Marshal(values)
 	if err != nil {
 		return err

@@ -15,7 +15,7 @@ gameskill:
   # this: a manifest with new fields and an unchanged version is a manifest the
   # panel has no reason to re-read, so the fields never appear and the failure is
   # silent — the server's settings page simply does not offer them.
-  version: 3
+  version: 4
   icon: "app"
 
   # The image is distroless — no shell — so keep_entrypoint runs the binary the
@@ -98,6 +98,11 @@ gameskill:
     - key: VERDANDE_PANEL_SERVER_ID
       name: "This server's id in the panel (the one in its URL)"
       type: string
+      default: ""
+    - key: VERDANDE_SECRET_KEY
+      name: "Key for the tokens and mailbox passwords in the database — 32 bytes of base64, from: openssl rand -base64 32. Leave empty to keep one in a file beside the data. Change it and every mailbox must be connected again."
+      type: string
+      secret: true
       default: ""
 
   install:

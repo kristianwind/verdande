@@ -17,6 +17,7 @@ import (
 	"github.com/kristianwind/verdande/internal/config"
 	"github.com/kristianwind/verdande/internal/httpapi"
 	"github.com/kristianwind/verdande/internal/jobs"
+	"github.com/kristianwind/verdande/internal/secret"
 	"github.com/kristianwind/verdande/internal/store"
 )
 
@@ -53,6 +54,15 @@ func run() error {
 	}
 	defer db.Close()
 	log.Info("database ready", "path", db.Path())
+
+	// Before anything reads a setting. The key lives outside the database on
+	// purpose: backups can be downloaded through the interface, so a token stored
+	// in the clear leaves with every copy anyone takes.
+	box, err := secret.Open(cfg.SecretKey, cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	db.UseSecrets(box)
 
 	httpapi.Version = version
 	api := httpapi.New(cfg, db, log, webAssets(log))

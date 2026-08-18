@@ -267,6 +267,13 @@
 			<p class="hint">
 				{t('data.backupsAttachments')}
 			</p>
+			<!-- Said here rather than only in the documentation: this is the page where
+			     somebody downloads the file, and the day the key matters is the day
+			     they are restoring it somewhere else and wondering why the mailbox is
+			     silent. -->
+			<p class="hint">
+				{t('data.backupsSecrets')}
+			</p>
 		</header>
 
 		<div class="row">

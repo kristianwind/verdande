@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"github.com/kristianwind/verdande/internal/secret"
 	"io/fs"
 	"path/filepath"
 	"runtime"
@@ -23,7 +24,19 @@ var migrationFS embed.FS
 type DB struct {
 	*sql.DB
 	path string
+
+	// box seals the values that must not travel with a backup. Nil in the tests
+	// that do not care, where a secret is stored as itself — see Seal.
+	box *secret.Box
 }
+
+// UseSecrets gives the store the key it seals with. Called once at startup, before
+// anything reads or writes settings.
+//
+// Separate from Open because the key comes from the environment or from a file
+// beside the data, and a database that cannot be opened without it would make a
+// misplaced key look like a corrupt disk.
+func (db *DB) UseSecrets(box *secret.Box) { db.box = box }
 
 // dsn is the connection string.
 //
