@@ -25,13 +25,41 @@ import (
 )
 
 const (
-	authEndpoint  = "https://accounts.google.com/o/oauth2/v2/auth"
-	tokenEndpoint = "https://oauth2.googleapis.com/token"
-	apiBase       = "https://gmail.googleapis.com/gmail/v1"
+	authEndpoint         = "https://accounts.google.com/o/oauth2/v2/auth"
+	defaultTokenEndpoint = "https://oauth2.googleapis.com/token"
+	defaultAPIBase       = "https://gmail.googleapis.com/gmail/v1"
 
 	// Read-only, and only mail. Not profile, not contacts, not send.
 	Scope = "https://www.googleapis.com/auth/gmail.readonly"
 )
+
+// Endpoints is where Google is.
+//
+// A field rather than a constant so a test can point it at a server it controls.
+// There is no other way to exercise what happens when Gmail is slow or refuses —
+// and "the sync comes back before whatever sits in front of this server gives up
+// on it" is exactly the kind of promise worth a test and impossible to make
+// against the real thing.
+//
+// The zero value is Google, so nothing outside a test has to know it exists.
+type Endpoints struct {
+	Token string
+	API   string
+}
+
+func (e Endpoints) token() string {
+	if e.Token != "" {
+		return e.Token
+	}
+	return defaultTokenEndpoint
+}
+
+func (e Endpoints) api() string {
+	if e.API != "" {
+		return e.API
+	}
+	return defaultAPIBase
+}
 
 // Config is the OAuth client the operator registered in Google Cloud. It belongs to
 // the instance rather than to a person: one registration, any number of users.
@@ -39,6 +67,8 @@ type Config struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
+	// Endpoints is Google unless a test says otherwise.
+	Endpoints Endpoints
 }
 
 func (c Config) Configured() bool {
@@ -128,7 +158,7 @@ func (c Config) Refresh(ctx context.Context, refreshToken string) (Token, error)
 }
 
 func (c Config) token(ctx context.Context, form url.Values) (Token, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenEndpoint,
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Endpoints.token(),
 		strings.NewReader(form.Encode()))
 	if err != nil {
 		return Token{}, err
@@ -171,11 +201,18 @@ func (c Config) token(ctx context.Context, form url.Values) (Token, error) {
 
 type Client struct {
 	accessToken string
+	endpoints   Endpoints
 	http        *http.Client
 }
 
 func NewClient(accessToken string) *Client {
 	return &Client{accessToken: accessToken, http: &http.Client{Timeout: 30 * time.Second}}
+}
+
+// At points the client at another server. Tests only; the zero value is Google.
+func (c *Client) At(e Endpoints) *Client {
+	c.endpoints = e
+	return c
 }
 
 // Message is the part of a Gmail message a task is made from.
@@ -196,7 +233,7 @@ func (c *Client) Profile(ctx context.Context) (string, error) {
 	var parsed struct {
 		EmailAddress string `json:"emailAddress"`
 	}
-	if err := c.get(ctx, apiBase+"/users/me/profile", &parsed); err != nil {
+	if err := c.get(ctx, c.endpoints.api()+"/users/me/profile", &parsed); err != nil {
 		return "", err
 	}
 	return parsed.EmailAddress, nil
@@ -220,7 +257,7 @@ func (c *Client) List(ctx context.Context, query string, max int) ([]string, err
 			ID string `json:"id"`
 		} `json:"messages"`
 	}
-	if err := c.get(ctx, apiBase+"/users/me/messages?"+v.Encode(), &parsed); err != nil {
+	if err := c.get(ctx, c.endpoints.api()+"/users/me/messages?"+v.Encode(), &parsed); err != nil {
 		return nil, err
 	}
 
@@ -251,7 +288,7 @@ func (c *Client) Get(ctx context.Context, id string) (Message, error) {
 			} `json:"headers"`
 		} `json:"payload"`
 	}
-	if err := c.get(ctx, apiBase+"/users/me/messages/"+url.PathEscape(id)+"?"+v.Encode(), &parsed); err != nil {
+	if err := c.get(ctx, c.endpoints.api()+"/users/me/messages/"+url.PathEscape(id)+"?"+v.Encode(), &parsed); err != nil {
 		return Message{}, err
 	}
 

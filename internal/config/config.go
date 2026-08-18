@@ -50,6 +50,16 @@ type Config struct {
 	// can read this environment can restart it, which is true of anybody with the
 	// host anyway. It is never sent to a browser: the settings page is told only
 	// whether it is set.
+	// GmailSyncBudget bounds one "fetch now", well under whatever proxy sits in
+	// front of this server. Configurable so a test can prove the budget is applied
+	// without spending the real one on every run.
+	GmailSyncBudget time.Duration
+
+	// GmailEndpoints redirects the Gmail calls at a server the tests control. Empty
+	// in production, where it means Google.
+	GmailTokenURL string
+	GmailAPIURL   string
+
 	PanelURL      string
 	PanelToken    string
 	PanelServerID string
@@ -85,6 +95,7 @@ func Load() (*Config, error) {
 		Dev:            envBool("VERDANDE_DEV", false),
 
 		GmailClientID:     env("VERDANDE_GMAIL_CLIENT_ID", ""),
+		GmailSyncBudget:   25 * time.Second,
 		PanelURL:          strings.TrimSuffix(env("VERDANDE_PANEL_URL", ""), "/"),
 		PanelToken:        env("VERDANDE_PANEL_TOKEN", ""),
 		PanelServerID:     env("VERDANDE_PANEL_SERVER_ID", ""),

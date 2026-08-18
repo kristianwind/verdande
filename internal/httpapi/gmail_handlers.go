@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -10,6 +11,11 @@ import (
 	"github.com/kristianwind/verdande/internal/store"
 )
 
+// defaultGmailSyncBudget bounds one "fetch now" when nothing else says otherwise.
+// Well under the hundred seconds a proxy is willing to wait, so this server is the
+// one that answers a slow mailbox.
+const defaultGmailSyncBudget = 25 * time.Second
+
 // gmailConfig is the OAuth client this instance authorises with.
 //
 // The environment wins when it is set. A value in the environment is a deliberate
@@ -17,11 +23,20 @@ import (
 // applied on every recreate — and a form that could quietly override it would make
 // the manifest a lie. The stored pair is for the ordinary case, where nobody wants
 // to redeploy a container to paste a client id.
+// gmailClient is the API client, pointed wherever the config says Google is.
+func (s *Server) gmailClient(accessToken string) *gmail.Client {
+	return gmail.NewClient(accessToken).At(gmail.Endpoints{
+		Token: s.cfg.GmailTokenURL, API: s.cfg.GmailAPIURL,
+	})
+}
+
 func (s *Server) gmailConfig(ctx context.Context) gmail.Config {
+	endpoints := gmail.Endpoints{Token: s.cfg.GmailTokenURL, API: s.cfg.GmailAPIURL}
 	cfg := gmail.Config{
 		ClientID:     s.cfg.GmailClientID,
 		ClientSecret: s.cfg.GmailClientSecret,
 		RedirectURL:  s.cfg.GmailRedirectURL(),
+		Endpoints:    endpoints,
 	}
 	if cfg.ClientID != "" && cfg.ClientSecret != "" {
 		return cfg
@@ -153,7 +168,7 @@ func (s *Server) handleGmailCallback(w http.ResponseWriter, r *http.Request) {
 	// Best effort: a mailbox that connects but cannot name itself is still
 	// connected, and the status endpoint asks again when it finds no address —
 	// so this failing is a delay rather than a dead end.
-	email, err := gmail.NewClient(token.AccessToken).Profile(r.Context())
+	email, err := s.gmailClient(token.AccessToken).Profile(r.Context())
 	if err != nil {
 		s.log.Warn("gmail profile", "err", err)
 	}
@@ -185,8 +200,35 @@ func (s *Server) handleGmailCallback(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGmailSyncNow(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r.Context())
 
-	created, err := s.SyncGmail(r.Context(), user)
+	// A budget of its own, well under what sits in front of this server.
+	//
+	// The sync fetches up to twenty-five messages one at a time, each with its own
+	// thirty-second timeout — so a slow mailbox can hold the request open for
+	// minutes. Cloudflare gives up at a hundred seconds and answers with its own
+	// 502 page, which is HTML: the browser gets no JSON, no error code and no
+	// message, and shows "something went wrong". Nothing reaches the error log
+	// either, because this handler never returned.
+	//
+	// Whatever was created by the deadline is kept: every task is committed as it
+	// is made, so a short budget is a shorter run rather than a lost one. The
+	// background job keeps the full one; it has nobody waiting.
+	// An unset budget is not a budget of nothing: a zero here would expire the
+	// context before the first call and make every sync a silent no-op.
+	budget := s.cfg.GmailSyncBudget
+	if budget <= 0 {
+		budget = defaultGmailSyncBudget
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), budget)
+	defer cancel()
+
+	created, err := s.SyncGmail(ctx, user)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			// Not a failure: the mailbox is slow or busy, some tasks were made, and
+			// the rest arrive on the next run ten minutes from now.
+			writeJSON(w, http.StatusOK, map[string]any{"created": created, "partial": true})
+			return
+		}
 		s.upstream(w, r, CodeGmailFailed, "sync gmail", err)
 		return
 	}
@@ -232,7 +274,7 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 		}
 	}
 
-	client := gmail.NewClient(access)
+	client := s.gmailClient(access)
 	ids, err := client.List(ctx, query, 25)
 	if err != nil {
 		if err == gmail.ErrUnauthorized {
@@ -271,6 +313,11 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 	for _, id := range ids {
 		if seen[id] {
 			continue
+		}
+		// A spent budget ends the run rather than turning into twenty-five failed
+		// fetches logged one at a time.
+		if ctx.Err() != nil {
+			return created, ctx.Err()
 		}
 		msg, err := client.Get(ctx, id)
 		if err != nil {
@@ -454,7 +501,7 @@ func (s *Server) gmailProfile(ctx context.Context, user *store.User, settings ma
 		settings["expires_at"] = token.ExpiresAt.Unix()
 	}
 
-	email, err := gmail.NewClient(access).Profile(ctx)
+	email, err := s.gmailClient(access).Profile(ctx)
 	if err != nil {
 		return "", err
 	}
