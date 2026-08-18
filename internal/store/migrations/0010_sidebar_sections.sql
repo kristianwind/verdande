@@ -1,0 +1,16 @@
+-- Which of the sidebar's fixed headings a person has folded away.
+--
+-- A project group already carries `collapsed` on its own row, and the reasoning
+-- there applies here too: folding a heading is a statement about the work, not
+-- about the screen. "I am not in Etiketter at the moment" is as true on the laptop
+-- as on the desktop, which is what separates this from the sidebar's *width* —
+-- that one is in localStorage, because a narrow laptop and a wide monitor deserve
+-- different answers and syncing it would make one of them wrong every time you
+-- moved.
+--
+-- A JSON array of keys rather than a column per heading. The set is the sidebar's
+-- to decide and it has already changed twice; a column each would mean a migration
+-- every time a heading is added, and a row full of booleans nobody reads for the
+-- ones that were removed. Unknown keys are ignored on the way out, so an old
+-- client's folded state survives a heading being renamed rather than resetting it.
+ALTER TABLE users ADD COLUMN sidebar_collapsed TEXT NOT NULL DEFAULT '[]';

@@ -3,6 +3,7 @@
 	import { api } from '$lib/api.js';
 	import { TASK, PROJECT, GROUP, startDrag, carries, dragged, accept } from '$lib/dnd.js';
 	import { COLORS, colorVar } from '$lib/colors.js';
+	import { focusOnMount } from '$lib/focus.js';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
@@ -85,8 +86,6 @@
 	let newGroupName = $state('');
 	let renamingGroup = $state(null);
 	let groupName = $state('');
-	/** The group whose swatches are open, if any. */
-	let coloringGroup = $state(null);
 
 	async function createGroup(event) {
 		event.preventDefault();
@@ -411,6 +410,36 @@
 		</a>
 	{/snippet}
 
+	<!--
+		A fixed heading that folds, the same way a project group's does.
+
+		One snippet for all four rather than four copies of a chevron and an aria
+		attribute: they have to behave identically, and the group heading is already
+		the proof that they drift otherwise — it grew a fold, a colour and two
+		actions while these stayed plain text.
+
+		The whole heading is the target, not the chevron. At this size a lone chevron
+		is something you miss, and the name is where the eye already is.
+	-->
+	{#snippet foldHeading(key, label)}
+		<h2 class="fold">
+			<button
+				onclick={() => app.toggleSection(key)}
+				aria-expanded={!app.sectionCollapsed(key)}
+			>
+				<svg
+					class="chevron"
+					class:collapsed={app.sectionCollapsed(key)}
+					viewBox="0 0 24 24"
+					aria-hidden="true"
+				>
+					<path d="M6 9l6 6 6-6" />
+				</svg>
+				{label}
+			</button>
+		</h2>
+	{/snippet}
+
 	<div class="group">
 		<!-- The heading is also the drop target for "no group": without it, a project
 		     dragged into a group could only be got out again by emptying the group,
@@ -428,7 +457,7 @@
 			ondragleave={() => (overGroup = null)}
 			ondrop={(e) => onDropInGroup(e, '')}
 		>
-			<h2>Projekter</h2>
+			{@render foldHeading('projects', 'Projekter')}
 			<button
 				class="icon"
 				onclick={() => {
@@ -455,10 +484,9 @@
 
 		{#if adding}
 			<form onsubmit={createProject}>
-				<!-- svelte-ignore a11y_autofocus -->
 				<input
 					bind:value={newName}
-					autofocus
+					use:focusOnMount
 					placeholder="Projektnavn"
 					aria-label="Projektnavn"
 					onblur={() => !newName.trim() && (adding = false)}
@@ -469,10 +497,9 @@
 
 		{#if addingGroup}
 			<form onsubmit={createGroup}>
-				<!-- svelte-ignore a11y_autofocus -->
 				<input
 					bind:value={newGroupName}
-					autofocus
+					use:focusOnMount
 					placeholder="Gruppens navn"
 					aria-label="Gruppens navn"
 					onblur={() => !newGroupName.trim() && (addingGroup = false)}
@@ -481,12 +508,14 @@
 			</form>
 		{/if}
 
-		{#each ungrouped as project (project.id)}
-			{@render projectRow(project, true)}
-		{/each}
+		{#if !app.sectionCollapsed('projects')}
+			{#each ungrouped as project (project.id)}
+				{@render projectRow(project, true)}
+			{/each}
 
-		{#if own.length === 0 && !adding}
-			<p class="empty">Ingen projekter endnu.</p>
+			{#if own.length === 0 && !adding}
+				<p class="empty">Ingen projekter endnu.</p>
+			{/if}
 		{/if}
 	</div>
 
@@ -513,15 +542,46 @@
 				ondrop={(e) => onGroupDrop(e, group)}
 			>
 				{#if renamingGroup === group.id}
-					<form onsubmit={(e) => renameGroup(e, group)}>
-						<!-- svelte-ignore a11y_autofocus -->
+					<!-- Renaming is where the colour is chosen too.
+					     The dot used to be a button in the row, which made the heading
+					     carry four controls — dot, name, Omdøb, Slet — on a line narrow
+					     enough that they crowded the name. Both are edits to the same
+					     thing, so both belong in the same moment: you open the group to
+					     change it, and change what you came to change.
+
+					     `focusout` rather than `blur` closes it, and only when focus has
+					     left the form altogether — clicking a swatch is still inside it.
+					     The swatches also refuse focus on mousedown, because Safari and
+					     Firefox do not focus a button on click, so `relatedTarget` would
+					     be null and the form would shut under the pointer. -->
+					<form
+						class="renaming"
+						onsubmit={(e) => renameGroup(e, group)}
+						onfocusout={(e) => {
+							if (!e.currentTarget.contains(e.relatedTarget)) renamingGroup = null;
+						}}
+					>
 						<input
 							bind:value={groupName}
-							autofocus
+							use:focusOnMount
 							aria-label="Gruppens navn"
-							onblur={() => (renamingGroup = null)}
 							onkeydown={(e) => e.key === 'Escape' && (renamingGroup = null)}
 						/>
+						<div class="swatches" role="group" aria-label="Farve på {group.name}">
+							{#each COLORS as color (color.id)}
+								<button
+									type="button"
+									class="swatch"
+									class:chosen={(group.color ?? 'graphite') === color.id}
+									style="background: {colorVar(color.id)}"
+									title={color.name}
+									aria-label={color.name}
+									aria-pressed={(group.color ?? 'graphite') === color.id}
+									onmousedown={(e) => e.preventDefault()}
+									onclick={() => app.setGroupColor(group.id, color.id)}
+								></button>
+							{/each}
+						</div>
 					</form>
 				{:else}
 					<!-- The button sits inside the heading, not around it, the same way a
@@ -530,20 +590,6 @@
 					     the heading away from a screen reader. The whole heading folds —
 					     at this size a lone chevron is a target you miss, and the name is
 					     where the eye already is. -->
-					<!-- The dot is the control as well as the preview: what you press is
-					     the thing you are about to change. It also keeps the heading's
-					     actions down to two — they carry `opacity: 0` rather than
-					     `display: none`, so they take their width whether or not you can
-					     see them, and a third one squeezed the group's name until it
-					     truncated. -->
-					<button
-						class="dot group-dot"
-						style="background: {colorVar(group.color)}"
-						onclick={() => (coloringGroup = coloringGroup === group.id ? null : group.id)}
-						aria-expanded={coloringGroup === group.id}
-						aria-label="Farve på {group.name}"
-						title="Farve"
-					></button>
 					<h2 class="fold">
 						<button onclick={() => app.toggleGroup(group.id)} aria-expanded={!group.collapsed}>
 							<svg
@@ -554,6 +600,15 @@
 							>
 								<path d="M6 9l6 6 6-6" />
 							</svg>
+							<!-- Inside the button rather than before it, so the heading starts
+							     on the same edge as everything else in the sidebar. As a
+							     sibling it pushed the whole row in, and a group heading that
+							     is indented says the heading is inside something. -->
+							<span
+								class="dot group-dot"
+								style="background: {colorVar(group.color)}"
+								aria-hidden="true"
+							></span>
 							{group.name}
 						</button>
 					</h2>
@@ -569,25 +624,6 @@
 				{/if}
 			</div>
 
-			{#if coloringGroup === group.id}
-				<div class="swatches" role="group" aria-label="Farve på {group.name}">
-					{#each COLORS as color (color.id)}
-						<button
-							class="swatch"
-							class:chosen={(group.color ?? 'graphite') === color.id}
-							style="background: {colorVar(color.id)}"
-							title={color.name}
-							aria-label={color.name}
-							aria-pressed={(group.color ?? 'graphite') === color.id}
-							onclick={() => {
-								app.setGroupColor(group.id, color.id);
-								coloringGroup = null;
-							}}
-						></button>
-					{/each}
-				</div>
-			{/if}
-
 			{#if !group.collapsed}
 				{#each inside as project (project.id)}
 					{@render projectRow(project, true)}
@@ -601,43 +637,49 @@
 
 	{#if shared.length}
 		<div class="group">
-			<div class="group-head"><h2>Delt med mig</h2></div>
-			{#each shared as project (project.id)}
-				{@render projectRow(project, false)}
-			{/each}
+			<div class="group-head">{@render foldHeading('shared', 'Delt med mig')}</div>
+			{#if !app.sectionCollapsed('shared')}
+				{#each shared as project (project.id)}
+					{@render projectRow(project, false)}
+				{/each}
+			{/if}
 		</div>
 	{/if}
 
 	{#if filters.length}
 		<div class="group">
-			<div class="group-head"><h2>Filtre</h2></div>
-			{#each filters as filter (filter.id)}
-				<a
-					href="/filter/{filter.id}"
-					class:active={current === `/filter/${filter.id}`}
-					onclick={onnavigate}
-				>
-					<span class="dot" aria-hidden="true"></span>
-					{filter.name}
-				</a>
-			{/each}
+			<div class="group-head">{@render foldHeading('filters', 'Filtre')}</div>
+			{#if !app.sectionCollapsed('filters')}
+				{#each filters as filter (filter.id)}
+					<a
+						href="/filter/{filter.id}"
+						class:active={current === `/filter/${filter.id}`}
+						onclick={onnavigate}
+					>
+						<span class="dot" aria-hidden="true"></span>
+						{filter.name}
+					</a>
+				{/each}
+			{/if}
 		</div>
 	{/if}
 
 	{#if labels.length}
 		<div class="group">
-			<div class="group-head"><h2>Etiketter</h2></div>
-			{#each labels.filter((l) => l.task_count > 0) as label (label.id)}
-				<a
-					href="/etiket/{encodeURIComponent(label.name)}"
-					class:active={current === `/etiket/${encodeURIComponent(label.name)}`}
-					onclick={onnavigate}
-				>
-					<span class="dot" aria-hidden="true"></span>
-					{label.name}
-					<span class="count">{label.task_count}</span>
-				</a>
-			{/each}
+			<div class="group-head">{@render foldHeading('labels', 'Etiketter')}</div>
+			{#if !app.sectionCollapsed('labels')}
+				{#each labels.filter((l) => l.task_count > 0) as label (label.id)}
+					<a
+						href="/etiket/{encodeURIComponent(label.name)}"
+						class:active={current === `/etiket/${encodeURIComponent(label.name)}`}
+						onclick={onnavigate}
+					>
+						<span class="dot" aria-hidden="true"></span>
+						{label.name}
+						<span class="count">{label.task_count}</span>
+					</a>
+				{/each}
+			{/if}
 		</div>
 	{/if}
 
@@ -710,13 +752,20 @@
 		position: relative;
 	}
 
-	/* Sits on the border, wider than it looks: a 1px target is a target you miss.
-	   The visible line stays the border; this only widens what the pointer hits. */
+	/* Wider than it looks: a 1px target is a target you miss. The visible line stays
+	   the border; this only widens what the pointer hits.
+
+	   Flush with the inside edge rather than straddling the border. It used to sit
+	   at `right: -3px`, and an absolutely positioned child still counts towards its
+	   containing block's scrollable overflow — so those three pixels gave the whole
+	   sidebar a horizontal scrollbar on every desktop, always, whatever was in it.
+	   Seven pixels inside the edge is the same target for anybody aiming at the
+	   border, and it is a target that is actually inside the box it belongs to. */
 	.resize {
 		position: absolute;
 		top: 0;
 		bottom: 0;
-		right: -3px;
+		right: 0;
 		width: 7px;
 		cursor: col-resize;
 		z-index: 10;
@@ -935,21 +984,12 @@
 		margin-left: 0;
 	}
 
-	/* The group's own mark, in front of the chevron so the colours of the headings
-	   line up with each other rather than with the projects underneath. */
+	/* The group's own mark, between the chevron and the name — inside the fold
+	   button, so it cannot push the heading in. It is a mark now and not a
+	   control: the colour is chosen while renaming, which is the other edit to
+	   the same thing. */
 	.group-dot {
-		margin-left: var(--s2);
-		padding: 0;
-		box-shadow: 0 0 0 2px var(--surface-sunken);
-		transition: box-shadow var(--fast) var(--ease);
-	}
-
-	.group-dot:hover,
-	.group-dot:focus-visible {
-		box-shadow:
-			0 0 0 2px var(--surface-sunken),
-			0 0 0 3px var(--line-strong);
-		outline: none;
+		flex: none;
 	}
 
 	/* Projects inside a group are indented to the group's name, not to its dot:
@@ -969,11 +1009,20 @@
 		padding-left: calc(var(--s2) + var(--s4));
 	}
 
+	/* Inside the rename form now, so it needs no padding of its own — the form
+	   already sits where the heading did. */
+	.renaming {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s2);
+		width: 100%;
+		min-width: 0;
+	}
+
 	.swatches {
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--s2);
-		padding: var(--s2) var(--s2) var(--s3);
 	}
 
 	.swatch {
@@ -1153,6 +1202,7 @@
 	.avatar {
 		width: 22px;
 		height: 22px;
+		flex: none;
 		border-radius: var(--radius-full);
 		display: grid;
 		place-items: center;
@@ -1162,7 +1212,18 @@
 		flex: none;
 	}
 
+	/* `min-width: 0`, or the ellipsis never happens.
+	   A flex item's default is `min-width: auto`, which refuses to shrink below its
+	   content — so `overflow: hidden` had nothing to hide and the row simply grew
+	   wider than the sidebar. And the sidebar has `overflow-y: auto`, which CSS
+	   resolves to `auto` on the other axis too, so the result was a horizontal
+	   scrollbar under the whole menu on a perfectly ordinary desktop.
+
+	   Not fixed with `overflow-x: hidden` on the sidebar: the resize handle sits at
+	   `right: -3px` and would be clipped away. The row shrinking is the fix; the
+	   test asserting the sidebar never scrolls sideways is the backstop. */
 	.user-name {
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -1170,6 +1231,7 @@
 
 	.signout {
 		margin-left: auto;
+		flex: none;
 		font-size: var(--text-xs);
 		color: var(--ink-faint);
 		opacity: 0;

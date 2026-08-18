@@ -27,15 +27,60 @@ type userJSON struct {
 	Locale      string `json:"locale"`
 	IsAdmin     bool   `json:"is_admin"`
 	TOTPEnabled bool   `json:"totp_enabled"`
-	CreatedAt   string `json:"created_at"`
+	// SidebarCollapsed is which sidebar headings this person has folded away. On
+	// the account rather than in the browser, because folding one is a statement
+	// about the work and not about the screen — the sidebar's width is the
+	// opposite case and stays in localStorage.
+	SidebarCollapsed []string `json:"sidebar_collapsed"`
+	CreatedAt        string   `json:"created_at"`
 }
 
 func toUserJSON(u *store.User) userJSON {
+	collapsed := u.SidebarCollapsed
+	// Never null in the response: a client that has to check for both an absent
+	// array and an empty one will one day check for only one of them.
+	if collapsed == nil {
+		collapsed = []string{}
+	}
 	return userJSON{
 		ID: u.ID, Email: u.Email, Name: u.Name, AvatarColor: u.AvatarColor,
 		Timezone: u.Timezone, Locale: u.Locale, IsAdmin: u.IsAdmin,
-		TOTPEnabled: u.TOTPEnabled, CreatedAt: u.CreatedAt.Format(time.RFC3339),
+		TOTPEnabled: u.TOTPEnabled, SidebarCollapsed: collapsed,
+		CreatedAt: u.CreatedAt.Format(time.RFC3339),
 	}
+}
+
+// handleSetSidebarSections records which sidebar headings are folded away.
+//
+// Its own route rather than a field on the profile: that one backs a form with a
+// save button and validates three fields together, and this writes on every click
+// of a chevron. Sharing the path would mean a fold sending a name and a timezone
+// it was never asked to change — and a validation error on one of those failing a
+// fold.
+//
+// The keys are the sidebar's and are not checked here. An unknown one costs
+// nothing: the sidebar folds the headings it recognises and ignores the rest, so
+// a heading that is renamed or removed leaves a harmless entry rather than a
+// migration.
+func (s *Server) handleSetSidebarSections(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Sections []string `json:"sections"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	// A cap, because this is a list the client decides the length of. Twenty is far
+	// more headings than the sidebar has ever had.
+	if len(req.Sections) > 20 {
+		writeError(w, http.StatusBadRequest, CodeBadRequest, "too many sections")
+		return
+	}
+	user := userFrom(r.Context())
+	if err := s.db.SetSidebarCollapsed(r.Context(), user.ID, req.Sections); err != nil {
+		s.storeError(w, r, "set sidebar sections", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // --- sign in -----------------------------------------------------------------
