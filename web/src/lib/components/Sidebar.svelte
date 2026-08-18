@@ -939,14 +939,30 @@
 	/* The chevron on its own, so the name beside it can be a link to the group's
 	   page. Sized as a target rather than as a glyph: 11px of arrow is something
 	   you miss. */
+	/* The chevron sits on top of the group's dot rather than before it. In the flow
+	   it pushed the name 22px further in than a project's, so groups read as if
+	   they were filed under the projects above them — the opposite of what they
+	   are. Out of the flow, a group's name starts exactly where a project's does.
+	   The dot is the resting state; the chevron takes over on hover or focus, and
+	   stays put while the group is folded, so a folded group still shows the way
+	   back open. */
 	.chevron-button {
-		flex: none;
+		position: absolute;
+		left: calc(var(--s2) - 5px);
 		width: 18px;
 		height: 18px;
 		display: grid;
 		place-items: center;
 		border-radius: var(--radius-sm);
 		color: inherit;
+		opacity: 0;
+		background: var(--surface);
+	}
+
+	.folder-head:hover .chevron-button,
+	.chevron-button:focus-visible,
+	.chevron-button[aria-expanded='false'] {
+		opacity: 1;
 	}
 
 	.chevron-button:hover {
@@ -997,13 +1013,28 @@
 
 	/* Hidden until the heading is hovered, like the section actions on a project
 	   page: two buttons permanently beside a label stop it reading as a label. */
+	/* Hidden but still in the flow, these two reserved their own width at all
+	   times — enough that ARBEJDE was drawn as "ARBE". They are lifted out of the
+	   flow and sit over the right end of the row, so the name has the whole line
+	   until somebody actually reaches for them. */
 	.group-action {
+		position: absolute;
+		right: var(--s2);
 		font-size: var(--text-xs);
 		color: var(--ink-faint);
 		padding: 0 var(--s1);
 		flex: none;
 		opacity: 0;
+		background: var(--surface);
 		transition: opacity var(--fast) var(--ease);
+	}
+
+	.group-action.remove {
+		right: var(--s2);
+	}
+
+	.group-action:not(.remove) {
+		right: calc(var(--s2) + 3.2em);
 	}
 
 	.folder-head:hover .group-action,
@@ -1020,7 +1051,33 @@
 	}
 
 	.folder-head .count {
-		margin-left: 0;
+		margin-left: auto;
+	}
+
+	/* Without min-width a flex item refuses to shrink below its content, so a long
+	   group name pushed the count off the row instead of ending in an ellipsis. */
+	.folder-head h2 {
+		min-width: 0;
+		flex: 1;
+	}
+
+	/* No left padding of its own: the row already has the same padding as a project
+	   row, and the anchor's would be added on top — which is where the last eight
+	   pixels of the old indent were hiding. Vertical padding stays, so the heading
+	   keeps its height. */
+	.folder-head h2 a {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		min-width: 0;
+		padding: var(--s2) 0;
+	}
+
+	.folder-head h2 a :global(*:last-child),
+	.folder-head h2 {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	/* The group's own mark, between the chevron and the name — inside the fold

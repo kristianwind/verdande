@@ -302,26 +302,41 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	await expect(heading).toBeVisible();
 	await expect(sidebar.getByText('Træk et projekt herop')).toBeVisible();
 
-	// The words in the heading must not sit on top of each other.
+	// A group's name must be readable in full, and must start where a project's
+	// name starts.
 	//
-	// Everything else here clicks by accessible name, which is exactly why this
-	// needs saying out loud: "Omdøb" and "Slet" once got the 20px square meant for
-	// the "+" icon beside "Projekter", overflowed it, and were drawn overlapping.
-	// Both buttons still worked, so every assertion in this file passed.
-	const boxes = await sidebar.locator('.folder-head').evaluate((el) =>
-		// Links as well as buttons: the group's name is a link to its page now, and
-		// a measurement that skipped it would miss the widest thing in the row.
-		[...el.querySelectorAll('button, a')].map((b) => {
-			const r = b.getBoundingClientRect();
-			return { text: b.textContent.trim(), left: r.left, right: r.right };
-		})
-	);
-	for (let i = 1; i < boxes.length; i++) {
-		expect(
-			boxes[i].left,
-			`"${boxes[i - 1].text}" og "${boxes[i].text}" overlapper i gruppehovedet`
-		).toBeGreaterThanOrEqual(boxes[i - 1].right);
-	}
+	// Both halves are here because both were once broken at the same time and for
+	// different reasons. "Omdøb" and "Slet" sat in the flow reserving their width
+	// even while invisible, so ARBEJDE was drawn as "ARBE"; and the fold chevron
+	// sat before the name, pushing a group 22px further in than the projects it
+	// contains — so a group read as if it were filed under them. Every assertion
+	// in this file passed through both, because both buttons still worked.
+	const shape = await sidebar.locator('.folder-head').evaluate((el) => {
+		const link = el.querySelector('h2 a');
+		const name = { ...link.querySelector('.dot').getBoundingClientRect().toJSON() };
+		// The last child of the link is the name itself; the dot is a span before it.
+		return {
+			clipped: link.scrollWidth > link.clientWidth + 1,
+			left: name.left,
+			right: link.getBoundingClientRect().right,
+			count: el.querySelector('.count')?.getBoundingClientRect().left ?? Infinity
+		};
+	});
+
+	expect(shape.clipped, 'gruppens navn bliver klippet').toBe(false);
+	expect(shape.count, 'navnet og tallet overlapper').toBeGreaterThanOrEqual(shape.right);
+
+	// Measured dot to dot, not box to box: both rows begin with the same coloured
+	// mark, and it is the only thing in them that means the same on both sides.
+	// Comparing the group's inner link with the project's outer box reported the
+	// row's own padding as a misalignment.
+	const projectLeft = await sidebar
+		.getByRole('link', { name: 'Regnskab' })
+		.evaluate((el) => el.querySelector('.dot').getBoundingClientRect().left);
+	expect(
+		Math.abs(shape.left - projectLeft),
+		`gruppen starter ${Math.round(shape.left - projectLeft)}px fra projekterne`
+	).toBeLessThanOrEqual(2);
 
 	// Dragged in, then dragged back out onto "Projekter" — which is the reason
 	// that heading is a drop target at all: with every project filed away there
