@@ -600,5 +600,13 @@ export const en = {
 
 	'view.addTask': '+ Add a task',
 	'view.addTaskHere': 'Write a task — a date, p1 and @label work here too',
-	'view.addTaskIn': 'New task in {name}'
+	'view.addTaskIn': 'New task in {name}',
+
+	'task.completedUndo': '“{what}” is done.',
+	'task.undo': 'Undo',
+
+	'done.title': 'Done',
+	'done.hint': 'Everything you have closed, newest first. Click the circle to reopen one.',
+	'done.empty': 'You have not closed anything yet.',
+	'done.unknownDay': 'No date'
 };

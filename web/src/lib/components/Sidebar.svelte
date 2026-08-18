@@ -368,6 +368,14 @@
 				{t('nav.delegated')}
 			</a>
 		{/if}
+		<!-- After the three views of what is left, because it is the one that is not
+		     about what is left. It earns a permanent place rather than a toggle in
+		     each view: somebody looking for a task they closed by mistake does not
+		     know which view they closed it in. -->
+		<a href="/faerdige" class:active={current === '/faerdige'} onclick={onnavigate}>
+			<span class="dot" aria-hidden="true"></span>
+			{t('done.title')}
+		</a>
 		{#if app.inbox}
 			{@render projectRow(app.inbox, false)}
 		{/if}

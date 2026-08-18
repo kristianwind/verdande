@@ -605,5 +605,13 @@ export const da = {
 
 	'view.addTask': '+ Tilføj opgave',
 	'view.addTaskHere': 'Skriv en opgave — dato, p1 og @etiket virker her også',
-	'view.addTaskIn': 'Ny opgave i {name}'
+	'view.addTaskIn': 'Ny opgave i {name}',
+
+	'task.completedUndo': '“{what}” er lukket.',
+	'task.undo': 'Fortryd',
+
+	'done.title': 'Færdige',
+	'done.hint': 'Alt du har lukket, nyeste først. Klik cirklen for at åbne en igen.',
+	'done.empty': 'Du har ikke lukket noget endnu.',
+	'done.unknownDay': 'Uden dato'
 };

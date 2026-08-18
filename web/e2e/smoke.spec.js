@@ -1393,6 +1393,61 @@ test('en opgave kan skrives direkte i en sektion @forms', async ({ page }) => {
 });
 
 /**
+ * A task closed by mistake can be got back, two ways.
+ *
+ * Reported from use: "I just closed a task by accident, and there is no undo and no
+ * list of closed tasks." Both halves were true. Completing is one click on a small
+ * circle beside a row you were only reading, and it takes the row off the screen —
+ * so the mistake and the evidence of it leave together.
+ *
+ * The toast covers the mistake you notice at once. Færdige covers the one you
+ * notice tomorrow, and it is a place rather than a toggle because somebody hunting
+ * for a task they closed does not know which view they closed it in.
+ */
+test('en opgave lukket ved et uheld kan hentes tilbage', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	await page.getByLabel('Ny opgave').fill('rens tagrenden i dag');
+	await page.getByLabel('Ny opgave').press('Enter');
+	const row = page.locator('.row').filter({ hasText: 'rens tagrenden' });
+	await expect(row).toBeVisible();
+
+	// Closed by mistake.
+	await row.getByRole('button', { name: 'Markér som færdig' }).click();
+	await expect(page.getByText('rens tagrenden', { exact: true })).toBeHidden();
+
+	// The toast names it, so you can tell which one you hit.
+	const toast = page.locator('.toast').filter({ hasText: 'rens tagrenden' });
+	await expect(toast).toBeVisible();
+	await toast.getByRole('button', { name: 'Fortryd' }).click();
+	await expect(page.locator('.row').filter({ hasText: 'rens tagrenden' })).toBeVisible();
+
+	// Now the other half: close it again and walk away from the toast.
+	await page
+		.locator('.row')
+		.filter({ hasText: 'rens tagrenden' })
+		.getByRole('button', { name: 'Markér som færdig' })
+		.click();
+	await expect(page.getByText('rens tagrenden', { exact: true })).toBeHidden();
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('link', { name: 'Færdige' }).click();
+	await expect(page.getByRole('heading', { name: 'Færdige', level: 1 })).toBeVisible();
+
+	const closed = page.locator('.row').filter({ hasText: 'rens tagrenden' });
+	await expect(closed).toBeVisible();
+	// Grouped by the day it was closed, which is how anybody would describe it.
+	await expect(page.getByRole('heading', { name: 'I dag', level: 2 })).toBeVisible();
+
+	// And it reopens from here, leaving the list at once.
+	await closed.getByRole('button', { name: 'Genåbn opgave' }).click();
+	await expect(page.locator('.row').filter({ hasText: 'rens tagrenden' })).toHaveCount(0);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * The sidebar never scrolls sideways.
  *
  * It grew a horizontal scrollbar on an ordinary desktop, under the whole menu.

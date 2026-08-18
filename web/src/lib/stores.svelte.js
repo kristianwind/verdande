@@ -12,7 +12,7 @@
  */
 
 import { api, ApiError, humanMessage } from './api.js';
-import { i18n } from './i18n.svelte.js';
+import { i18n, t } from './i18n.svelte.js';
 
 class AppState {
 	user = $state(null);
@@ -278,8 +278,36 @@ class AppState {
 	 * leaves — which is the single most-repeated action in the app, and the one
 	 * place latency would be felt all day.
 	 */
+	/**
+	 * Closes a task, and offers to put it back.
+	 *
+	 * Completing is one click on a small circle next to a row you were only
+	 * reading, and it takes the row off the screen — so the mistake and the
+	 * evidence of it leave together. Somebody who clicks the wrong one is left with
+	 * no name to search for and no list to find it in.
+	 *
+	 * The undo is offered where the mistake happened rather than filed somewhere to
+	 * be looked up. It is the same call `reopen` makes; the only new thing is that
+	 * the interface says it is available.
+	 *
+	 * A recurring task is deliberately not offered one. Completing it moves it to
+	 * its next date rather than closing it, so there is nothing to undo — and an
+	 * "undo" that silently rolled the date back would be a different act from the
+	 * one it claims to reverse.
+	 */
 	async complete(id) {
+		const task = this.get(id);
+		const repeats = Boolean(task?.recurrence_rule);
+		const what = task?.content ?? '';
+
 		await this.#optimistic(id, { completed: true }, () => api.completeTask(id));
+
+		if (!repeats) {
+			this.toast(t('task.completedUndo', { what: truncate(what) }), {
+				action: t('task.undo'),
+				onaction: () => this.reopen(id)
+			});
+		}
 	}
 
 	async reopen(id) {
@@ -569,17 +597,33 @@ class AppState {
 
 	// --- toasts -------------------------------------------------------------------
 
-	toast(message) {
+	/**
+	 * Says something, and optionally offers one thing to do about it.
+	 *
+	 * An action gets longer on screen than a plain message: five seconds is enough
+	 * to read "could not save", and not enough to notice you closed the wrong task,
+	 * decide, and reach the mouse.
+	 */
+	toast(message, { action, onaction } = {}) {
 		const id = Math.random().toString(36).slice(2);
-		this.toasts.push({ id, message });
-		setTimeout(() => {
-			this.toasts = this.toasts.filter((t) => t.id !== id);
-		}, 5000);
+		this.toasts.push({ id, message, action, onaction });
+		setTimeout(
+			() => {
+				this.toasts = this.toasts.filter((t) => t.id !== id);
+			},
+			action ? 12000 : 5000
+		);
 	}
 
 	dismissToast(id) {
 		this.toasts = this.toasts.filter((t) => t.id !== id);
 	}
+}
+
+/** Enough of a task's title to recognise it, without a toast the width of the page. */
+function truncate(text, max = 40) {
+	const trimmed = text.trim();
+	return trimmed.length > max ? trimmed.slice(0, max - 1).trimEnd() + '…' : trimmed;
 }
 
 export const app = new AppState();

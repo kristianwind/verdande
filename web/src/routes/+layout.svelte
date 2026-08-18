@@ -160,9 +160,25 @@
 	     had succeeded. Nothing else earns an interruption. -->
 	<div class="toasts" role="status" aria-live="polite">
 		{#each app.toasts as toast (toast.id)}
-			<button class="toast" onclick={() => app.dismissToast(toast.id)}>
-				{toast.message}
-			</button>
+			<div class="toast">
+				<!-- The message dismisses, the action acts. They were one button before,
+				     which is fine while the only thing a toast says is "that failed" —
+				     and wrong the moment it offers to undo something, because then a
+				     click meaning "yes, put it back" and a click meaning "go away" land
+				     in the same place. -->
+				<button class="body" onclick={() => app.dismissToast(toast.id)}>
+					{toast.message}
+				</button>
+				{#if toast.action}
+					<button
+						class="action"
+						onclick={() => {
+							app.dismissToast(toast.id);
+							toast.onaction?.();
+						}}>{toast.action}</button
+					>
+				{/if}
+			</div>
 		{/each}
 	</div>
 {/if}
@@ -304,6 +320,29 @@
 		z-index: 40;
 	}
 
+	.toast .body {
+		flex: 1;
+		min-width: 0;
+		text-align: left;
+		color: inherit;
+		font: inherit;
+	}
+
+	/* Set apart, because it is the one thing in a toast that does something rather
+	   than says something. */
+	.toast .action {
+		flex: none;
+		padding: var(--s1) var(--s2);
+		margin: calc(var(--s1) * -1) calc(var(--s1) * -1) calc(var(--s1) * -1) 0;
+		border-radius: var(--radius-sm);
+		font-weight: 560;
+		color: var(--accent);
+	}
+
+	.toast .action:hover {
+		background: var(--surface);
+	}
+
 	.toasts {
 		position: fixed;
 		bottom: var(--s4);
@@ -317,8 +356,14 @@
 	}
 
 	.toast {
+		display: flex;
+		align-items: center;
+		gap: var(--s3);
 		background: var(--surface-raised);
 		border: 1px solid var(--line-strong);
+		/* The red edge said "something went wrong", which was true while that was
+		   all a toast could say. An undo is not a failure — it is the app offering
+		   to put something back — so the edge follows the message. */
 		border-left: 2px solid var(--danger);
 		border-radius: var(--radius);
 		box-shadow: var(--shadow-lg);
@@ -327,6 +372,10 @@
 		color: var(--ink);
 		max-width: 420px;
 		text-align: left;
+	}
+
+	.toast:has(.action) {
+		border-left-color: var(--accent);
 	}
 
 	/* Below the tablet breakpoint the sidebar becomes a drawer. The layout is

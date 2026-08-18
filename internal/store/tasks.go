@@ -189,7 +189,7 @@ func (db *DB) ListTasks(ctx context.Context, userID string, f TaskFilter) ([]Tas
 		FROM tasks t
 		JOIN projects p ON p.id = t.project_id
 		WHERE ` + strings.Join(where, " AND ") + `
-		ORDER BY t.due_date IS NULL, t.due_date, t.priority, t.sort_order, t.created_at`
+		ORDER BY ` + order(f)
 
 	if f.Limit > 0 {
 		query += ` LIMIT ?`
@@ -345,6 +345,19 @@ const taskCounts = `
 	(SELECT count(*) FROM tasks c
 	  WHERE c.parent_id = t.id AND c.deleted_at IS NULL AND c.completed_at IS NOT NULL),
 	(SELECT count(*) FROM attachments a WHERE a.task_id = t.id)`
+
+// order is how a list of tasks is sorted, which depends on what the list is for.
+//
+// A plan is read by when it is due and how urgent it is. A record of what has been
+// finished is read backwards from now — "what did I just do" and "what did I close
+// by mistake" are both questions about the most recent thing, and neither is
+// answered by a due date the task no longer has.
+func order(f TaskFilter) string {
+	if f.CompletedOnly {
+		return "t.completed_at DESC, t.id DESC"
+	}
+	return "t.due_date IS NULL, t.due_date, t.priority, t.sort_order, t.created_at"
+}
 
 func scanTask(rows *sql.Rows) (Task, error) {
 	var t Task
