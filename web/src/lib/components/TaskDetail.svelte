@@ -276,7 +276,7 @@
 	}
 
 	async function removeComment(comment) {
-		if (!confirm('Slet kommentaren?')) return;
+		if (!confirm(t('detail.deleteComment'))) return;
 		const previous = comments;
 		comments = comments.filter((c) => c.id !== comment.id);
 		try {

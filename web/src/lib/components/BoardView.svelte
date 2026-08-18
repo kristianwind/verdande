@@ -125,7 +125,7 @@
 			);
 		} catch {
 			app.replace(id, previous);
-			app.toast('Kunne ikke flytte opgaven.');
+			app.toast(t('task.moveFailed'));
 		}
 	}
 </script>

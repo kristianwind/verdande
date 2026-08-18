@@ -138,7 +138,7 @@
 	}
 
 	async function deleteTemplate(template) {
-		if (!confirm(`Slet skabelonen "${template.name}"?`)) return;
+		if (!confirm(t('data.deleteTemplate', { name: template.name }))) return;
 
 		const previous = templates;
 		templates = templates.filter((t) => t.id !== template.id);

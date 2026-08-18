@@ -60,7 +60,7 @@
 		} catch {
 			// Insecure context, or permission refused. The token is on screen and
 			// selectable, so this is a convenience that failed, not the feature.
-			app.toast('Kunne ikke kopiere — markér teksten i stedet.');
+			app.toast(t('int.copyFailed'));
 		}
 	}
 
@@ -69,12 +69,12 @@
 			await navigator.clipboard.writeText(connectorURL);
 			connectorCopied = true;
 		} catch {
-			app.toast('Kunne ikke kopiere — markér teksten i stedet.');
+			app.toast(t('int.copyFailed'));
 		}
 	}
 
 	async function revoke(token) {
-		if (!confirm(`Tilbagekald "${token.name}"? Alt, der bruger den, holder op med at virke.`))
+		if (!confirm(t('tokens.revokeQuestion', { name: token.name })))
 			return;
 
 		const previous = tokens;

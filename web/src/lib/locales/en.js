@@ -641,5 +641,24 @@ export const en = {
 	'update.waiting': 'Waiting for the server to come back…',
 	'update.stillDown': 'The server has not come back yet. Have a look in the panel.',
 	'update.notConfigured':
-		'This instance cannot restart itself: {missing} are not set. A container cannot replace its own image — the panel does the work, and this is only the way to ask.'
+		'This instance cannot restart itself: {missing} are not set. A container cannot replace its own image — the panel does the work, and this is only the way to ask.',
+
+	'error.gmailSaid': 'Gmail said: {what}',
+
+	'error.gmailRefused': 'Gmail refused the call. Try connecting the mailbox again.',
+
+	'int.newAddressQuestion': 'A new address? Mail to the old one is refused.',
+	'int.copied': 'Copied.',
+	'int.copyFailed': 'Could not copy — select the text instead.',
+
+	'detail.deleteComment': 'Delete the comment?',
+	'int.disconnectQuestion': 'Disconnect Gmail? The tokens are forgotten.',
+	'int.newLinkQuestion': 'A new feed link? Every existing subscription stops working.',
+	'data.deleteTemplate': 'Delete the template "{name}"?',
+	'tokens.revokeQuestion': 'Revoke "{name}"? Everything using it stops working.',
+	'account.signOutThisDevice': 'That is this device. You will be signed out.',
+
+	'project.deleteQuestion': 'Delete "{name}" with all its tasks?',
+	'project.deleteRecoverable':
+		'It goes to the trash and can be restored under Settings → Data and templates for {days} days.'
 };

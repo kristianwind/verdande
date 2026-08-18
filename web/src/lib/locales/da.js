@@ -646,5 +646,24 @@ export const da = {
 	'update.waiting': 'Venter på at serveren kommer op igen…',
 	'update.stillDown': 'Serveren er ikke kommet op endnu. Kig i panelet.',
 	'update.notConfigured':
-		'Denne instans kan ikke genstarte sig selv: {missing} er ikke sat. En container kan ikke udskifte sit eget image — panelet gør arbejdet, og det her er kun måden at bede om det.'
+		'Denne instans kan ikke genstarte sig selv: {missing} er ikke sat. En container kan ikke udskifte sit eget image — panelet gør arbejdet, og det her er kun måden at bede om det.',
+
+	'error.gmailSaid': 'Gmail svarede: {what}',
+
+	'error.gmailRefused': 'Gmail afviste kaldet. Prøv at forbinde postkassen igen.',
+
+	'int.newAddressQuestion': 'Ny adresse? Mail til den gamle bliver afvist.',
+	'int.copied': 'Kopieret.',
+	'int.copyFailed': 'Kunne ikke kopiere — markér teksten i stedet.',
+
+	'detail.deleteComment': 'Slet kommentaren?',
+	'int.disconnectQuestion': 'Afbryd forbindelsen til Gmail? Tokens bliver glemt.',
+	'int.newLinkQuestion': 'Nyt feed-link? Alle eksisterende abonnementer holder op med at virke.',
+	'data.deleteTemplate': 'Slet skabelonen "{name}"?',
+	'tokens.revokeQuestion': 'Tilbagekald "{name}"? Alt, der bruger den, holder op med at virke.',
+	'account.signOutThisDevice': 'Det er denne enhed. Du bliver logget ud.',
+
+	'project.deleteQuestion': 'Slet "{name}" med alle dets opgaver?',
+	'project.deleteRecoverable':
+		'Det havner i papirkurven og kan hentes tilbage under Indstillinger → Data og skabeloner i {days} dage.'
 };

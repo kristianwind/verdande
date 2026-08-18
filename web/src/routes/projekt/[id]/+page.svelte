@@ -188,9 +188,9 @@
 	async function remove() {
 		const days = 30;
 		const confirmed = confirm(
-			`Slet "${project.name}" med alle dets opgaver?\n\n` +
-				`Det havner i papirkurven og kan hentes tilbage under ` +
-				`Indstillinger → Data og skabeloner i ${days} dage.`
+			t('project.deleteQuestion', { name: projectName(project) }) +
+				'\n\n' +
+				t('project.deleteRecoverable', { days })
 		);
 		if (!confirmed) return;
 

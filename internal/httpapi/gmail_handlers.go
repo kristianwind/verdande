@@ -150,6 +150,9 @@ func (s *Server) handleGmailCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Best effort: a mailbox that connects but cannot name itself is still
+	// connected, and the status endpoint asks again when it finds no address —
+	// so this failing is a delay rather than a dead end.
 	email, err := gmail.NewClient(token.AccessToken).Profile(r.Context())
 	if err != nil {
 		s.log.Warn("gmail profile", "err", err)
@@ -184,7 +187,7 @@ func (s *Server) handleGmailSyncNow(w http.ResponseWriter, r *http.Request) {
 
 	created, err := s.SyncGmail(r.Context(), user)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, CodeInternal, err.Error())
+		s.upstream(w, r, CodeGmailFailed, "sync gmail", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"created": created})
@@ -424,4 +427,40 @@ func (s *Server) handleSetGmailClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// gmailProfile fetches the mailbox address and stores it, refreshing the access
+// token first if it has expired.
+//
+// Shared by the connect callback and the status endpoint. The callback is the
+// natural place to learn the address, and it is also the one moment that cannot be
+// retried — so the status endpoint asks again when it finds nothing, and the answer
+// corrects itself on the next look.
+func (s *Server) gmailProfile(ctx context.Context, user *store.User, settings map[string]any) (string, error) {
+	str := func(key string) string {
+		v, _ := settings[key].(string)
+		return v
+	}
+
+	access := str("access_token")
+	expires, _ := settings["expires_at"].(float64)
+	if access == "" || int64(expires) <= time.Now().Unix() {
+		token, err := s.gmailConfig(ctx).Refresh(ctx, str("refresh_token"))
+		if err != nil {
+			return "", err
+		}
+		access = token.AccessToken
+		settings["access_token"] = access
+		settings["expires_at"] = token.ExpiresAt.Unix()
+	}
+
+	email, err := gmail.NewClient(access).Profile(ctx)
+	if err != nil {
+		return "", err
+	}
+	settings["email"] = email
+	if err := s.db.SetUserSettings(ctx, user.ID, "gmail", settings); err != nil {
+		return "", err
+	}
+	return email, nil
 }

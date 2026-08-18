@@ -55,6 +55,9 @@ const MESSAGES = {
 	ai_not_configured: 'error.aiNotConfigured',
 	totp_not_enabled: 'error.totpNotEnabled',
 	inbox_protected: 'error.inboxProtected',
+	// The fallback for when Gmail refused and said nothing usable. When it did say
+	// something, `humanMessage` quotes it instead — see below.
+	gmail_failed: 'error.gmailRefused',
 	last_admin: 'error.lastAdmin'
 };
 
@@ -67,6 +70,15 @@ const MESSAGES = {
  */
 export function humanMessage(err) {
 	if (!(err instanceof ApiError)) return t(MESSAGES.offline);
+
+	// Gmail's own words are the diagnosis — "invalid_grant", "insufficient
+	// authentication scopes" — and a generic sentence in their place throws away
+	// the only thing that says what to do. Wrapped so it reads as a quotation
+	// rather than as a stray English string in a Danish interface.
+	if (err.code === 'gmail_failed' && err.message) {
+		return t('error.gmailSaid', { what: err.message });
+	}
+
 	const key = MESSAGES[err.code];
 	if (key) return t(key);
 	return err.message ?? t(MESSAGES.internal_error);

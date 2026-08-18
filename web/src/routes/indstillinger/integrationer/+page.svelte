@@ -125,7 +125,7 @@
 	}
 
 	async function disconnectGmail() {
-		if (!confirm('Afbryd forbindelsen til Gmail? Tokens bliver glemt.')) return;
+		if (!confirm(t('int.disconnectQuestion'))) return;
 		try {
 			await api.disconnectGmail();
 			gmail = await api.getGmail();
@@ -153,7 +153,7 @@
 	});
 
 	async function rotateFeed() {
-		if (!confirm('Nyt feed-link? Alle eksisterende abonnementer holder op med at virke.')) return;
+		if (!confirm(t('int.newLinkQuestion'))) return;
 		try {
 			feedURL = (await api.rotateFeed()).url;
 		} catch (e) {
@@ -162,7 +162,7 @@
 	}
 
 	async function rotateMail() {
-		if (!confirm('Ny adresse? Mail til den gamle bliver afvist.')) return;
+		if (!confirm(t('int.newAddressQuestion'))) return;
 		try {
 			const r = await api.rotateMailAddress();
 			mailAddress = r.address;
@@ -175,9 +175,9 @@
 	async function copy(text) {
 		try {
 			await navigator.clipboard.writeText(text);
-			app.toast('Kopieret.');
+			app.toast(t('int.copied'));
 		} catch {
-			app.toast('Kunne ikke kopiere — markér teksten i stedet.');
+			app.toast(t('int.copyFailed'));
 		}
 	}
 </script>

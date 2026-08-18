@@ -20,6 +20,56 @@ import (
 // away whatever letters it happens to use. A word list rather than a language
 // detector: this repository ships one static binary, and a list of thirty common
 // words catches the sentences a person would actually write.
+// The same words, inside the code rather than the markup.
+//
+// `confirm()`, `alert()` and `app.toast()` take a string argument, and a string
+// argument lives in the script block where the scanner above never looks. Six of
+// them survived the whole i18n sweep that way — every destructive confirmation in
+// the app, which is the worst possible set to leave in one language, because it is
+// the text somebody reads in the half-second before they agree to lose something.
+func TestNoDanishProseInDialogsAndToasts(t *testing.T) {
+	// The argument of one of the three, quoted or backticked. Deliberately narrow:
+	// a general scan of every string literal in a Svelte script block would drown
+	// in class names, keys and query fragments.
+	call := regexp.MustCompile(`(?:confirm|alert|app\.toast)\(\s*['` + "`" + `]([^'` + "`" + `]{4,})['` + "`" + `]`)
+	danish := regexp.MustCompile(`(?i)\b(og|er|ikke|det|den|der|til|kan|som|har|med|af|en|et|du|din|dine|vises|ingen|nyere|fundet|ude|valgt|slettet|gemt|opgave|projekt|indstillinger|fjern|opret|vælg|luk|tilføj|ryd|gem|slet|omdøb|bliver|holder|alle)\b`)
+
+	var found []string
+	root := filepath.Join("..", "..", "web", "src")
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+		if !strings.HasSuffix(path, ".svelte") && !strings.HasSuffix(path, ".js") {
+			return nil
+		}
+		if strings.Contains(path, "locales") {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, path)
+		for _, m := range call.FindAllStringSubmatch(string(body), -1) {
+			if danish.MatchString(m[1]) {
+				found = append(found, rel+": "+m[1])
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
+	}
+
+	if len(found) > 0 {
+		t.Errorf("%d dialog or toast string(s) are written in Danish inside the code. "+
+			"They are what somebody reads before agreeing to lose something, and an "+
+			"English interface shows them in Danish:\n  %s",
+			len(found), strings.Join(found, "\n  "))
+	}
+}
+
 func TestNoDanishProseOutsideTheDictionaries(t *testing.T) {
 	// Text nodes of three characters or more, and the three attributes a person
 	// reads. Anything inside {…} is already an expression — usually a t() call —

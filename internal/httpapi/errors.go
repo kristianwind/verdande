@@ -51,6 +51,13 @@ const (
 	// is not "that already exists" either, and it is the one refusal on the user
 	// page that a person needs explained rather than merely reported.
 	CodeLastAdmin = "last_admin"
+
+	// Gmail said no. Its own words are the diagnosis — "invalid_grant",
+	// "insufficient authentication scopes" — and they are useless behind a generic
+	// sentence, which is what `internal_error` gave: a person clicked Fetch now,
+	// read "something went wrong", and had nowhere to go. The interface wraps the
+	// message in one that says where it came from.
+	CodeGmailFailed = "gmail_failed"
 )
 
 // errLastAdmin is returned to the caller that already wrote the response, so it

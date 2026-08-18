@@ -573,6 +573,34 @@ func inboxName(locale string) string {
 // 11:49" long after the line explaining it has gone, which tells an operator that
 // something broke and gives them no way to find out what. The row outlives the
 // container; Indstillinger → Fejl is where it is read.
+// upstream reports a failure that came from somebody else's service.
+//
+// Separate from `internal` because the cause is different and so is the fix: a 500
+// is this server broken, and this is Google — or whoever — saying no. The status
+// says so (502), and the message is passed through rather than replaced, because
+// "invalid_grant" or "insufficient authentication scopes" is the whole diagnosis
+// and a generic sentence in its place throws it away.
+//
+// It is recorded like a 500 for exactly the reason the error log exists: a Gmail
+// sync that has been failing for a week is invisible otherwise. The background job
+// writes a log line the next restart erases, and nobody is watching the one screen
+// that would have said so.
+func (s *Server) upstream(w http.ResponseWriter, r *http.Request, code, what string, err error) {
+	s.log.Warn(what, "err", err)
+
+	userID := ""
+	if u := userFrom(r.Context()); u != nil {
+		userID = u.ID
+	}
+	s.db.RecordError(r.Context(), store.ServerError{
+		Method: r.Method, Path: r.URL.Path, Status: http.StatusBadGateway,
+		What: what, Message: err.Error(), UserID: userID,
+		RequestID: middleware.GetReqID(r.Context()),
+	})
+
+	writeError(w, http.StatusBadGateway, code, err.Error())
+}
+
 func (s *Server) internal(w http.ResponseWriter, r *http.Request, what string, err error) {
 	s.log.Error(what, "err", err)
 

@@ -215,7 +215,7 @@
 
 	async function endSession(session) {
 		if (session.current) {
-			if (!confirm('Det er denne enhed. Du bliver logget ud.')) return;
+			if (!confirm(t('account.signOutThisDevice'))) return;
 			await api.endSession(session.id);
 			// A full reload rather than clearing the store by hand: the session is
 			// gone, so every open socket and every cached answer in this tab is now

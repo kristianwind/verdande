@@ -379,9 +379,27 @@ func (s *Server) handleGetGmail(w http.ResponseWriter, r *http.Request) {
 		v, _ := values[key].(string)
 		return v
 	}
+	// The mailbox address, fetched again if it is missing.
+	//
+	// It is stored at connect time, and the call that fetches it can fail — a
+	// slow token, a scope Google had not applied yet. That failure used to be a
+	// log line and an empty string, so the page said "an unknown account" and went
+	// on saying it forever: the only way back was to disconnect and reconnect,
+	// which nobody would guess. Asking again here costs one request on a page
+	// nobody opens often, and it means the wrong answer lasts until the next look
+	// rather than until somebody reconnects.
+	email := str("email")
+	if email == "" && str("refresh_token") != "" {
+		if fetched, err := s.gmailProfile(r.Context(), userFrom(r.Context()), values); err == nil {
+			email = fetched
+		} else {
+			s.log.Warn("gmail profile", "err", err)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, gmailSettings{
 		Connected: str("refresh_token") != "",
-		Email:     str("email"),
+		Email:     email,
 		Trigger:   str("trigger"),
 		Label:     str("label"),
 	})
