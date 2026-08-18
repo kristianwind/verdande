@@ -11,6 +11,47 @@
 	let gmailSaved = $state(false);
 	let syncing = $state(false);
 
+	// The OAuth client is the instance's registration with Google, not anybody's
+	// mailbox — so it is read only for administrators, and only when they are the
+	// ones who could act on it.
+	let client = $state(null);
+	let clientId = $state('');
+	let clientSecret = $state('');
+	let savingClient = $state(false);
+	let clientSaved = $state(false);
+
+	$effect(() => {
+		if (!app.user?.is_admin) return;
+		api
+			.gmailClient()
+			.then((c) => {
+				client = c;
+				clientId = c.client_id ?? '';
+			})
+			.catch(() => {
+				// Not worth a toast: the panel simply does not offer the fields, which
+				// is the same thing it does for everybody who is not an administrator.
+			});
+	});
+
+	async function saveClient(event) {
+		event.preventDefault();
+		savingClient = true;
+		clientSaved = false;
+		try {
+			await api.setGmailClient({ client_id: clientId, client_secret: clientSecret });
+			// Cleared rather than kept: the field is a password field and the value is
+			// now stored. Leaving it filled is how a secret ends up in a screenshot.
+			clientSecret = '';
+			client = await api.gmailClient();
+			clientSaved = true;
+		} catch (e) {
+			app.toast(humanMessage(e));
+		} finally {
+			savingClient = false;
+		}
+	}
+
 	/**
 	 * What the OAuth callback redirected back with. It arrives as a query parameter
 	 * because the callback is a top-level navigation from Google — there is no fetch
@@ -157,13 +198,71 @@
 		<p class="empty">…</p>
 	{:else if !gmail.connected}
 		<div class="row">
-			<button class="primary" onclick={connect}>Forbind Gmail</button>
+			<button class="primary" onclick={connect} disabled={client && !client.client_id}>
+				Forbind Gmail
+			</button>
 		</div>
-		<p class="hint">
-			Kræver at administratoren har registreret en OAuth-klient hos Google og sat
-			<span class="mono">VERDANDE_GMAIL_CLIENT_ID</span> og
-			<span class="mono">_SECRET</span>.
-		</p>
+
+		<!-- The registration behind the button, for whoever can do something about
+		     it. Google issues no Gmail access to an unregistered client, and
+		     gmail.readonly is a restricted scope — so this step cannot be skipped by
+		     any app. It can stop requiring a redeploy, which is what this is. -->
+		{#if app.user?.is_admin && client}
+			{#if client.from_env}
+				<p class="hint">
+					Klienten er sat i miljøet (<span class="mono">VERDANDE_GMAIL_CLIENT_ID</span>),
+					så den kan ikke ændres her. Det er med vilje: en værdi i runens manifest er
+					en beslutning, der bliver anvendt igen ved hver genstart, og en formular,
+					der kunne overskrive den, ville gøre manifestet til en løgn.
+				</p>
+			{:else}
+				<details class="setup" open={!client.client_id}>
+					<summary>OAuth-klient hos Google</summary>
+
+					<p class="hint">
+						Registrér en klient i <span class="mono">Google Cloud Console → APIs &amp;
+						Services → Credentials → OAuth client ID → Web application</span>, slå
+						Gmail API til, og indsæt de to værdier her. Din egen konto skal stå som
+						testbruger, så længe appen ikke er verificeret hos Google.
+					</p>
+
+					<div class="field">
+						<label for="redirect">Godkendt redirect-URI</label>
+						<!-- Read-only and spelled out: it is derived from VERDANDE_BASE_URL,
+						     it has to match Google's copy exactly, and the error Google gives
+						     when it does not names neither value. Google afviser desuden
+						     private IP-adresser over http — det skal være https. -->
+						<input id="redirect" readonly value={client.redirect_uri} />
+					</div>
+
+					<form onsubmit={saveClient}>
+						<div class="field">
+							<label for="client-id">Klient-id</label>
+							<input id="client-id" bind:value={clientId} autocomplete="off" />
+						</div>
+						<div class="field">
+							<label for="client-secret">Klienthemmelighed</label>
+							<input
+								id="client-secret"
+								type="password"
+								bind:value={clientSecret}
+								autocomplete="off"
+								placeholder={client.has_secret ? 'Gemt — udfyld kun for at skifte den' : ''}
+							/>
+						</div>
+						<div class="row">
+							<button class="primary" type="submit" disabled={savingClient}>Gem</button>
+							{#if clientSaved}<span class="saved">Gemt.</span>{/if}
+						</div>
+					</form>
+				</details>
+			{/if}
+		{:else if client && !client.client_id}
+			<p class="hint">
+				Der er ikke registreret en OAuth-klient hos Google endnu. Det skal en
+				administrator gøre, før knappen her kan bruges.
+			</p>
+		{/if}
 	{:else}
 		<p class="hint">Forbundet som <strong>{gmail.email || 'ukendt konto'}</strong>.</p>
 
@@ -269,6 +368,29 @@
 </section>
 
 <style>
+	/* Folded away once it is set: it is a one-off registration, and a panel that
+	   keeps showing its own setup instructions after setup reads as unfinished. */
+	.setup {
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		padding: var(--s3);
+		display: flex;
+		flex-direction: column;
+		gap: var(--s3);
+	}
+
+	.setup summary {
+		cursor: pointer;
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+	}
+
+	.setup input[readonly] {
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+	}
+
 	form {
 		display: flex;
 		flex-direction: column;

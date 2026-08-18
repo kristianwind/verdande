@@ -1153,3 +1153,130 @@ func TestMCPCreateRefusesASecondLevelOfSubtask(t *testing.T) {
 		t.Errorf("a sub-task of a sub-task was accepted: %v", response)
 	}
 }
+
+// The Gmail OAuth client, enterable rather than deployed.
+//
+// The registration itself cannot be avoided — Google issues no Gmail access to an
+// unregistered client — but having to edit a Rune's manifest and recreate the
+// container to paste the result can be, and that is what this covers.
+func TestTheGmailClientCanBeSetFromTheInterface(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, empty := ts.do(t, "GET", "/api/v1/gmail/client", nil)
+	if empty["client_id"] != "" || empty["has_secret"] != false {
+		t.Errorf("a fresh instance already has a client: %v", empty)
+	}
+	if empty["from_env"] != false {
+		t.Errorf("from_env = %v with nothing in the environment", empty["from_env"])
+	}
+	// The single most likely thing to be wrong, so it is spelled out rather than
+	// left for somebody to reconstruct.
+	if empty["redirect_uri"] != "http://127.0.0.1/oauth/gmail/callback" {
+		t.Errorf("redirect_uri = %v", empty["redirect_uri"])
+	}
+
+	resp, _ := ts.do(t, "PUT", "/api/v1/gmail/client", map[string]any{
+		"client_id": "1234.apps.googleusercontent.com", "client_secret": "hemmelig",
+	})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("save: status %d", resp.StatusCode)
+	}
+
+	_, saved := ts.do(t, "GET", "/api/v1/gmail/client", nil)
+	if saved["client_id"] != "1234.apps.googleusercontent.com" {
+		t.Errorf("client_id = %v", saved["client_id"])
+	}
+	if saved["has_secret"] != true {
+		t.Error("has_secret is false after saving one")
+	}
+	// Never read back. A settings page that repopulates a password field is one
+	// that will eventually leak into a screenshot.
+	if _, present := saved["client_secret"]; present {
+		t.Error("the secret came back in the response")
+	}
+
+	// Saving only the id must not clear the secret — otherwise correcting a typo
+	// silently breaks the connection.
+	ts.do(t, "PUT", "/api/v1/gmail/client", map[string]any{
+		"client_id": "5678.apps.googleusercontent.com",
+	})
+	_, again := ts.do(t, "GET", "/api/v1/gmail/client", nil)
+	if again["client_id"] != "5678.apps.googleusercontent.com" || again["has_secret"] != true {
+		t.Errorf("saving the id alone lost the secret: %v", again)
+	}
+
+	// And the authorise call now has something to build a URL with, which is the
+	// whole point: one click, and Google's consent screen.
+	resp, body := ts.do(t, "POST", "/api/v1/gmail/authorize", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("authorize with a stored client: status %d, body %v", resp.StatusCode, body)
+	}
+	if url, _ := body["url"].(string); !strings.Contains(url, "5678.apps.googleusercontent.com") {
+		t.Errorf("the consent URL does not carry the stored client: %v", body["url"])
+	}
+}
+
+// The environment wins, and says so. A value in the Rune's manifest is applied on
+// every recreate, so a form that could quietly override it would make the manifest
+// a lie.
+func TestTheEnvironmentsGmailClientCannotBeOverwritten(t *testing.T) {
+	ts := newTestServerWith(t, func(c *config.Config) {
+		c.GmailClientID = "fra-miljøet.apps.googleusercontent.com"
+		c.GmailClientSecret = "også-fra-miljøet"
+	})
+	ts.bootstrap(t)
+
+	_, shown := ts.do(t, "GET", "/api/v1/gmail/client", nil)
+	if shown["from_env"] != true {
+		t.Errorf("from_env = %v with the environment set", shown["from_env"])
+	}
+	if shown["client_id"] != "fra-miljøet.apps.googleusercontent.com" {
+		t.Errorf("client_id = %v", shown["client_id"])
+	}
+
+	resp, _ := ts.do(t, "PUT", "/api/v1/gmail/client", map[string]any{
+		"client_id": "min-egen", "client_secret": "min-egen",
+	})
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("overwriting the environment: status %d, want 409", resp.StatusCode)
+	}
+
+	_, after := ts.do(t, "GET", "/api/v1/gmail/client", nil)
+	if after["client_id"] != "fra-miljøet.apps.googleusercontent.com" {
+		t.Errorf("the environment's client was replaced: %v", after["client_id"])
+	}
+}
+
+// Administrators only, and sessions only: this is the instance's identity to
+// Google, and a leaked token must not be able to read or replace it.
+func TestTheGmailClientIsAdminsOnlyAndSessionsOnly(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	other := ts.newUser(t, "anden@example.dk", "Anden")
+
+	for _, c := range []struct {
+		method string
+		body   any
+	}{{"GET", nil}, {"PUT", map[string]any{"client_id": "x"}}} {
+		if resp, _ := other.do(t, c.method, "/api/v1/gmail/client", c.body); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s as an ordinary user: status %d, want 403", c.method, resp.StatusCode)
+		}
+	}
+
+	admin, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := ts.apiToken(t, admin.ID)
+	req, _ := http.NewRequest("GET", ts.URL+"/api/v1/gmail/client", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("with an admin's API token: status %d, want 403", resp.StatusCode)
+	}
+}

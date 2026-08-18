@@ -10,12 +10,44 @@ import (
 	"github.com/kristianwind/verdande/internal/store"
 )
 
-func (s *Server) gmailConfig() gmail.Config {
-	return gmail.Config{
+// gmailConfig is the OAuth client this instance authorises with.
+//
+// The environment wins when it is set. A value in the environment is a deliberate
+// deployment decision — it is in the Rune's manifest, under version control,
+// applied on every recreate — and a form that could quietly override it would make
+// the manifest a lie. The stored pair is for the ordinary case, where nobody wants
+// to redeploy a container to paste a client id.
+func (s *Server) gmailConfig(ctx context.Context) gmail.Config {
+	cfg := gmail.Config{
 		ClientID:     s.cfg.GmailClientID,
 		ClientSecret: s.cfg.GmailClientSecret,
 		RedirectURL:  s.cfg.GmailRedirectURL(),
 	}
+	if cfg.ClientID != "" && cfg.ClientSecret != "" {
+		return cfg
+	}
+
+	stored, err := s.db.InstanceSettings(ctx, "gmail")
+	if err != nil {
+		// Not fatal: an unconfigured Gmail and a database that could not answer
+		// look the same from here, and the caller's next step is the same either
+		// way — say it is not set up.
+		return cfg
+	}
+	if id, _ := stored["client_id"].(string); cfg.ClientID == "" {
+		cfg.ClientID = id
+	}
+	if secret, _ := stored["client_secret"].(string); cfg.ClientSecret == "" {
+		cfg.ClientSecret = secret
+	}
+	return cfg
+}
+
+// gmailFromEnv says whether the deployment set the client, which the settings page
+// needs so it can explain why the fields are not editable rather than accepting
+// changes that will never take effect.
+func (s *Server) gmailFromEnv() bool {
+	return s.cfg.GmailClientID != "" && s.cfg.GmailClientSecret != ""
 }
 
 // handleGmailAuthorize starts the flow: it mints a PKCE pair, remembers it against
@@ -27,7 +59,7 @@ func (s *Server) gmailConfig() gmail.Config {
 // defaults.
 func (s *Server) handleGmailAuthorize(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r.Context())
-	cfg := s.gmailConfig()
+	cfg := s.gmailConfig(r.Context())
 
 	if !cfg.Configured() {
 		writeError(w, http.StatusConflict, CodeGmailNotConfigured,
@@ -102,7 +134,7 @@ func (s *Server) handleGmailCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.gmailConfig().Exchange(r.Context(), code, gmail.PKCE{Verifier: verifier})
+	token, err := s.gmailConfig(r.Context()).Exchange(r.Context(), code, gmail.PKCE{Verifier: verifier})
 	if err != nil {
 		s.log.Error("gmail exchange", "err", err, "user", user.ID)
 		http.Redirect(w, r, settingsURL+"?gmail=failed", http.StatusFound)
@@ -185,7 +217,7 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 	access := str("access_token")
 	expires, _ := settings["expires_at"].(float64)
 	if access == "" || int64(expires) <= time.Now().Unix() {
-		token, err := s.gmailConfig().Refresh(ctx, refresh)
+		token, err := s.gmailConfig(ctx).Refresh(ctx, refresh)
 		if err != nil {
 			return 0, err
 		}
@@ -299,4 +331,97 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 		status.Latest = ""
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+// --- the OAuth client itself ------------------------------------------------------
+
+// The registration Google requires, enterable rather than deployed.
+//
+// The one click that opens Google's consent screen already exists; what it needs
+// behind it is a registered client, and that is not something any app can conjure:
+// Google issues no Gmail access to an unregistered client, and `gmail.readonly` is
+// a restricted scope, so an id shipped inside a public image would be both
+// extractable from it and unusable without Google's security review of every
+// deployment. The registration is a one-off. Having to edit a Rune's manifest and
+// recreate the container to paste the result was not.
+//
+// Administrators only, and sessions only: this is the instance's identity to
+// Google, and a leaked API token must not be able to read or replace it.
+
+type gmailClientJSON struct {
+	ClientID string `json:"client_id"`
+	// Secret is written and never read back, like the AI key: a settings page that
+	// repopulates a password field is one that will eventually leak into a
+	// screenshot.
+	ClientSecret string `json:"client_secret,omitempty"`
+	HasSecret    bool   `json:"has_secret"`
+	// FromEnv says the deployment set this, in which case the stored pair is
+	// ignored and the fields are not worth editing. Sent so the page can say why
+	// rather than accepting changes that will never take effect.
+	FromEnv bool `json:"from_env"`
+	// RedirectURI is what has to be registered with Google, spelled out. It is
+	// derived from VERDANDE_BASE_URL and must match exactly — it is the single
+	// most likely thing to be wrong, and the error Google gives for it names
+	// neither value.
+	RedirectURI string `json:"redirect_uri"`
+}
+
+func (s *Server) handleGetGmailClient(w http.ResponseWriter, r *http.Request) {
+	stored, err := s.db.InstanceSettings(r.Context(), "gmail")
+	if err != nil {
+		s.internal(w, r, "gmail client", err)
+		return
+	}
+	out := gmailClientJSON{
+		FromEnv:     s.gmailFromEnv(),
+		RedirectURI: s.cfg.GmailRedirectURL(),
+	}
+	if out.FromEnv {
+		out.ClientID = s.cfg.GmailClientID
+		out.HasSecret = true
+	} else {
+		out.ClientID, _ = stored["client_id"].(string)
+		secret, _ := stored["client_secret"].(string)
+		out.HasSecret = secret != ""
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleSetGmailClient(w http.ResponseWriter, r *http.Request) {
+	var req gmailClientJSON
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	if s.gmailFromEnv() {
+		writeError(w, http.StatusConflict, CodeConflict,
+			"the Gmail client is set in the environment and cannot be changed here")
+		return
+	}
+
+	stored, err := s.db.InstanceSettings(r.Context(), "gmail")
+	if err != nil {
+		s.internal(w, r, "gmail client", err)
+		return
+	}
+	// An empty secret means "leave it alone", not "delete it" — otherwise
+	// correcting a typo in the client id would silently clear the secret.
+	secret, _ := stored["client_secret"].(string)
+	if req.ClientSecret != "" {
+		secret = strings.TrimSpace(req.ClientSecret)
+	}
+	id := strings.TrimSpace(req.ClientID)
+
+	if fields := map[string]string{}; id == "" && secret != "" {
+		fields["client_id"] = "required"
+		writeFieldErrors(w, fields)
+		return
+	}
+
+	if err := s.db.SetInstanceSettings(r.Context(), "gmail", map[string]any{
+		"client_id": id, "client_secret": secret,
+	}); err != nil {
+		s.internal(w, r, "save gmail client", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

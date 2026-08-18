@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/kristianwind/verdande/internal/auth"
@@ -344,5 +345,45 @@ func (db *DB) SetUserSettings(ctx context.Context, userID, scope string, values 
 		    values_json = excluded.values_json,
 		    updated_at = excluded.updated_at`,
 		userID, scope, string(raw), time.Now().Unix())
+	return err
+}
+
+// --- instance-wide settings -------------------------------------------------------------
+
+// InstanceSettings reads one scope of the instance's own settings. A missing row
+// is an empty map, not an error.
+//
+// Separate from UserSettings because some configuration is the server's rather
+// than a person's — the Gmail OAuth client is one registration that everybody
+// connecting a mailbox goes through, not a preference each of them holds.
+func (db *DB) InstanceSettings(ctx context.Context, scope string) (map[string]any, error) {
+	var raw string
+	err := db.QueryRowContext(ctx,
+		`SELECT values_json FROM instance_settings WHERE scope = ?`, scope).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	values := map[string]any{}
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return map[string]any{}, nil
+	}
+	return values, nil
+}
+
+func (db *DB) SetInstanceSettings(ctx context.Context, scope string, values map[string]any) error {
+	raw, err := json.Marshal(values)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO instance_settings (scope, values_json, updated_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT (scope) DO UPDATE SET
+		    values_json = excluded.values_json,
+		    updated_at = excluded.updated_at`,
+		scope, string(raw), time.Now().Unix())
 	return err
 }
