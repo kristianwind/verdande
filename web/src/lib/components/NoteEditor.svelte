@@ -14,6 +14,7 @@
 	 * is the file to change.
 	 */
 	import { markdownToHtml, htmlToMarkdown } from '$lib/richtext.js';
+	import { highlight, guessLanguage } from '$lib/highlight.js';
 	import { t } from '$lib/i18n.svelte.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { colorVar } from '$lib/colors.js';
@@ -40,6 +41,7 @@
 		editor.innerHTML = note.body.trim() ? markdownToHtml(note.body) : '<h1><br></h1>';
 		loadedId = note.id;
 		active = {};
+		colourCode();
 	});
 
 	const SYNTAX = [
@@ -99,6 +101,32 @@
 			// Some browsers throw on queryCommandState with no selection. The toolbar
 			// showing nothing is a smaller problem than the editor throwing.
 			active = {};
+		}
+	}
+
+	/**
+	 * Farver kodeblokkene.
+	 *
+	 * Kun dem, markøren ikke står i. At farve blokken, mens nogen skriver i den,
+	 * betyder at bygge dens indhold om ved hvert tastetryk og sætte markøren
+	 * tilbage bagefter — det er den slags, der virker i ni tilfælde ud af ti og
+	 * flytter markøren midt i en sætning i det tiende. Blokken er mørk og
+	 * monospace hele tiden; farverne kommer, når man forlader den, hvilket er når
+	 * man læser den.
+	 */
+	function colourCode() {
+		if (!editor) return;
+		const inside = currentBlock();
+		for (const pre of editor.querySelectorAll('pre')) {
+			if (pre === inside || pre.contains(inside)) continue;
+			const code = pre.textContent ?? '';
+			const lang = pre.getAttribute('data-lang') || guessLanguage(code);
+			if (lang) pre.setAttribute('data-lang', lang);
+			const painted = highlight(code, lang);
+			// Kun hvis der er noget at ændre: at skrive innerHTML uændret ville
+			// stadig rive noden op og lægge den tilbage, og det ses som et blink.
+			const target = pre.querySelector('code') ?? pre;
+			if (target.innerHTML !== painted) target.innerHTML = painted;
 		}
 	}
 
@@ -320,11 +348,15 @@
 		aria-label={t('notes.body')}
 		spellcheck="true"
 		oninput={changed}
-		onblur={onsave}
+		onblur={() => {
+			colourCode();
+			onsave?.();
+		}}
 		onkeyup={() => {
 			readState();
 			readSuggestions();
 		}}
+		onclick={colourCode}
 		onmouseup={readState}
 		{onkeydown}
 		{onpaste}
@@ -521,6 +553,9 @@
 	}
 
 	.page {
+		/* Et token eller en URL er ét ord, der er bredere end skærmen. Uden det her
+		   får siden en vandret rullebjælke, og teksten forsvinder ud til højre. */
+		overflow-wrap: anywhere;
 		flex: 1;
 		min-height: 50vh;
 		padding: var(--s3) 0;
@@ -572,10 +607,84 @@
 		color: var(--ink-muted);
 	}
 
+	/* En kodeblok ser ud som en terminal, fordi det er hvad den er.
+	   Monospace er altid kode i praksis — Apple Noters "Monotype" er stort set kun
+	   brugt til kommandoer og udskrifter — og en mørk flade siger det på afstand,
+	   uden at man skal læse et ord. Farverne er de samme i lys og mørk tilstand:
+	   en terminal er sort, også midt på dagen. */
 	.page :global(pre) {
-		margin: 0 0 var(--s2);
+		margin: 0 0 var(--s3);
+		padding: var(--s3);
+		border-radius: var(--radius);
+		background: #14181b;
+		color: #d7dde3;
 		font-family: var(--mono, ui-monospace, monospace);
+		font-size: 0.8125rem;
+		line-height: 1.5;
 		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		position: relative;
+	}
+
+	/* Sproget i hjørnet, når blokken siger hvad den er. */
+	.page :global(pre[data-lang]:not([data-lang=''])::after) {
+		content: attr(data-lang);
+		position: absolute;
+		top: 4px;
+		right: 8px;
+		font-size: 0.625rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: #5a656e;
+	}
+
+	.page :global(pre code) {
+		font: inherit;
+		color: inherit;
+	}
+
+	.page :global(.tok-comment) {
+		color: #6b7a85;
+		font-style: italic;
+	}
+
+	.page :global(.tok-string) {
+		color: #9ecb8a;
+	}
+
+	.page :global(.tok-number) {
+		color: #d9a25f;
+	}
+
+	.page :global(.tok-keyword) {
+		color: #7fb3e8;
+	}
+
+	.page :global(.tok-key) {
+		color: #7fb3e8;
+	}
+
+	.page :global(.tok-bool) {
+		color: #c48fd6;
+	}
+
+	.page :global(.tok-variable) {
+		color: #d9a25f;
+	}
+
+	.page :global(.tok-flag) {
+		color: #c48fd6;
+	}
+
+	.page :global(.tok-punct) {
+		color: #8a949c;
+	}
+
+	/* Prompten i en terminaludskrift: det første øjet finder, når man leder efter
+	   hvor en kommando begynder. */
+	.page :global(.tok-prompt) {
+		color: #6fbf8f;
+		font-weight: 600;
 	}
 
 	.page :global(code) {

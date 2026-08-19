@@ -289,6 +289,12 @@
 
 <style>
 	.notes {
+		/* En grid-kolonne er som udgangspunkt mindst så bred som sit bredeste
+		   indhold, og et API-token uden et mellemrum i er ét meget bredt ord. Uden
+		   min-width: 0 skubber sådan en note hele listen bredere, og editoren
+		   klemmes sammen — på en note man ikke engang har åben. */
+		min-width: 0;
+
 		/* Air on all sides. The heading, the search box and the list all sat flush
 		   against the sidebar's rule, which reads as a rendering fault rather than
 		   as a layout. */
@@ -305,6 +311,7 @@
 		flex-direction: column;
 		gap: var(--s2);
 		min-height: 0;
+		min-width: 0;
 		border-right: 1px solid var(--line);
 		padding-right: var(--s3);
 	}
@@ -407,6 +414,7 @@
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
+		min-width: 0;
 	}
 
 	/* Everything below exists to keep two layers in lockstep. The shared rules are

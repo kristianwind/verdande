@@ -2258,3 +2258,57 @@ test('en opgave viser de noter, der nævner den, og linket åbner noten', async 
 
 	expect(trouble).toEqual([]);
 });
+
+test('en kodeblok ser ud som en terminal og bliver farvet', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	// Skrevet ind som Markdown, sådan som importen fra Apple Noter leverer den.
+	const id = await page.evaluate(async () => {
+		const r = await fetch('/api/v1/notes', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+			body: JSON.stringify({
+				body: '# Terminalprøven\n\nHer er udskriften:\n\n```bash\nkw@shell:~$ ls -la\n# en kommentar\necho "hej"\n```\n\nog resten.'
+			})
+		});
+		return (await r.json()).id;
+	});
+	await page.goto('/noter?note=' + id);
+
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	const pre = ed.locator('pre');
+	await expect(pre).toBeVisible();
+
+	// Mørk flade uanset tema: en terminal er sort, også midt på dagen.
+	const look = await pre.evaluate((el) => {
+		const s = getComputedStyle(el);
+		return { bg: s.backgroundColor, font: s.fontFamily };
+	});
+	expect(look.bg).toBe('rgb(20, 24, 27)');
+	expect(look.font.toLowerCase()).toMatch(/mono/);
+
+	// Og farvet: prompten, kommentaren og strengen skal kunne skelnes.
+	await expect(pre.locator('.tok-prompt')).toBeVisible();
+	await expect(pre.locator('.tok-comment')).toContainText('en kommentar');
+	await expect(pre.locator('.tok-string')).toContainText('hej');
+
+	// Teksten omkring er ikke blevet til kode.
+	await expect(ed.locator('h1')).toHaveText('Terminalprøven');
+	await expect(ed).toContainText('og resten.');
+
+	// Og blokken overlever turen tilbage til Markdown: den skal komme ud som en
+	// hegnet blok med sit sprog, ikke som en klump linjer.
+	const body = await page.evaluate(async (noteId) => {
+		const r = await fetch('/api/v1/notes/' + noteId, {
+			credentials: 'include',
+			headers: { 'Sec-Fetch-Site': 'same-origin' }
+		});
+		return (await r.json()).body;
+	}, id);
+	expect(body).toContain('```bash');
+	expect(body).toContain('kw@shell:~$ ls -la');
+
+	expect(trouble).toEqual([]);
+});

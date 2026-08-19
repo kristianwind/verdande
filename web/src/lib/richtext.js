@@ -59,6 +59,7 @@ export function markdownToHtml(markdown) {
 	const lines = (markdown ?? '').split('\n');
 	const out = [];
 	let list = null;
+	let fence = null; // sproget, mens vi er inde i en ```-blok
 
 	const closeList = () => {
 		if (list) {
@@ -68,6 +69,25 @@ export function markdownToHtml(markdown) {
 	};
 
 	for (const line of lines) {
+		// Hegnede blokke først: alt indeni er tekst, ikke Markdown, og en linje der
+		// begynder med - inde i et shell-script er ikke et punkt i en liste.
+		const fenced = /^```(\w*)\s*$/.exec(line);
+		if (fence !== null) {
+			if (fenced) {
+				out.push('</code></pre>');
+				fence = null;
+			} else {
+				out.push(escapeHtml(line) + '\n');
+			}
+			continue;
+		}
+		if (fenced) {
+			closeList();
+			fence = fenced[1] ?? '';
+			out.push(`<pre data-lang="${escapeHtml(fence)}"><code>`);
+			continue;
+		}
+
 		const bullet = /^[-*+]\s+(.*)$/.exec(line);
 		const numbered = /^\d+\.\s+(.*)$/.exec(line);
 
@@ -96,6 +116,7 @@ export function markdownToHtml(markdown) {
 		out.push(`<p>${line.trim() === '' ? '<br>' : inlineToHtml(line)}</p>`);
 	}
 	closeList();
+	if (fence !== null) out.push('</code></pre>');
 	return out.join('');
 }
 
@@ -176,6 +197,19 @@ export function htmlToMarkdown(root) {
 						lines.push(inlineToMarkdown(child));
 					}
 					break;
+				case 'PRE': {
+					// Back out as a fence, with the language it came in with. The old
+					// four-space form is still read on the way in; it is not written
+					// out any more, because a fence survives being pasted somewhere
+					// else and an indent does not.
+					const lang = child.getAttribute('data-lang') ?? '';
+					lines.push('```' + lang);
+					for (const l of (child.textContent ?? '').replace(/\n$/, '').split('\n')) {
+						lines.push(l);
+					}
+					lines.push('```');
+					break;
+				}
 				default: {
 					const block = BLOCKS.find((b) => b.tag === child.tagName.toLowerCase());
 					const text = inlineToMarkdown(child);
