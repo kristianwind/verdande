@@ -391,6 +391,7 @@ export const api = {
 	importTodoist: (file) => upload('/import/todoist', file),
 	importCSV: (data) => post('/import/csv', data),
 	exportAccountURL: () => '/api/v1/export/account',
+	exportNotesURL: () => '/api/v1/export/notes.zip',
 	exportProjectCSVURL: (id) => `/api/v1/export/projects/${id}.csv`,
 	exportProjectICSURL: (id) => `/api/v1/export/projects/${id}.ics`,
 

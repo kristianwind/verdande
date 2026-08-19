@@ -1,8 +1,12 @@
 package httpapi
 
 import (
+	"archive/zip"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kristianwind/verdande/internal/store"
@@ -207,4 +211,76 @@ func (s *Server) handleNotesLinking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"notes": s.readable(r, found)})
+}
+
+// handleExportNotes writes every note this person can see as a zip of Markdown
+// files, one per note.
+//
+// A zip of plain files rather than one bundle in a format of our own: what comes
+// out is what was stored, and it opens in Obsidian, in a text editor, in anything.
+// That is the promise the whole design was arranged around — the note on disk is
+// already the file you would export — and this is where it is either kept or not.
+func (s *Server) handleExportNotes(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+	notes, err := s.db.AllNotes(r.Context(), user.ID)
+	if err != nil {
+		s.internal(w, r, "export notes", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition",
+		`attachment; filename="verdande-noter-`+time.Now().Format("2006-01-02")+`.zip"`)
+
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+
+	// Names collide: two notes called "Møde" are two notes, and a zip with one entry
+	// twice is a zip that loses one of them.
+	used := map[string]int{}
+	for _, n := range notes {
+		name := noteFilename(n.Title)
+		used[name]++
+		if used[name] > 1 {
+			name = fmt.Sprintf("%s (%d)", name, used[name])
+		}
+
+		f, err := zw.CreateHeader(&zip.FileHeader{
+			Name:     name + ".md",
+			Method:   zip.Deflate,
+			Modified: n.UpdatedAt,
+		})
+		if err != nil {
+			// The response is already streaming, so there is no status left to send.
+			// Stopping leaves a truncated zip, which a zip tool says is truncated —
+			// better than a complete-looking file with a note missing from it.
+			s.log.Error("export notes", "err", err, "note", n.ID)
+			return
+		}
+		if _, err := io.WriteString(f, n.Body); err != nil {
+			s.log.Error("export notes", "err", err, "note", n.ID)
+			return
+		}
+	}
+}
+
+// noteFilename makes a title safe to be a filename on any of the three systems
+// people actually use, without turning it into something unrecognisable.
+func noteFilename(title string) string {
+	name := strings.TrimSpace(title)
+	if name == "" {
+		name = "uden titel"
+	}
+	// Windows refuses these outright; a slash would make directories on the others.
+	name = strings.Map(func(r rune) rune {
+		if strings.ContainsRune(`/\:*?"<>|`, r) || r < 0x20 {
+			return '-'
+		}
+		return r
+	}, name)
+	// Long titles are the first line of a note, which can be a whole sentence.
+	if len([]rune(name)) > 80 {
+		name = string([]rune(name)[:80])
+	}
+	return strings.TrimRight(name, " .")
 }

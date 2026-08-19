@@ -341,6 +341,7 @@
 		<!-- Plain links, not fetch: the browser's own download handling knows what to
 		     do with a Content-Disposition, and the session cookie rides along. -->
 		<a class="link" href={api.exportAccountURL()} download>{t('data.exportAccount')}</a>
+		<a class="link" href={api.exportNotesURL()} download>{t('data.exportNotes')}</a>
 	</div>
 
 	<div class="field">

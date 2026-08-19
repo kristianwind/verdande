@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"archive/zip"
+	"bytes"
+	"io"
 	"net/http"
 	"testing"
 )
@@ -112,4 +115,86 @@ func TestChangingANoteChangesWhatItPointsAt(t *testing.T) {
 	if got := len(after["notes"].([]any)); got != 0 {
 		t.Errorf("%d notes still point at Firma", got)
 	}
+}
+
+// The export is the promise the whole design was arranged around: the note on
+// disk is already the file you would export, so nothing is converted on the way
+// out and nothing can be lost in the conversion.
+func TestNotesExportAsMarkdownFiles(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	bodies := []string{
+		"# Møde med Anders\n\nHan vil gerne have **kaffe** hver uge.",
+		"Slash/i/titlen\n\nog noget tekst",
+		"# Møde med Anders\n\nen anden note med samme titel",
+	}
+	for _, body := range bodies {
+		if resp, _ := ts.do(t, "POST", "/api/v1/notes", map[string]any{"body": body}); resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create: %d", resp.StatusCode)
+		}
+	}
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/v1/export/notes.zip", nil)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	for _, c := range ts.client.Jar.Cookies(mustParse(t, ts.URL)) {
+		req.AddCookie(c)
+	}
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("export: status %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/zip" {
+		t.Errorf("content type is %q", ct)
+	}
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatalf("the archive does not open: %v", err)
+	}
+	if len(zr.File) != 3 {
+		t.Fatalf("the archive holds %d files, want 3", len(zr.File))
+	}
+
+	byName := map[string]string{}
+	for _, f := range zr.File {
+		r, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		text, _ := io.ReadAll(r)
+		r.Close()
+		byName[f.Name] = string(text)
+	}
+
+	// Exactly what was stored, byte for byte. A converted export is an export that
+	// can be wrong.
+	if got := byName["Møde med Anders.md"]; got != bodies[0] {
+		t.Errorf("the note came out as %q", got)
+	}
+	// A slash in a title would make a directory, and on Windows it is refused
+	// outright.
+	if _, ok := byName["Slash-i-titlen.md"]; !ok {
+		t.Errorf("the awkward title became %v", keysOf(byName))
+	}
+	// Two notes with the same title are two notes; one entry twice is one lost.
+	if _, ok := byName["Møde med Anders (2).md"]; !ok {
+		t.Errorf("the second note of the same name is missing: %v", keysOf(byName))
+	}
+}
+
+func keysOf(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

@@ -360,6 +360,7 @@ export const en = {
 	'data.swept': 'swept away',
 	'data.empty': 'empty',
 	'data.export': 'Export',
+	'data.exportNotes': 'Every note as Markdown files',
 	'data.exportAccount': 'The whole account as JSON',
 	'data.exportOne': 'One project',
 	'data.pickProject': 'Pick a project',

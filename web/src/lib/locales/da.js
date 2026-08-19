@@ -365,6 +365,7 @@ export const da = {
 	'data.swept': 'ryddet væk',
 	'data.empty': 'tom',
 	'data.export': 'Eksport',
+	'data.exportNotes': 'Alle noter som Markdown-filer',
 	'data.exportAccount': 'Hele kontoen som JSON',
 	'data.exportOne': 'Ét projekt',
 	'data.pickProject': 'Vælg et projekt',

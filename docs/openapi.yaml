@@ -2507,6 +2507,22 @@ paths:
                   created: { type: integer }
         "502": { $ref: "#/components/responses/Upstream" }
 
+  /api/v1/export/notes.zip:
+    get:
+      tags: [notes]
+      summary: Every note as a Markdown file, in a zip.
+      description: >
+        One file per note, named after its title, containing exactly what is
+        stored. Nothing is converted on the way out — the note on disk is already
+        the file you would export — so it opens in Obsidian, in a text editor, or
+        in anything else that reads Markdown.
+      responses:
+        "200":
+          description: A zip archive.
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+
   /api/v1/notes:
     get:
       tags: [notes]
