@@ -27,6 +27,7 @@ type Attachment struct {
 	// GroupID hangs the file on a project group rather than on any one task in
 	// it: the contract that governs all of "Arbejde", not a step in it.
 	GroupID    string
+	NoteID     string
 	Filename   string
 	MimeType   string
 	Size       int64
@@ -157,18 +158,32 @@ func (db *DB) CreateAttachment(ctx context.Context, a *Attachment) error {
 	a.CreatedAt = time.Now().UTC()
 
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO attachments (id, task_id, comment_id, group_id, filename, mime_type,
+		`INSERT INTO attachments (id, task_id, comment_id, group_id, note_id, filename, mime_type,
 		                          size, path, uploaded_by, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.ID, nullString(a.TaskID), nullString(a.CommentID), nullString(a.GroupID),
+		nullString(a.NoteID),
 		a.Filename, a.MimeType, a.Size, a.Path, a.UploadedBy, a.CreatedAt.Unix())
 	return err
 }
 
 func (db *DB) ListTaskAttachments(ctx context.Context, taskID string) ([]Attachment, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, task_id, comment_id, group_id, filename, mime_type, size, path, uploaded_by, created_at
+		`SELECT id, task_id, comment_id, group_id, note_id, filename, mime_type, size, path, uploaded_by, created_at
 		 FROM attachments WHERE task_id = ? ORDER BY created_at`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanAttachments(rows)
+}
+
+// ListNoteAttachments is the files inside one note — the pictures and scans that
+// came with it, and anything added since.
+func (db *DB) ListNoteAttachments(ctx context.Context, noteID string) ([]Attachment, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT id, task_id, comment_id, group_id, note_id, filename, mime_type, size, path, uploaded_by, created_at
+		 FROM attachments WHERE note_id = ? ORDER BY created_at`, noteID)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +195,7 @@ func (db *DB) ListTaskAttachments(ctx context.Context, taskID string) ([]Attachm
 // to anything inside it.
 func (db *DB) ListGroupAttachments(ctx context.Context, groupID string) ([]Attachment, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, task_id, comment_id, group_id, filename, mime_type, size, path, uploaded_by, created_at
+		`SELECT id, task_id, comment_id, group_id, note_id, filename, mime_type, size, path, uploaded_by, created_at
 		 FROM attachments WHERE group_id = ? ORDER BY created_at`, groupID)
 	if err != nil {
 		return nil, err
@@ -195,7 +210,7 @@ func (db *DB) attachmentsByComment(ctx context.Context, commentIDs []string) (ma
 		args[i] = id
 	}
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, task_id, comment_id, group_id, filename, mime_type, size, path, uploaded_by, created_at
+		`SELECT id, task_id, comment_id, group_id, note_id, filename, mime_type, size, path, uploaded_by, created_at
 		 FROM attachments WHERE comment_id IN (`+placeholders(len(commentIDs))+`)
 		 ORDER BY created_at`, args...)
 	if err != nil {
@@ -218,15 +233,16 @@ func scanAttachments(rows *sql.Rows) ([]Attachment, error) {
 	out := []Attachment{}
 	for rows.Next() {
 		var a Attachment
-		var taskID, commentID, groupID sql.NullString
+		var taskID, commentID, groupID, noteID sql.NullString
 		var created int64
-		if err := rows.Scan(&a.ID, &taskID, &commentID, &groupID, &a.Filename, &a.MimeType,
+		if err := rows.Scan(&a.ID, &taskID, &commentID, &groupID, &noteID, &a.Filename, &a.MimeType,
 			&a.Size, &a.Path, &a.UploadedBy, &created); err != nil {
 			return nil, err
 		}
 		a.TaskID = taskID.String
 		a.CommentID = commentID.String
 		a.GroupID = groupID.String
+		a.NoteID = noteID.String
 		a.CreatedAt = time.Unix(created, 0).UTC()
 		out = append(out, a)
 	}
@@ -235,7 +251,7 @@ func scanAttachments(rows *sql.Rows) ([]Attachment, error) {
 
 func (db *DB) GetAttachment(ctx context.Context, attachmentID string) (*Attachment, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, task_id, comment_id, group_id, filename, mime_type, size, path, uploaded_by, created_at
+		`SELECT id, task_id, comment_id, group_id, note_id, filename, mime_type, size, path, uploaded_by, created_at
 		 FROM attachments WHERE id = ?`, attachmentID)
 	if err != nil {
 		return nil, err

@@ -4,7 +4,9 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -283,4 +285,175 @@ func noteFilename(title string) string {
 		name = string([]rune(name)[:80])
 	}
 	return strings.TrimRight(name, " .")
+}
+
+// maxNoteImportBytes bounds one upload. Generous for text — a decade of notes is
+// a few megabytes — and small enough that a wrong file is refused rather than read.
+const maxNoteImportBytes = 64 << 20
+
+// handleImportNotes reads a zip of Markdown files and makes a note of each.
+//
+// The mirror of the export, and deliberately the same shape: whatever comes out of
+// this program goes back into it. It is also the way in from anywhere else, since
+// a folder of Markdown is what Obsidian, Bear, iA Writer and a shell script all
+// produce — and what the Apple Notes exporter in tools/ writes.
+//
+// Filenames are ignored. The title is the first line of the body, everywhere else
+// in this program, and making it the filename here would be a second rule for the
+// same thing that disagrees the moment somebody renames a file.
+func (s *Server) handleImportNotes(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxNoteImportBytes)
+	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, CodePayloadTooLarge, "the file is too large")
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeFieldErrors(w, map[string]string{"file": "required"})
+		return
+	}
+	defer file.Close()
+
+	zr, err := zip.NewReader(file.(io.ReaderAt), header.Size)
+	if err != nil {
+		writeFieldErrors(w, map[string]string{"file": "not a zip archive"})
+		return
+	}
+
+	user := userFrom(r.Context())
+	created, skipped, files := 0, 0, 0
+
+	// Two passes. Everything that is not Markdown is stored first, so that when a
+	// note is read its pictures already have addresses to be rewritten to — a note
+	// and its images arrive in whatever order the archive happens to hold them, and
+	// one pass would leave half the links pointing at nothing.
+	stored := map[string]string{}
+	for _, f := range zr.File {
+		name := f.Name
+		if f.FileInfo().IsDir() || skipFile(name) || strings.EqualFold(path.Ext(name), ".md") {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			continue
+		}
+		hashed, size, err := s.storeUpload(rc)
+		rc.Close()
+		if err != nil {
+			s.log.Warn("import note file", "err", err, "file", name)
+			continue
+		}
+		stored[name] = hashed
+		_ = size
+		files++
+	}
+
+	for _, f := range zr.File {
+		name := f.Name
+		if f.FileInfo().IsDir() || skipFile(name) || !strings.EqualFold(path.Ext(name), ".md") {
+			continue
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			skipped++
+			continue
+		}
+		body, err := io.ReadAll(io.LimitReader(rc, 2<<20))
+		rc.Close()
+		if err != nil || strings.TrimSpace(string(body)) == "" {
+			skipped++
+			continue
+		}
+
+		n := &store.Note{CreatedBy: user.ID, Body: string(body)}
+		if err := s.db.SaveNote(r.Context(), n); err != nil {
+			s.log.Warn("import note", "err", err, "file", name)
+			skipped++
+			continue
+		}
+
+		// The pictures the note referred to, now that it has an id to hang them on.
+		// The text is rewritten to the addresses they were given, so an image that
+		// sat in the middle of a paragraph is still in the middle of it.
+		if rewritten, attached := s.attachToNote(r, n, path.Dir(name), stored, zr); attached > 0 {
+			n.Body = rewritten
+			if err := s.db.SaveNote(r.Context(), n); err != nil {
+				s.log.Warn("rewrite note links", "err", err, "note", n.ID)
+			}
+		}
+		created++
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"created": created, "skipped": skipped, "files": files,
+	})
+}
+
+// skipFile is the things in an archive that are not content: directories' own
+// entries, macOS resource forks, and anything trying to climb out of the archive.
+// A zip made on a Mac carries a __MACOSX copy of every file, and importing those
+// would double a whole library with each copy full of binary rubbish.
+func skipFile(name string) bool {
+	return strings.HasPrefix(name, "__MACOSX/") ||
+		strings.HasPrefix(path.Base(name), "._") ||
+		strings.HasPrefix(path.Base(name), ".") ||
+		strings.Contains(name, "..")
+}
+
+// attachToNote records the files a note's text points at and rewrites the text to
+// where they now live. Returns the new body and how many were attached.
+//
+// Only the files this note refers to. An archive is one folder for many notes, and
+// hanging every picture on every note would turn a library of a hundred into ten
+// thousand attachments.
+func (s *Server) attachToNote(
+	r *http.Request, n *store.Note, dir string, stored map[string]string, zr *zip.Reader,
+) (string, int) {
+	body := n.Body
+	attached := 0
+
+	for _, f := range zr.File {
+		hashed, ok := stored[f.Name]
+		if !ok {
+			continue
+		}
+		base := path.Base(f.Name)
+		// The two ways a Markdown file names a neighbouring image: by the path it
+		// was written with, and by its bare name.
+		relative := strings.TrimPrefix(path.Join(dir, base), "./")
+		if !strings.Contains(body, base) && !strings.Contains(body, relative) {
+			continue
+		}
+
+		a := &store.Attachment{
+			NoteID:     n.ID,
+			Filename:   base,
+			MimeType:   mimeOf(base),
+			Size:       int64(f.UncompressedSize64),
+			Path:       hashed,
+			UploadedBy: n.CreatedBy,
+		}
+		if err := s.db.CreateAttachment(r.Context(), a); err != nil {
+			s.log.Warn("attach to note", "err", err, "file", base)
+			continue
+		}
+
+		url := "/api/v1/attachments/" + a.ID
+		body = strings.ReplaceAll(body, relative, url)
+		body = strings.ReplaceAll(body, base, url)
+		attached++
+	}
+	return body, attached
+}
+
+// mimeOf guesses from the extension. The archive does not carry a type, and
+// sniffing the bytes would mean reading every file twice.
+func mimeOf(name string) string {
+	if t := mime.TypeByExtension(path.Ext(name)); t != "" {
+		return t
+	}
+	return "application/octet-stream"
 }

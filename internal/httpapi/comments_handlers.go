@@ -327,6 +327,30 @@ func (s *Server) reachAttachment(r *http.Request, attachmentID string) (canEdit 
 		return true, nil
 	}
 
+	// A file inside a note follows the note, which follows its project — the same
+	// chain everything else here follows. Without this a picture imported with a
+	// note answered 404 while sitting in the middle of the text that named it.
+	if a.NoteID != "" {
+		n, err := s.db.Note(r.Context(), a.NoteID)
+		if err != nil {
+			return false, err
+		}
+		if n == nil {
+			return false, store.ErrNotFound
+		}
+		if n.ProjectID == "" {
+			if n.CreatedBy != user.ID {
+				return false, store.ErrNotFound
+			}
+			return true, nil
+		}
+		role, err := store.RequireProjectRole(r.Context(), s.db, n.ProjectID, user.ID, store.RoleViewer)
+		if err != nil {
+			return false, err
+		}
+		return role.CanEdit(), nil
+	}
+
 	taskID, err := s.db.AttachmentTask(r.Context(), attachmentID)
 	if err != nil {
 		return false, err

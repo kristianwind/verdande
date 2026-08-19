@@ -1,4 +1,5 @@
 <script>
+
 	/** Import, export and project templates. */
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
@@ -57,6 +58,34 @@
 	// --- Todoist import ------------------------------------------------------------
 
 	let importing = $state(false);
+	let importingNotes = $state(false);
+
+	/**
+	 * A zip of Markdown files becomes notes.
+	 *
+	 * The whole archive in one request rather than a file at a time: the pictures
+	 * have to be in the same request as the notes that name them, or the links
+	 * cannot be rewritten.
+	 */
+	async function importNotes(event) {
+		const file = event.currentTarget.files?.[0];
+		if (!file) return;
+		importingNotes = true;
+		try {
+			const result = await api.importNotes(file);
+			app.toast(
+				t('data.notesImported', {
+					n: result.created ?? 0,
+					files: result.files ?? 0
+				})
+			);
+		} catch (e) {
+			app.toast(humanMessage(e));
+		} finally {
+			importingNotes = false;
+			event.target.value = '';
+		}
+	}
 	let result = $state(null);
 
 	async function importTodoist(event) {
@@ -342,6 +371,21 @@
 		     do with a Content-Disposition, and the session cookie rides along. -->
 		<a class="link" href={api.exportAccountURL()} download>{t('data.exportAccount')}</a>
 		<a class="link" href={api.exportNotesURL()} download>{t('data.exportNotes')}</a>
+	</div>
+
+	<!-- The way back in, and from anywhere else: a folder of Markdown is what
+	     Obsidian, Bear and iA Writer all produce, and what the Apple Notes script in
+	     tools/ writes. Pictures beside the files come with them. -->
+	<div class="field">
+		<label for="import-notes">{t('data.importNotes')}</label>
+		<input
+			id="import-notes"
+			type="file"
+			accept=".zip,application/zip"
+			onchange={importNotes}
+			disabled={importingNotes}
+		/>
+		<p class="hint">{t('data.importNotesHint')}</p>
 	</div>
 
 	<div class="field">

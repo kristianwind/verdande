@@ -283,6 +283,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			r.Route("/notes", func(r chi.Router) {
 				r.Get("/", s.handleListNotes)
 				r.Post("/", s.handleCreateNote)
+				r.Post("/import", s.handleImportNotes)
 				r.Get("/linking/{kind}/{targetID}", s.handleNotesLinking)
 				r.Get("/{noteID}", s.handleGetNote)
 				r.Patch("/{noteID}", s.handleUpdateNote)

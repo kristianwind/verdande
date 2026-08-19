@@ -392,6 +392,9 @@ export const api = {
 	importCSV: (data) => post('/import/csv', data),
 	exportAccountURL: () => '/api/v1/export/account',
 	exportNotesURL: () => '/api/v1/export/notes.zip',
+	// Through `upload`, not `request`: a multipart body has to set its own boundary,
+	// and the browser only does that when nothing has claimed the header.
+	importNotes: (file) => upload('/notes/import', file),
 	exportProjectCSVURL: (id) => `/api/v1/export/projects/${id}.csv`,
 	exportProjectICSURL: (id) => `/api/v1/export/projects/${id}.ics`,
 

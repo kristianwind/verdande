@@ -3,8 +3,11 @@ package httpapi
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -197,4 +200,167 @@ func keysOf(m map[string]string) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// Out and back in again. If an export cannot be imported, it is not an export —
+// it is a file somebody hopes will be readable later.
+func TestNotesSurviveTheRoundTripThroughAZip(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	var archive bytes.Buffer
+	zw := zip.NewWriter(&archive)
+	files := map[string]string{
+		"Møde med Anders.md": "# Møde med Anders\n\nHan vil have **kaffe** hver uge. #Firma",
+		"noget andet.md":     "Løse tanker\n\nog en linje til",
+		// A zip made on a Mac carries these beside every file. Importing them would
+		// double the whole library, with each copy full of binary rubbish.
+		"__MACOSX/._Møde med Anders.md": "\x00\x05\x16\x07binært",
+		"billede.png":                   "ikke en note",
+		"tom.md":                        "   \n  ",
+	}
+	for name, body := range files {
+		f, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.WriteString(f, body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var form bytes.Buffer
+	mw := multipart.NewWriter(&form)
+	part, _ := mw.CreateFormFile("file", "noter.zip")
+	part.Write(archive.Bytes())
+	mw.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/v1/notes/import", &form)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	for _, c := range ts.client.Jar.Cookies(mustParse(t, ts.URL)) {
+		req.AddCookie(c)
+	}
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("import: status %d", resp.StatusCode)
+	}
+
+	var out struct{ Created, Skipped int }
+	json.NewDecoder(resp.Body).Decode(&out)
+	if out.Created != 2 {
+		t.Fatalf("imported %d notes, want the 2 real ones", out.Created)
+	}
+
+	// The title came from the first line, not from the filename — which is the same
+	// rule as everywhere else, and the reason renaming a file cannot rename a note.
+	_, listed := ts.do(t, "GET", "/api/v1/notes", nil)
+	titles := map[string]bool{}
+	for _, raw := range listed["notes"].([]any) {
+		titles[raw.(map[string]any)["title"].(string)] = true
+	}
+	if !titles["Møde med Anders"] || !titles["Løse tanker"] {
+		t.Errorf("the titles came out as %v", titles)
+	}
+
+	// And the #tag was read on the way in, so an imported note lands on its project
+	// exactly as a typed one does.
+	_, linked := ts.do(t, "GET", "/api/v1/notes/linking/project/Firma", nil)
+	if len(linked["notes"].([]any)) != 1 {
+		t.Errorf("the imported note did not link to its project")
+	}
+}
+
+// A note from Apple Notes is full of photographs. One that arrives as words alone
+// is not that note — it is a summary of it.
+func TestAnImportedNoteKeepsItsPictures(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	var archive bytes.Buffer
+	zw := zip.NewWriter(&archive)
+	write := func(name, body string) {
+		f, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.WriteString(f, body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("noter/Kvittering.md", "# Kvittering\n\nHer er den:\n\n![](vedhaeftninger/bon.png)\n\nog resten af teksten")
+	write("noter/vedhaeftninger/bon.png", "\x89PNG\r\n\x1a\nlad som om")
+	// Another note in the same archive, which must not inherit the first one's
+	// picture: an archive is one folder for many notes.
+	write("noter/Uden billede.md", "Uden billede\n\nbare tekst")
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var form bytes.Buffer
+	mw := multipart.NewWriter(&form)
+	part, _ := mw.CreateFormFile("file", "noter.zip")
+	part.Write(archive.Bytes())
+	mw.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/v1/notes/import", &form)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	for _, c := range ts.client.Jar.Cookies(mustParse(t, ts.URL)) {
+		req.AddCookie(c)
+	}
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var out struct{ Created, Skipped, Files int }
+	json.NewDecoder(resp.Body).Decode(&out)
+	if out.Created != 2 || out.Files != 1 {
+		t.Fatalf("imported %d notes and %d files, want 2 and 1", out.Created, out.Files)
+	}
+
+	_, listed := ts.do(t, "GET", "/api/v1/notes?q=kvittering", nil)
+	notes := listed["notes"].([]any)
+	if len(notes) != 1 {
+		t.Fatalf("found %d notes", len(notes))
+	}
+	body := notes[0].(map[string]any)["body"].(string)
+
+	// The link points at the file where it now lives, not at a path inside an
+	// archive nobody kept.
+	if strings.Contains(body, "vedhaeftninger/bon.png") {
+		t.Errorf("the link still points into the archive: %q", body)
+	}
+	if !strings.Contains(body, "/api/v1/attachments/") {
+		t.Errorf("the picture was not attached: %q", body)
+	}
+	// And it is still where it was written, in the middle of the note.
+	if !strings.HasPrefix(body, "# Kvittering") || !strings.Contains(body, "og resten af teksten") {
+		t.Errorf("the note was rearranged: %q", body)
+	}
+
+	// The picture is really there and really readable.
+	id := body[strings.Index(body, "/api/v1/attachments/")+len("/api/v1/attachments/"):]
+	id = strings.SplitN(id, ")", 2)[0]
+	got, _ := ts.do(t, "GET", "/api/v1/attachments/"+id, nil)
+	if got.StatusCode != http.StatusOK {
+		t.Errorf("the attachment answers %d", got.StatusCode)
+	}
+
+	// The other note did not inherit it.
+	_, other := ts.do(t, "GET", "/api/v1/notes?q=Uden", nil)
+	for _, raw := range other["notes"].([]any) {
+		if strings.Contains(raw.(map[string]any)["body"].(string), "attachments/") {
+			t.Error("a note that mentioned no picture was given one")
+		}
+	}
 }
