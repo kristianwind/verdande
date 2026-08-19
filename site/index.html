@@ -344,6 +344,89 @@
 				text-align: center;
 			}
 
+			/* --- zoom -------------------------------------------------------------
+
+			   A screenshot of an interface is unreadable at 280px in a three-column
+			   grid, which is where most of them sit. Clicking one opens it at the
+			   size it was taken.
+
+			   <dialog> rather than a hand-built overlay: Escape closes it, focus is
+			   trapped, the rest of the page is inert, and the browser does all three
+			   without a line of script. */
+			.shot img {
+				cursor: zoom-in;
+			}
+
+			/* Sized so the whole thing fits: a screenshot is 1.55 times wider than it
+			   is tall, so on a laptop the height is what runs out first. Left to grow,
+			   it pushed the caption and the close button off the top of the screen —
+			   and the button is the visible way out. */
+			dialog.zoom {
+				max-width: 96vw;
+				max-height: 100vh;
+				/* Wraps the image rather than the viewport. With a plain `auto` the box
+				   stayed full width, so the screenshot sat against the left edge and
+				   the close button ended up in the far corner, nowhere near it. */
+				width: fit-content;
+				margin: auto;
+				padding: 2.5rem 0 0;
+				border: 0;
+				background: transparent;
+				overflow: visible;
+			}
+
+			dialog.zoom::backdrop {
+				background: rgb(0 0 0 / 0.82);
+			}
+
+			dialog.zoom img {
+				max-width: 96vw;
+				max-height: 78vh;
+				width: auto;
+				height: auto;
+				display: block;
+				border-radius: var(--radius-lg);
+				cursor: zoom-out;
+			}
+
+			dialog.zoom figcaption {
+				margin-top: 0.75rem;
+				font-size: 0.8125rem;
+				color: #a8b0ac;
+				text-align: center;
+			}
+
+			/* The whole backdrop closes, so the button is a visible affordance rather
+			   than the only way out. */
+			dialog.zoom .close {
+				position: absolute;
+				top: 0;
+				right: 0;
+				background: none;
+				border: 0;
+				color: #a8b0ac;
+				font-size: 1.5rem;
+				line-height: 1;
+				cursor: pointer;
+				padding: 0.25rem 0.5rem;
+			}
+
+			dialog.zoom .close:hover {
+				color: #fff;
+			}
+
+			@media (prefers-reduced-motion: no-preference) {
+				dialog.zoom[open] {
+					animation: zoom-in 0.15s ease-out;
+				}
+				@keyframes zoom-in {
+					from {
+						opacity: 0;
+						transform: scale(0.98);
+					}
+				}
+			}
+
 			.shots {
 				display: grid;
 				grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -636,5 +719,58 @@
 				</p>
 			</footer>
 		</div>
+
+		<!-- Zoom. Added by script rather than written into the markup, so a page with
+		     no JavaScript is exactly what it was before: the screenshots are still
+		     there, still readable, just not clickable. -->
+		<dialog class="zoom" aria-label="Screenshot, enlarged">
+			<button class="close" type="button" aria-label="Close">&times;</button>
+			<img alt="" />
+			<figcaption></figcaption>
+		</dialog>
+
+		<script>
+			(function () {
+				var dialog = document.querySelector('dialog.zoom');
+				if (!dialog || typeof dialog.showModal !== 'function') return;
+
+				var big = dialog.querySelector('img');
+				var caption = dialog.querySelector('figcaption');
+
+				function open(img) {
+					big.src = img.currentSrc || img.src;
+					big.alt = img.alt;
+					var fig = img.closest('figure');
+					var text = fig && fig.querySelector('figcaption');
+					caption.textContent = text ? text.textContent : '';
+					dialog.showModal();
+				}
+
+				document.querySelectorAll('.shot img').forEach(function (img) {
+					// Focusable and operable from the keyboard: a control that only a
+					// mouse can reach is not a control everybody has.
+					img.tabIndex = 0;
+					img.setAttribute('role', 'button');
+					img.addEventListener('click', function () { open(img); });
+					img.addEventListener('keydown', function (event) {
+						if (event.key === 'Enter' || event.key === ' ') {
+							event.preventDefault();
+							open(img);
+						}
+					});
+				});
+
+				dialog.addEventListener('click', function (event) {
+					// The backdrop is the dialog itself; anything inside it is not.
+					if (event.target === dialog || event.target === big ||
+						event.target.classList.contains('close')) {
+						dialog.close();
+					}
+				});
+				// Let go of the image when it closes, so a large screenshot is not
+				// held in memory for the rest of the visit.
+				dialog.addEventListener('close', function () { big.removeAttribute('src'); });
+			})();
+		</script>
 	</body>
 </html>
