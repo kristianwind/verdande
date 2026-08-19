@@ -6,13 +6,18 @@
 		<title>verdande — self-hosted tasks, shared</title>
 		<meta
 			name="description"
-			content="Self-hosted tasks and projects, shared. One Go binary with SQLite inside it. CalDAV, mail-to-task and an MCP connector for Claude."
+			content="Self-hosted tasks and projects, shared. One Go binary with SQLite inside it. Your mail as an inbox, CalDAV, passkeys, and an MCP connector for Claude."
 		/>
 		<meta name="theme-color" content="#111312" />
 
 		<meta property="og:title" content="verdande" />
 		<meta property="og:description" content="Self-hosted tasks and projects, shared. One binary, SQLite inside it." />
 		<meta property="og:type" content="website" />
+		<meta property="og:image" content="screenshots/today.webp" />
+		<meta property="og:image:alt" content="The Today view: projects and filters beside a list of what is due." />
+		<!-- Summary rather than the large card: the screenshot is a dense interface,
+		     and shrunk into a wide banner it reads as grey noise. -->
+		<meta name="twitter:card" content="summary" />
 
 		<link rel="icon" href="icon.svg" type="image/svg+xml" />
 
@@ -436,7 +441,7 @@
 				<h2>What it looks like</h2>
 				<figure class="shot">
 					<img
-						src="screenshots/today.png"
+						src="screenshots/today.webp"
 						alt="The Today view: a sidebar of projects, filters and labels beside a list of tasks due today, each with its priority ring, time and labels."
 						width="1400"
 						height="900"
@@ -448,7 +453,7 @@
 				<div class="shots">
 					<figure class="shot">
 						<img
-							src="screenshots/board.png"
+							src="screenshots/board.webp"
 							alt="A project in board view: one column per section, with task cards showing due dates, labels and repetition."
 							width="1400"
 							height="900"
@@ -458,7 +463,7 @@
 					</figure>
 					<figure class="shot">
 						<img
-							src="screenshots/today-light.png"
+							src="screenshots/today-light.webp"
 							alt="The same Today view in the light theme."
 							width="1400"
 							height="900"
@@ -468,7 +473,7 @@
 					</figure>
 					<figure class="shot">
 						<img
-							src="screenshots/week.png"
+							src="screenshots/week.webp"
 							alt="Upcoming as a single week: seven columns of days, each holding the tasks due that day."
 							width="1400"
 							height="900"
@@ -478,7 +483,7 @@
 					</figure>
 					<figure class="shot">
 						<img
-							src="screenshots/detail.png"
+							src="screenshots/detail.webp"
 							alt="A task open in the detail drawer, with its description, due date, labels, sub-tasks and comments."
 							width="1400"
 							height="900"
@@ -488,7 +493,7 @@
 					</figure>
 					<figure class="shot">
 						<img
-							src="screenshots/themes.png"
+							src="screenshots/themes.webp"
 							alt="The settings page showing the five themes as swatches."
 							width="1400"
 							height="900"
@@ -498,7 +503,7 @@
 					</figure>
 					<figure class="shot">
 						<img
-							src="screenshots/history.png"
+							src="screenshots/history.webp"
 							alt="The instance-wide history page: who did what, in which project, filtered by person and event."
 							width="1400"
 							height="900"
@@ -541,10 +546,20 @@
 						</p>
 					</div>
 					<div class="cell">
-						<h3>Mail to task</h3>
+						<h3>Your mail, as an inbox</h3>
 						<p>
-							Forward an email to your own address and it becomes a task, subject
-							parsed like anything else you type.
+							Star a mail in Gmail, or flag one in iCloud or Fastmail, and it becomes
+							a task. Forward one to your own address instead and the subject is
+							parsed like anything else you type. One way: unstarring it later does
+							nothing to the task you made.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Nothing to remember</h3>
+						<p>
+							Start typing anywhere and you are writing a task, with the letter you
+							pressed already in the field. Sign in with a passkey and there is no
+							password to forget either.
 						</p>
 					</div>
 					<div class="cell">
@@ -552,6 +567,22 @@
 						<p>
 							Import from Todoist, export back to it, or take everything as JSON. The
 							round trip is tested, not promised.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Keys stay behind</h3>
+						<p>
+							Mail tokens and mailbox passwords are encrypted in the database, and the
+							key lives in a file beside it — not inside it. So a backup you download,
+							or one that ends up somewhere it should not, does not open your mail.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Who did what</h3>
+						<p>
+							Every change is written down — who moved it, who closed it, who let
+							somebody in. Delete the account and the trail stays: it is the
+							instance's record, not the person's.
 						</p>
 					</div>
 				</div>
