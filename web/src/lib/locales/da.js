@@ -144,6 +144,16 @@ export const da = {
 	'account.appearance': 'Udseende',
 	'account.appearanceHint':
 		'Gemmes i denne browser. Det er en egenskab ved den skærm, du sidder ved — en bærbar i solen og en skærm i et mørkt rum vil have hvert sit svar.',
+	'account.look': 'Udseende',
+	'account.lookHint': 'Temaet siger hvor lyst. Det her siger hvordan det læses — skrift, luft og hjørner. De to kan kombineres frit.',
+	'look.verdande': 'Verdande',
+	'look.verdandeNote': 'Som du kender den.',
+	'look.rolig': 'Rolig',
+	'look.roligNote': 'Serif, mere luft. Til at læse og skrive i.',
+	'look.taet': 'Tæt',
+	'look.taetNote': 'Flere rækker på skærmen, mindre luft.',
+	'look.terminal': 'Terminal',
+	'look.terminalNote': 'Én bredde til det hele. Alt flugter.',
 	'account.password': 'Adgangskode',
 	'account.passwordHint':
 		'At skifte den logger alle andre sessioner ud — hvilket for det meste er grunden til at gøre det.',

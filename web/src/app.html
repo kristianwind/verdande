@@ -22,6 +22,12 @@
 					stored ??
 					(window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
 				document.documentElement.dataset.theme = theme;
+
+				// The look changes the typeface and the spacing, so it has to be on
+				// before first paint too — otherwise the page is laid out once in one
+				// face and again in another, which is a visible jump.
+				const look = localStorage.getItem('verdande:look');
+				if (look && look !== 'verdande') document.documentElement.dataset.look = look;
 			} catch (e) {
 				// Private browsing can refuse localStorage; the dark default stands.
 			}

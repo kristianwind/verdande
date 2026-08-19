@@ -1,7 +1,7 @@
 <script>
 	/** Konto: who you are, your password, and the second factor. */
 	import { api, humanMessage } from '$lib/api.js';
-	import { app, theme, THEMES } from '$lib/stores.svelte.js';
+	import { app, theme, THEMES, look, LOOKS } from '$lib/stores.svelte.js';
 	import { t, plural, i18n } from '$lib/i18n.svelte.js';
 	import { supported, register } from '$lib/passkey.js';
 	import { ago } from '$lib/when.js';
@@ -330,6 +330,29 @@
 			</button>
 		{/each}
 	</div>
+
+	<!-- The second axis. A theme says how bright, a look says how it reads — and
+	     they are separate settings because they are separate questions. -->
+	<div class="looks">
+		<h3>{t('account.look')}</h3>
+		<p class="hint">{t('account.lookHint')}</p>
+		<div class="look-row">
+			{#each LOOKS as option (option.id)}
+				<button
+					class="look-card"
+					class:chosen={look.current === option.id}
+					onclick={() => look.set(option.id)}
+					aria-pressed={look.current === option.id}
+				>
+					<!-- Each card is written in the face it selects, because that is the
+					     only part of the choice a name cannot carry. -->
+					<span class="look-sample" data-look={option.id} aria-hidden="true">Aa</span>
+					<span class="theme-name">{t(option.name)}</span>
+					<span class="theme-note">{t(option.note)}</span>
+				</button>
+			{/each}
+		</div>
+	</div>
 </section>
 
 <section class="panel">
@@ -528,6 +551,46 @@
 </section>
 
 <style>
+	.looks {
+		margin-top: var(--s4);
+		padding-top: var(--s3);
+		border-top: 1px solid var(--line);
+	}
+
+	.looks h3 {
+		font-size: var(--text-sm);
+		margin-bottom: var(--s1);
+	}
+
+	.look-row {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+		gap: var(--s2);
+		margin-top: var(--s3);
+	}
+
+	.look-card {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--s1);
+		padding: var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		text-align: left;
+	}
+
+	.look-card.chosen {
+		border-color: var(--accent);
+	}
+
+	.look-sample {
+		font-family: var(--font);
+		font-size: 1.5rem;
+		line-height: 1;
+		color: var(--ink);
+	}
+
 	form {
 		display: flex;
 		flex-direction: column;

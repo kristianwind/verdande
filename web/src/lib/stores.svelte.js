@@ -844,6 +844,45 @@ export const THEMES = [
 	{ id: 'contrast', name: 'theme.contrast', note: 'theme.contrastNote', dark: false }
 ];
 
+/**
+ * The looks: how it reads, as opposed to how bright it is.
+ *
+ * Separate from the themes because they are separate questions. Somebody who
+ * wants a serif face at night should not have to give up the dark palette to get
+ * one, and the two multiply out to fifteen appearances from eight small blocks of
+ * CSS rather than needing one block each.
+ */
+export const LOOKS = [
+	{ id: 'verdande', name: 'look.verdande', note: 'look.verdandeNote' },
+	{ id: 'rolig', name: 'look.rolig', note: 'look.roligNote' },
+	{ id: 'taet', name: 'look.taet', note: 'look.taetNote' },
+	{ id: 'terminal', name: 'look.terminal', note: 'look.terminalNote' }
+];
+
+class Look {
+	current = $state(
+		typeof document === 'undefined'
+			? 'verdande'
+			: (document.documentElement.dataset.look ?? 'verdande')
+	);
+
+	set(id) {
+		if (!LOOKS.some((l) => l.id === id)) return;
+		this.current = id;
+		// The default carries no attribute, so the plain tokens are the plain tokens
+		// and there is nothing to override them back to.
+		if (id === 'verdande') delete document.documentElement.dataset.look;
+		else document.documentElement.dataset.look = id;
+		try {
+			localStorage.setItem('verdande:look', id);
+		} catch {
+			// Private browsing; the choice simply will not persist.
+		}
+	}
+}
+
+export const look = new Look();
+
 /** Theme, kept in localStorage and applied to the document element. */
 class Theme {
 	/**

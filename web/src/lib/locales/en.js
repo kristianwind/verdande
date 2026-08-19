@@ -140,6 +140,16 @@ export const en = {
 	'account.appearance': 'Appearance',
 	'account.appearanceHint':
 		'Kept in this browser. It is a property of the screen you are sitting at — a laptop in the sun and a monitor in a dark room want different answers.',
+	'account.look': 'Appearance',
+	'account.lookHint': 'The theme says how bright. This says how it reads — typeface, air and corners. The two combine freely.',
+	'look.verdande': 'Verdande',
+	'look.verdandeNote': 'As you know it.',
+	'look.rolig': 'Calm',
+	'look.roligNote': 'Serif, more air. For reading and writing.',
+	'look.taet': 'Tight',
+	'look.taetNote': 'More rows on screen, less air.',
+	'look.terminal': 'Terminal',
+	'look.terminalNote': 'One width for everything. It all lines up.',
 	'account.password': 'Password',
 	'account.passwordHint':
 		'Changing it signs every other session out — which is usually the reason to do it.',

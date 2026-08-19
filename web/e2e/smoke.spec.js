@@ -2045,3 +2045,40 @@ test('en note kan deles med et projekts folk, og tages tilbage igen', async ({ p
 
 	expect(trouble).toEqual([]);
 });
+
+test('udseendet kan skiftes uafhængigt af temaet, og overlever en genindlæsning', async ({
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/indstillinger');
+
+	const face = () =>
+		page.evaluate(() => getComputedStyle(document.body).fontFamily);
+	const ground = () =>
+		page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+	const startFace = await face();
+	await page.getByRole('button', { name: /^Rolig/ }).click();
+	const serif = await face();
+	expect(serif, 'skriften skiftede ikke').not.toBe(startFace);
+	expect(serif.toLowerCase()).toContain('serif');
+
+	// The other axis is untouched: choosing a face must not drag the palette with
+	// it. That is the whole reason they are two settings and not one list.
+	const darkGround = await ground();
+	await page.getByRole('button', { name: /^Papir/ }).click();
+	expect(await ground(), 'temaet skiftede ikke').not.toBe(darkGround);
+	expect(await face(), 'temaet ændrede skriften').toBe(serif);
+
+	// And it is on before the first paint, not applied afterwards — otherwise the
+	// page is laid out once in one face and again in another.
+	await page.reload();
+	expect(await face()).toBe(serif);
+	expect(await page.evaluate(() => document.documentElement.dataset.look)).toBe('rolig');
+
+	// Back to the default, which carries no attribute at all.
+	await page.getByRole('button', { name: /^Verdande/ }).click();
+	expect(await page.evaluate(() => document.documentElement.dataset.look)).toBeUndefined();
+
+	expect(trouble).toEqual([]);
+});
