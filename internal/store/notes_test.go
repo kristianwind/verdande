@@ -29,7 +29,10 @@ func TestATagInANoteIsTheSameTagAsInATask(t *testing.T) {
 	if len(projects) != 2 {
 		t.Fatalf("read %v out of the note, want the two projects", n.Links)
 	}
-	if projects[0] != "Firma" || projects[1] != "Regnskab" {
+	// Folded: the key is a key, not a label. #firma and #Firma are the same project
+	// to everybody except a database, and the project's own spelling is on the
+	// project, which is what the interface shows.
+	if projects[0] != "firma" || projects[1] != "regnskab" {
 		t.Errorf("got %v", projects)
 	}
 }
@@ -173,7 +176,9 @@ func TestWhatIsReadOutOfABody(t *testing.T) {
 		{"a hash inside a word is not a tag", "C#Sharp og x#y", nil},
 		{"a note by title", "se [[Møde med Anders]]", []NoteLink{{"note", "Møde med Anders"}}},
 		{"the same tag twice is one link", "#Firma og #Firma igen",
-			[]NoteLink{{"project", "Firma"}}},
+			[]NoteLink{{"project", "firma"}}},
+		{"two spellings are one tag", "#Firma og #firma",
+			[]NoteLink{{"project", "firma"}}},
 		{"a heading is not a tag", "# Overskrift", nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -287,5 +292,44 @@ func TestTheTitleFollowsTheFirstLine(t *testing.T) {
 	}
 	if n.Title != "Ny note" {
 		t.Errorf("a title set by hand survived as %q", n.Title)
+	}
+}
+
+// A note that names a project in the other case must still turn up on it.
+//
+// It did not, and nothing said why: the key was stored exactly as typed and
+// looked up the same way, so #garageristeriet and #GarageRisteriet were two
+// different things that looked identical to a person.
+func TestATagFindsItsProjectWhateverTheCase(t *testing.T) {
+	db, userID := sealedStore(t)
+	ctx := context.Background()
+
+	if err := db.SaveNote(ctx, &Note{
+		CreatedBy: userID,
+		Body:      "Bønnerne kommer fredag #garageristeriet",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, spelling := range []string{"GarageRisteriet", "garageristeriet", "GARAGERISTERIET"} {
+		found, err := db.NotesLinking(ctx, "project", spelling)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(found) != 1 {
+			t.Errorf("looking up %q found %d notes, want 1", spelling, len(found))
+		}
+	}
+
+	// A note title is a title, not a key: two notes called "Møde" and "møde" are
+	// two notes, and folding them together would merge things somebody kept apart.
+	if err := db.SaveNote(ctx, &Note{CreatedBy: userID, Body: "se [[Møde]]"}); err != nil {
+		t.Fatal(err)
+	}
+	if found, _ := db.NotesLinking(ctx, "note", "møde"); len(found) != 0 {
+		t.Error("a note title was folded")
+	}
+	if found, _ := db.NotesLinking(ctx, "note", "Møde"); len(found) != 1 {
+		t.Error("a note title did not match itself")
 	}
 }

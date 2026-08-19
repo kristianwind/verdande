@@ -2177,3 +2177,37 @@ test('# foreslår et projekt, og titlen følger den første linje', async ({ pag
 
 	expect(trouble).toEqual([]);
 });
+
+test('et tag finder sit projekt uanset store og små bogstaver', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('StoreBogstaver');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(sidebar.getByRole('link', { name: 'StoreBogstaver' })).toBeVisible();
+
+	await sidebar.getByRole('link', { name: 'Noter', exact: true }).click();
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await ed.click();
+
+	// Written in lower case, the way somebody types when they are not thinking
+	// about it. It used to mean the note simply never appeared on the project, with
+	// nothing anywhere to say why.
+	await page.keyboard.type('Aftale om levering');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('Handler om #storebogstaver');
+	await page.keyboard.press('Escape');
+	await ed.blur();
+
+	// The panel shows the project's own spelling, not the folded key: a label
+	// nobody wrote and that is nowhere in the note would be worse than none.
+	await expect(page.locator('.link', { hasText: '#StoreBogstaver' })).toBeVisible();
+
+	await sidebar.getByRole('link', { name: 'StoreBogstaver' }).click();
+	await expect(page.locator('.notes').getByRole('link', { name: /Aftale om levering/ })).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});

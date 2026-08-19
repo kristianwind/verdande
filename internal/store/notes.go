@@ -128,7 +128,14 @@ func LinksIn(body string) []NoteLink {
 		add("task", strings.ToLower(m[1]))
 	}
 	for _, m := range projectRef.FindAllStringSubmatch(body, -1) {
-		add("project", m[1])
+		// Folded, because #garageristeriet and #GarageRisteriet are the same project
+		// to everybody except a database. The key is stored folded and looked up
+		// folded, so the comparison stays an exact match and keeps using its index —
+		// a comparison that lowered the column instead would read the whole table.
+		//
+		// The project's real spelling is not lost: it is on the project, which is
+		// what the interface shows. This column is a key, not a label.
+		add("project", strings.ToLower(m[1]))
 	}
 	for _, m := range noteRef.FindAllStringSubmatch(body, -1) {
 		add("note", strings.TrimSpace(m[1]))
@@ -210,6 +217,9 @@ func (db *DB) AllNotes(ctx context.Context, userID string) ([]Note, error) {
 // The reason note_links exists. Without it this would mean reading every note's
 // prose, and a panel that slow is one nobody leaves open.
 func (db *DB) NotesLinking(ctx context.Context, kind, targetID string) ([]Note, error) {
+	if kind == "project" {
+		targetID = strings.ToLower(targetID)
+	}
 	return db.notesWhere(ctx, `
 		WHERE deleted_at IS NULL
 		  AND id IN (SELECT note_id FROM note_links WHERE kind = ? AND target_id = ?)

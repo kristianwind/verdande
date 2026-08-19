@@ -160,6 +160,22 @@
 		}
 	}
 
+	/**
+	 * What a link is called on screen.
+	 *
+	 * A project tag is stored folded, because it is a key — but showing the folded
+	 * key would mean a note that says #garageristeriet is labelled with a spelling
+	 * that appears nowhere, neither in the note nor on the project. The project's
+	 * own name is the right answer, and the fold is what makes it findable.
+	 */
+	function label(link) {
+		if (link.kind !== 'project') return link.target_id;
+		const project = app.projects.find(
+			(p) => p.name.toLowerCase() === link.target_id.toLowerCase()
+		);
+		return '#' + (project?.name ?? link.target_id);
+	}
+
 	// What the note points at, for the panel under the editor.
 	let links = $derived(selected?.links ?? []);
 
@@ -229,7 +245,7 @@
 				{#if links.length}
 					<span class="links">
 						{#each links as link}
-							<span class="link">{link.kind === 'project' ? '#' : ''}{link.target_id}</span>
+							<span class="link">{label(link)}</span>
 						{/each}
 					</span>
 				{/if}
