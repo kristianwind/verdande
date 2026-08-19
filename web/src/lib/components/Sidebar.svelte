@@ -508,14 +508,22 @@
 	     sidebar is already a drop target for tasks — a task dragged onto I dag
 	     stopped landing, because the row had claimed the gesture. A grip claims
 	     nothing until it is grabbed. -->
+	<!-- Håndtaget har ingen prik i sig længere.
+	     ⠿ sad i den to pixels brede rende til venstre for teksten og lå oven i
+	     rækkens egen kant — idéen var rigtig, pladsen var det ikke. Men elementet
+	     bliver: det er dét, der ejer trækket, og gjorde man i stedet hele rækken
+	     draggable, ville alt indeni også blive det — og en opgave trukket hen på
+	     I dag holdt op med at lande, fordi rækken havde taget gesten. Nu er
+	     håndtaget usynligt og lidt bredere, og hånden, der kommer ved hover,
+	     er hele forklaringen. -->
 	{#snippet grip(key)}
 		<span
 			class="grip"
 			draggable="true"
 			ondragstart={(e) => onNavDragStart(e, key)}
 			ondragend={clearNavDrag}
-			aria-hidden="true">⠿</span
-		>
+			aria-hidden="true"
+		></span>
 	{/snippet}
 
 	{#snippet projectRow(project, sortable)}
@@ -1004,19 +1012,15 @@
 	   so nothing moves when it appears. */
 	.grip {
 		position: absolute;
-		left: -2px;
-		width: 12px;
-		text-align: center;
-		font-size: 10px;
-		line-height: 1;
-		color: var(--ink-faint);
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 14px;
 		cursor: grab;
-		opacity: 0;
-		transition: opacity var(--fast) var(--ease);
 	}
 
-	.navrow:hover .grip {
-		opacity: 1;
+	.grip:active {
+		cursor: grabbing;
 	}
 
 	.navrow > :global(a) {

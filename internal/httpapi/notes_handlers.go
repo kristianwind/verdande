@@ -353,7 +353,16 @@ func (s *Server) handleImportNotes(w http.ResponseWriter, r *http.Request) {
 
 	for _, f := range zr.File {
 		name := f.Name
-		if f.FileInfo().IsDir() || skipFile(name) || !strings.EqualFold(path.Ext(name), ".md") {
+		if f.FileInfo().IsDir() || !strings.EqualFold(path.Ext(name), ".md") {
+			continue
+		}
+		// Counted, not passed over in silence. A Markdown file the filter refuses is
+		// a note that did not arrive, and the caller is told the same number either
+		// way unless it is said here — which is how one note went missing without
+		// anything looking wrong.
+		if skipFile(name) {
+			s.log.Warn("import skipped a note file", "file", name)
+			skipped++
 			continue
 		}
 
@@ -409,10 +418,34 @@ func (s *Server) handleImportNotes(w http.ResponseWriter, r *http.Request) {
 // A zip made on a Mac carries a __MACOSX copy of every file, and importing those
 // would double a whole library with each copy full of binary rubbish.
 func skipFile(name string) bool {
-	return strings.HasPrefix(name, "__MACOSX/") ||
+	if strings.HasPrefix(name, "__MACOSX/") ||
 		strings.HasPrefix(path.Base(name), "._") ||
-		strings.HasPrefix(path.Base(name), ".") ||
-		strings.Contains(name, "..")
+		strings.HasPrefix(path.Base(name), ".") {
+		return true
+	}
+
+	// Traversal, read as path segments rather than as a substring.
+	//
+	// This was `strings.Contains(name, "..")`, which is the right idea aimed at the
+	// wrong thing: it does not describe a path that climbs out of the archive, it
+	// describes any name with two dots next to each other anywhere in it. A note
+	// called "Så blev det endelig jul! Stay tuned... ☕️" was therefore dropped —
+	// silently, and without even counting as skipped, so the number the import
+	// reported still looked right. One note in twelve hundred, found only by
+	// counting what came out.
+	//
+	// An ellipsis in a title is ordinary. A segment that *is* "..", or a path that
+	// starts at the root, is not — and those are what a zip uses to write outside
+	// the folder it was unpacked into.
+	if strings.HasPrefix(name, "/") {
+		return true
+	}
+	for _, part := range strings.Split(name, "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 // attachToNote records the files a note's text points at and rewrites the text to
