@@ -168,6 +168,8 @@
 
 <style>
 	.notes {
+		/* Air above the heading, so it does not sit against the top bar. */
+		padding-top: var(--s3);
 		display: grid;
 		grid-template-columns: minmax(220px, 300px) 1fr;
 		gap: var(--s4);
@@ -192,6 +194,7 @@
 
 	h1 {
 		font-size: var(--text-xl);
+		line-height: 1.2;
 	}
 
 	.new {

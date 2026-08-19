@@ -313,6 +313,8 @@ export const en = {
 	'data.csvFile': 'CSV file',
 	'data.importing': 'Importing …',
 	'data.openProject': 'Open the project',
+	'data.doneHint': 'Everything you have closed, newest first. Closed something by mistake and it is here — and can be opened again.',
+	'data.openDone': 'Open finished tasks',
 	'data.trash': 'Trash',
 	'data.trashEmpty': 'The trash is empty.',
 	'data.restore': 'Restore',

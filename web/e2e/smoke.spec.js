@@ -1464,7 +1464,10 @@ test('en opgave lukket ved et uheld kan hentes tilbage', async ({ page }) => {
 	await expect(page.getByText('rens tagrenden', { exact: true })).toBeHidden();
 
 	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
-	await sidebar.getByRole('link', { name: 'Færdige' }).click();
+	// Færdige left the sidebar: it is a rare errand next to four entries read every
+	// day, and it now sits with the other "where did that go" answers.
+	await page.goto('/indstillinger/data');
+	await page.getByRole('link', { name: 'Åbn færdige opgaver' }).click();
 	await expect(page.getByRole('heading', { name: 'Færdige', level: 1 })).toBeVisible();
 
 	const closed = page.locator('.row').filter({ hasText: 'rens tagrenden' });

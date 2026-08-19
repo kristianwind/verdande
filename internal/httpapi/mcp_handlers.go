@@ -101,6 +101,7 @@ func (s *Server) buildMCP() *mcp.Server {
 		}, "task_id", "body"),
 	}, s.mcpAddComment)
 
+	s.registerNoteTools(m)
 	return m
 }
 
@@ -495,4 +496,177 @@ func clamp(value, fallback, max int) int {
 		return max
 	}
 	return value
+}
+
+// --- notes ---------------------------------------------------------------------
+
+// registerNoteTools adds the note half of the MCP surface.
+//
+// Separate from the task tools for one reason worth stating: this is how a note
+// gets in from somewhere else. Apple Notes has no export worth the name, but a
+// model running on the machine can read Notes.app and write what it finds through
+// these — one note at a time, with the text as Markdown. That is a migration
+// nobody has to build a parser for.
+func (s *Server) registerNoteTools(m *mcp.Server) {
+	m.Register(mcp.Tool{
+		Name: "search_notes",
+		Description: "Find notes by text. Matches title and body, and is generous about " +
+			"Danish spelling — searching \"gron\" finds \"grøn\", and the other way round. " +
+			"With no query it returns the most recent notes. This is the tool for " +
+			"\"what did I write about the tax return\" or \"find my note on the kitchen\".",
+		InputSchema: mcp.Schema(map[string]any{
+			"text":  mcp.Str("Words to look for in the title and body."),
+			"limit": mcp.Int("How many to return. Defaults to 25, maximum 100."),
+		}),
+	}, s.mcpSearchNotes)
+
+	m.Register(mcp.Tool{
+		Name: "create_note",
+		Description: "Write a note. The body is Markdown and is stored as typed — it is " +
+			"also exactly what an export produces, so nothing is converted and nothing " +
+			"is lost. Two things in the text are read out of it and become links: " +
+			"`#Projekt` files the note against that project, so it appears on the " +
+			"project's page without anybody filing it there, and `[[Another note]]` " +
+			"links to a note by its title. Use this to bring notes in from elsewhere — " +
+			"Apple Notes, OneNote, a folder of Markdown — one call per note.",
+		InputSchema: mcp.Schema(map[string]any{
+			"body":       mcp.Str("The note as Markdown. #Projekt and [[note]] become links."),
+			"title":      mcp.Str("A title. Left out, the first line of the body becomes it."),
+			"project_id": mcp.Str("File it under a project by id. Usually unnecessary — a #tag in the body does the same and is what a person would type."),
+			"pinned":     mcp.Bool("Keep it at the top of the list."),
+		}),
+	}, s.mcpCreateNote)
+
+	m.Register(mcp.Tool{
+		Name: "update_note",
+		Description: "Change a note. Only the fields given are changed. Sending `body` " +
+			"replaces the whole text, so read the note first if you mean to add to it — " +
+			"and the links are read again from the new text, so a #tag removed is a link " +
+			"removed.",
+		InputSchema: mcp.Schema(map[string]any{
+			"note_id": mcp.Str("Which note."),
+			"body":    mcp.Str("The whole new text, as Markdown."),
+			"title":   mcp.Str("A new title."),
+			"pinned":  mcp.Bool("Pin it or unpin it."),
+		}),
+	}, s.mcpUpdateNote)
+}
+
+func (s *Server) mcpSearchNotes(ctx context.Context, userID string, args json.RawMessage) (any, error) {
+	var params struct {
+		Text  string `json:"text"`
+		Limit int    `json:"limit"`
+	}
+	_ = json.Unmarshal(args, &params)
+
+	limit := params.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 25
+	}
+
+	var notes []store.Note
+	var err error
+	if strings.TrimSpace(params.Text) == "" {
+		notes, err = s.db.LooseNotes(ctx, userID)
+	} else {
+		notes, err = s.db.SearchNotes(ctx, params.Text, limit)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// The same filter the HTTP surface applies, for the same reason: a search must
+	// not become a way to read what you cannot open.
+	out := make([]map[string]any, 0, len(notes))
+	for _, n := range notes {
+		if !s.mcpMayRead(ctx, &n, userID) {
+			continue
+		}
+		out = append(out, map[string]any{
+			"id": n.ID, "title": n.Title, "body": n.Body,
+			"project_id": n.ProjectID, "updated_at": n.UpdatedAt,
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return map[string]any{"notes": out, "count": len(out)}, nil
+}
+
+func (s *Server) mcpMayRead(ctx context.Context, n *store.Note, userID string) bool {
+	if n.ProjectID == "" {
+		return n.CreatedBy == userID
+	}
+	_, err := store.RequireProjectRole(ctx, s.db, n.ProjectID, userID, store.RoleViewer)
+	return err == nil
+}
+
+func (s *Server) mcpCreateNote(ctx context.Context, userID string, args json.RawMessage) (any, error) {
+	var params struct {
+		Body      string `json:"body"`
+		Title     string `json:"title"`
+		ProjectID string `json:"project_id"`
+		Pinned    bool   `json:"pinned"`
+	}
+	_ = json.Unmarshal(args, &params)
+
+	n := &store.Note{
+		CreatedBy: userID,
+		Title:     params.Title,
+		Body:      params.Body,
+		Pinned:    params.Pinned,
+	}
+	if params.ProjectID != "" {
+		if _, err := store.RequireProjectRole(ctx, s.db, params.ProjectID, userID, store.RoleEditor); err != nil {
+			return nil, err
+		}
+		n.ProjectID = params.ProjectID
+	}
+	if err := s.db.SaveNote(ctx, n); err != nil {
+		return nil, err
+	}
+
+	// The links are reported back rather than left silent. A note whose #tag was
+	// misspelt looks identical to one whose tag landed, and in a chat nobody sees
+	// the row that was written.
+	return map[string]any{
+		"id": n.ID, "title": n.Title, "links": n.Links,
+	}, nil
+}
+
+func (s *Server) mcpUpdateNote(ctx context.Context, userID string, args json.RawMessage) (any, error) {
+	var params struct {
+		NoteID string  `json:"note_id"`
+		Body   *string `json:"body"`
+		Title  *string `json:"title"`
+		Pinned *bool   `json:"pinned"`
+	}
+	_ = json.Unmarshal(args, &params)
+
+	n, err := s.db.Note(ctx, params.NoteID)
+	if err != nil {
+		return nil, err
+	}
+	if n == nil || !s.mcpMayRead(ctx, n, userID) {
+		return nil, fmt.Errorf("no such note")
+	}
+	if n.ProjectID != "" {
+		if _, err := store.RequireProjectRole(ctx, s.db, n.ProjectID, userID, store.RoleEditor); err != nil {
+			return nil, err
+		}
+	}
+
+	if params.Body != nil {
+		n.Body = *params.Body
+	}
+	if params.Title != nil {
+		n.Title = *params.Title
+	}
+	if params.Pinned != nil {
+		n.Pinned = *params.Pinned
+	}
+	if err := s.db.SaveNote(ctx, n); err != nil {
+		return nil, err
+	}
+	return map[string]any{"id": n.ID, "title": n.Title, "links": n.Links}, nil
 }

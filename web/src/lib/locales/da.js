@@ -318,6 +318,8 @@ export const da = {
 	'data.csvFile': 'CSV-fil',
 	'data.importing': 'Importerer …',
 	'data.openProject': 'Åbn projektet',
+	'data.doneHint': 'Alt du har lukket, nyeste først. Lukkede du noget ved en fejl, ligger det her — og kan åbnes igen.',
+	'data.openDone': 'Åbn færdige opgaver',
 	'data.trash': 'Papirkurv',
 	'data.trashEmpty': 'Papirkurven er tom.',
 	'data.restore': 'Hent tilbage',

@@ -225,6 +225,19 @@
 	{/if}
 </section>
 
+<!-- Færdige used to be a permanent entry in the sidebar. It is a rare errand next
+     to the four that are read every day, and it belongs with the other "where did
+     that go" questions rather than above them. -->
+<section class="panel">
+	<header>
+		<h2>{t('done.title')}</h2>
+		<p class="hint">{t('data.doneHint')}</p>
+	</header>
+	<div class="row">
+		<a class="ghost" href="/faerdige">{t('data.openDone')}</a>
+	</div>
+</section>
+
 <section class="panel">
 	<header>
 		<h2>{t('data.trash')}</h2>

@@ -369,27 +369,25 @@
 				{t('nav.delegated')}
 			</a>
 		{/if}
-		<!-- After the three views of what is left, because it is the one that is not
-		     about what is left. It earns a permanent place rather than a toggle in
-		     each view: somebody looking for a task they closed by mistake does not
-		     know which view they closed it in. -->
-		<a href="/faerdige" class:active={current === '/faerdige'} onclick={onnavigate}>
-			<span class="dot" aria-hidden="true"></span>
-			{t('done.title')}
-		</a>
+		<!-- Færdige is not in this list any more. It used to sit here on the argument
+		     that somebody hunting a task they closed by mistake does not know which
+		     view they closed it in — which is true, and is also a rare errand next to
+		     four entries that are read every day. It lives under Settings → Data, with
+		     the trash, where the other "where did that go" questions are answered. -->
 		{#if app.inbox}
 			{@render projectRow(app.inbox, false)}
-			<!-- Notes sit with the fixed places rather than among the projects: it is a
-
-			     place you go, not a thing filed under one. -->
-			<a href="/noter" class="fixed" onclick={onnavigate}>
-
-				<span class="dot" aria-hidden="true"></span>
-
-				{t('notes.title')}
-
-			</a>
 		{/if}
+	</div>
+
+	<!-- Notes stand apart, with a rule above them.
+	     They are not a fourth way of looking at the same tasks, which is what
+	     everything above is; they are the other half of the program. Sitting in that
+	     run made them read as one more filter. -->
+	<div class="apart">
+		<a href="/noter" class:active={current === '/noter'} onclick={onnavigate}>
+			<span class="dot" aria-hidden="true"></span>
+			{t('notes.title')}
+		</a>
 	</div>
 
 	<!-- One row for every project the sidebar shows — your own, the Inbox and the
@@ -871,6 +869,17 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
+	}
+
+	/* A rule and a little air, which is the whole of "separate". Notes are the other
+	   half of the program, not a fifth way of looking at the same tasks. */
+	.apart {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		margin: var(--s3) 0;
+		padding-top: var(--s3);
+		border-top: 1px solid var(--line);
 	}
 
 	.group-head {
