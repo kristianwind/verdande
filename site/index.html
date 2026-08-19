@@ -43,6 +43,10 @@
 				--font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
 			}
 
+			/* Written twice on purpose. The media query is what a first-time visitor
+			   gets; the attribute is what somebody who has chosen gets, and it has to
+			   win in both directions — a chosen light theme on a dark system as well
+			   as the other way round. A single rule cannot do both. */
 			@media (prefers-color-scheme: light) {
 				:root:not([data-theme='dark']) {
 					--ground: #faf9f7;
@@ -55,6 +59,63 @@
 					--ink-faint: #8b918d;
 					--accent: #2f8f63;
 					--accent-ink: #ffffff;
+				}
+			}
+
+			:root[data-theme='light'] {
+				--ground: #faf9f7;
+				--surface: #ffffff;
+				--surface-raised: #ffffff;
+				--line: #e5e3de;
+				--line-strong: #d3d0c9;
+				--ink: #1c201e;
+				--ink-muted: #5f6763;
+				--ink-faint: #8b918d;
+				--accent: #2f8f63;
+				--accent-ink: #ffffff;
+			}
+
+			.theme-toggle {
+				position: fixed;
+				top: 1rem;
+				right: 1rem;
+				z-index: 10;
+				width: 2.25rem;
+				height: 2.25rem;
+				display: grid;
+				place-items: center;
+				border: 1px solid var(--line);
+				border-radius: 999px;
+				background: var(--surface);
+				color: var(--ink-muted);
+				cursor: pointer;
+				font-size: 1rem;
+				line-height: 1;
+			}
+
+			.theme-toggle:hover {
+				color: var(--ink);
+				border-color: var(--line-strong);
+			}
+
+			/* Whichever screenshot does not belong to the theme in force is simply not
+			   there. Both are in the markup so neither has to be fetched at the moment
+			   somebody flips the switch. */
+			:root:not([data-theme='light']) .only-light,
+			:root[data-theme='dark'] .only-light {
+				display: none;
+			}
+
+			:root[data-theme='light'] .only-dark {
+				display: none;
+			}
+
+			@media (prefers-color-scheme: light) {
+				:root:not([data-theme='dark']) .only-light {
+					display: block;
+				}
+				:root:not([data-theme='dark']) .only-dark {
+					display: none;
 				}
 			}
 
@@ -463,6 +524,9 @@
 	</head>
 
 	<body>
+		<button class="theme-toggle" type="button" aria-label="Switch between light and dark" title="Light or dark">
+			<span aria-hidden="true">◐</span>
+		</button>
 		<div class="wrap">
 			<header>
 				<span class="mark" aria-hidden="true">ᚹ</span>
@@ -522,10 +586,21 @@
 
 			<section>
 				<h2>What it looks like</h2>
-				<figure class="shot">
+				<figure class="shot only-dark">
 					<img
 						src="screenshots/today.webp"
 						alt="The Today view: a sidebar of projects, filters and labels beside a list of tasks due today, each with its priority ring, time and labels."
+						width="1400"
+						height="900"
+						loading="lazy"
+					/>
+					<figcaption>Today. Dark is the default; there is a light theme too.</figcaption>
+				</figure>
+
+				<figure class="shot only-light">
+					<img
+						src="screenshots/today-light.webp"
+						alt="The Today view in the light theme: a sidebar of projects, filters and labels beside a list of tasks due today."
 						width="1400"
 						height="900"
 						loading="lazy"
@@ -730,6 +805,33 @@
 		</dialog>
 
 		<script>
+			// Runs before the zoom script and before anything is painted below it, so
+			// a chosen theme does not flash the other one first.
+			(function () {
+				var root = document.documentElement;
+				var stored = null;
+				try {
+					stored = localStorage.getItem('verdande-site-theme');
+				} catch (e) {
+					// Private browsing. The choice simply will not be remembered.
+				}
+				if (stored === 'light' || stored === 'dark') root.setAttribute('data-theme', stored);
+
+				document.querySelector('.theme-toggle').addEventListener('click', function () {
+					// What is on the screen right now, whether it came from a choice or
+					// from the system — otherwise the first press does nothing visible
+					// for somebody whose system already says light.
+					var showing =
+						root.getAttribute('data-theme') ||
+						(matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+					var next = showing === 'light' ? 'dark' : 'light';
+					root.setAttribute('data-theme', next);
+					try {
+						localStorage.setItem('verdande-site-theme', next);
+					} catch (e) {}
+				});
+			})();
+
 			(function () {
 				var dialog = document.querySelector('dialog.zoom');
 				if (!dialog || typeof dialog.showModal !== 'function') return;
