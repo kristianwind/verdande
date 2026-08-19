@@ -16,6 +16,19 @@
  */
 export const da = {
 	// --- the shell ---------------------------------------------------------------
+	'notes.title': 'Noter',
+	'notes.new': 'Ny note',
+	'notes.search': 'Søg i noter',
+	'notes.body': 'Notens tekst',
+	'notes.placeholder': 'Skriv. #projekt og [[en anden note]] bliver til henvisninger.',
+	'notes.untitled': 'Uden titel',
+	'notes.noneYet': 'Ingen noter endnu.',
+	'notes.noneFound': 'Ingen noter matcher.',
+	'notes.pickOne': 'Vælg en note, eller lav en ny.',
+	'notes.saving': 'Gemmer …',
+	'notes.saved': 'Gemt',
+	'notes.delete': 'Slet',
+	'notes.deleteNote': 'Slet "{name}"? Den kan hentes tilbage fra papirkurven.',
 	'nav.today': 'I dag',
 	'nav.upcoming': 'Kommende',
 	'nav.delegated': 'Venter på andre',

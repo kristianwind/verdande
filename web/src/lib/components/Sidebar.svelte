@@ -379,6 +379,16 @@
 		</a>
 		{#if app.inbox}
 			{@render projectRow(app.inbox, false)}
+			<!-- Notes sit with the fixed places rather than among the projects: it is a
+
+			     place you go, not a thing filed under one. -->
+			<a href="/noter" class="fixed" onclick={onnavigate}>
+
+				<span class="dot" aria-hidden="true"></span>
+
+				{t('notes.title')}
+
+			</a>
 		{/if}
 	</div>
 

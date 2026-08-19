@@ -12,6 +12,19 @@
  */
 export const en = {
 	// --- the shell ---------------------------------------------------------------
+	'notes.title': 'Notes',
+	'notes.new': 'New note',
+	'notes.search': 'Search notes',
+	'notes.body': "The note's text",
+	'notes.placeholder': 'Write. #project and [[another note]] become references.',
+	'notes.untitled': 'Untitled',
+	'notes.noneYet': 'No notes yet.',
+	'notes.noneFound': 'No notes match.',
+	'notes.pickOne': 'Pick a note, or write a new one.',
+	'notes.saving': 'Saving …',
+	'notes.saved': 'Saved',
+	'notes.delete': 'Delete',
+	'notes.deleteNote': 'Delete "{name}"? It can be brought back from the trash.',
 	'nav.today': 'Today',
 	'nav.upcoming': 'Upcoming',
 	'nav.delegated': 'Waiting on others',

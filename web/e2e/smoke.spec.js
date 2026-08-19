@@ -1900,3 +1900,54 @@ test('tallet ved et projekt er opgaver, og sidebjælken kan foldes med tastature
 
 	expect(trouble).toEqual([]);
 });
+
+test('en note kan skrives, findes igen, og peger på det den nævner', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Notetesteriet');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(sidebar.getByRole('link', { name: 'Notetesteriet' })).toBeVisible();
+
+	await sidebar.getByRole('link', { name: 'Noter' }).click();
+	await expect(page.getByRole('heading', { name: 'Noter' })).toBeVisible();
+
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const body = page.getByLabel('Notens tekst');
+	await body.fill('Møde om #Notetesteriet\n\nHan vil gerne have kaffe hver uge.');
+	// Saved on the way out, so there is no Gem-knap to forget.
+	await body.blur();
+
+	// The title comes from the first line, the way Apple Notes does it. Without it
+	// a list of notes is a list of "Uden titel".
+	await expect(page.getByRole('button', { name: /Møde om/ })).toBeVisible();
+
+	// And the #tag was read out of the text, unasked. This is the whole point: it
+	// is the same tag a task carries, so the note can be found from the project.
+	// Scoped to the panel under the editor: the same text is also in the textarea
+	// and in the list preview, which is three of the same thing and none of them
+	// the one being asserted.
+	await expect(page.locator('.link', { hasText: '#Notetesteriet' })).toBeVisible();
+
+	// Findable by a word from the body, and in the other Danish spelling too.
+	await page.getByLabel('Søg i noter').fill('møde');
+	await expect(page.getByRole('button', { name: /Møde om/ })).toBeVisible();
+	await page.getByLabel('Søg i noter').fill('mode');
+	await expect(page.getByRole('button', { name: /Møde om/ })).toBeVisible();
+
+	// It survives a reload, which is the only proof that it was ever written down.
+	await page.reload();
+	await expect(page.getByRole('button', { name: /Møde om/ })).toBeVisible();
+
+	// And the payoff: the note turns up in the project it named, without anybody
+	// filing it there. This is what a #tag being the same tag actually buys.
+	await sidebar.getByRole('link', { name: 'Notetesteriet' }).click();
+	await expect(page.getByRole('heading', { name: 'Notetesteriet' })).toBeVisible();
+	await expect(
+		page.locator('.notes').getByRole('link', { name: /Møde om/ })
+	).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});

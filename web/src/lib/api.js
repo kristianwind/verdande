@@ -360,6 +360,18 @@ export const api = {
 	authorizeGmail: () => post('/gmail/authorize'),
 	syncGmail: () => post('/gmail/sync'),
 
+	// Notes. Listing and searching are one endpoint because they answer the same
+	// question with different words.
+	notes: (params = {}) => {
+		const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+		return get('/notes' + (q ? `?${q}` : ''));
+	},
+	note: (id) => get(`/notes/${id}`),
+	createNote: (body) => post('/notes', body),
+	updateNote: (id, body) => patch(`/notes/${id}`, body),
+	deleteNote: (id) => del(`/notes/${id}`),
+	notesLinking: (kind, targetId) => get(`/notes/linking/${kind}/${encodeURIComponent(targetId)}`),
+
 	// Mailboxes read over IMAP. Each belongs to the person who connected it, so
 	// there is no instance-wide registration behind these the way Gmail has one.
 	mailboxes: () => get('/mailboxes'),

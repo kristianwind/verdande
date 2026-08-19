@@ -43,6 +43,23 @@
 		load(id);
 	});
 
+	// Notes that mention this project. Looked up by name rather than by id, because
+	// a #tag is written by hand and a person types the name — the same string the
+	// quick-add parser reads out of a task.
+	let notes = $state([]);
+
+	$effect(() => {
+		const name = project?.name;
+		if (!name) {
+			notes = [];
+			return;
+		}
+		api
+			.notesLinking('project', name)
+			.then((r) => (notes = r.notes ?? []))
+			.catch(() => (notes = []));
+	});
+
 	async function load(projectId) {
 		if (!projectId) return;
 		status = 'loading';
@@ -793,6 +810,24 @@
 		{#if project.role === 'viewer'}
 			<p class="readonly">{t('project.readOnly')}</p>
 		{/if}
+		<!-- What has been written about this project, which is the payoff for a #tag
+		     in a note being the same tag a task carries: nobody files anything here,
+		     it turns up because somebody mentioned the project while writing. -->
+		{#if notes.length}
+			<section class="notes">
+				<h2>{t('notes.title')}</h2>
+				<ul>
+					{#each notes as note (note.id)}
+						<li>
+							<a href="/noter?note={note.id}">
+								<strong>{note.title || t('notes.untitled')}</strong>
+								<span>{note.body.slice(0, 90)}</span>
+							</a>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
 	{:else if status === 'loading'}
 		<!-- Deliberately blank, as on first load elsewhere: a spinner for a request
 		     that usually resolves in 30ms is a flash of anxiety, not feedback. -->
@@ -809,6 +844,53 @@
 </div>
 
 <style>
+	.notes {
+		margin-top: var(--s4);
+		padding-top: var(--s3);
+		border-top: 1px solid var(--line);
+	}
+
+	.notes h2 {
+		font-size: var(--text-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--ink-faint);
+		margin-bottom: var(--s2);
+	}
+
+	.notes ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+
+	.notes a {
+		display: block;
+		padding: var(--s2);
+		border-radius: var(--radius);
+		color: var(--ink-muted);
+		text-decoration: none;
+	}
+
+	.notes a:hover {
+		background: var(--surface);
+	}
+
+	.notes strong {
+		display: block;
+		font-size: var(--text-sm);
+		font-weight: 560;
+		color: var(--ink);
+	}
+
+	.notes span {
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+	}
+
 	/* Recessed, because it is a record rather than a plan. The rows keep their own
 	   completed styling; this is about the section around them. */
 	.done {
