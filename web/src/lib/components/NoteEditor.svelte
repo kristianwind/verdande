@@ -15,6 +15,8 @@
 	 */
 	import { markdownToHtml, htmlToMarkdown } from '$lib/richtext.js';
 	import { t } from '$lib/i18n.svelte.js';
+	import { app } from '$lib/stores.svelte.js';
+	import { colorVar } from '$lib/colors.js';
 
 	let { note, onchange, onsave } = $props();
 
@@ -39,6 +41,13 @@
 		loadedId = note.id;
 		active = {};
 	});
+
+	const SYNTAX = [
+		{ mark: '#', what: 'notes.syntaxProject' },
+		{ mark: '[[', what: 'notes.syntaxNote' },
+		{ mark: '⌘B', what: 'notes.bold' },
+		{ mark: '⌘U', what: 'notes.underline' }
+	];
 
 	const STYLES = [
 		{ key: 'title', tag: 'h1', label: 'notes.styleTitle' },
@@ -96,6 +105,62 @@
 	function changed() {
 		if (!editor) return;
 		onchange?.(htmlToMarkdown(editor));
+		readSuggestions();
+	}
+
+	// --- suggesting a project ------------------------------------------------------
+
+	let suggestions = $state([]);
+	let chosen = $state(0);
+
+	/**
+	 * The word being typed after a #, if that is what is happening.
+	 *
+	 * Read from the text node the caret is in rather than from the whole document:
+	 * a note can mention twenty projects, and only the one under the cursor is being
+	 * written.
+	 */
+	function partialTag() {
+		const selection = window.getSelection();
+		const node = selection?.anchorNode;
+		if (!node || node.nodeType !== Node.TEXT_NODE || !selection.isCollapsed) return null;
+
+		const before = node.textContent.slice(0, selection.anchorOffset);
+		const match = /(?:^|\s)#([\p{L}\p{N}_-]*)$/u.exec(before);
+		if (!match) return null;
+		return { node, start: selection.anchorOffset - match[1].length, term: match[1] };
+	}
+
+	function readSuggestions() {
+		const partial = partialTag();
+		if (!partial) {
+			suggestions = [];
+			return;
+		}
+		const term = partial.term.toLowerCase();
+		suggestions = app.projects
+			.filter((p) => !p.is_inbox && p.name.toLowerCase().includes(term))
+			.slice(0, 6);
+		chosen = 0;
+	}
+
+	/** Replaces the half-typed tag with the whole name. */
+	function accept(project) {
+		const partial = partialTag();
+		if (!partial) return;
+
+		const range = document.createRange();
+		range.setStart(partial.node, partial.start);
+		range.setEnd(partial.node, partial.start + partial.term.length);
+		const selection = window.getSelection();
+		selection.removeAllRanges();
+		selection.addRange(range);
+
+		// A trailing space, because the next thing typed is a word and not more of
+		// the tag — and without it the suggestions come straight back.
+		document.execCommand('insertText', false, project.name + ' ');
+		suggestions = [];
+		onchange?.(htmlToMarkdown(editor));
 	}
 
 	/** The block the caret is standing in. */
@@ -135,6 +200,31 @@
 	}
 
 	function onkeydown(event) {
+		// The suggestion list owns the arrows and return while it is open, the way
+		// every other completion does. Escape closes it without choosing.
+		if (suggestions.length) {
+			if (event.key === 'ArrowDown') {
+				event.preventDefault();
+				chosen = (chosen + 1) % suggestions.length;
+				return;
+			}
+			if (event.key === 'ArrowUp') {
+				event.preventDefault();
+				chosen = (chosen - 1 + suggestions.length) % suggestions.length;
+				return;
+			}
+			if (event.key === 'Enter' || event.key === 'Tab') {
+				event.preventDefault();
+				accept(suggestions[chosen]);
+				return;
+			}
+			if (event.key === 'Escape') {
+				event.preventDefault();
+				suggestions = [];
+				return;
+			}
+		}
+
 		if (event.key === 'Enter' && !event.shiftKey) {
 			// After the split, not before it.
 			setTimeout(() => {
@@ -231,11 +321,48 @@
 		spellcheck="true"
 		oninput={changed}
 		onblur={onsave}
-		onkeyup={readState}
+		onkeyup={() => {
+			readState();
+			readSuggestions();
+		}}
 		onmouseup={readState}
 		{onkeydown}
 		{onpaste}
 	></div>
+
+	{#if suggestions.length}
+		<!-- Anchored to the editor rather than to the caret. Following the caret means
+		     measuring it, and a list that jumps a few pixels as you type is worse than
+		     one that sits still. -->
+		<ul class="suggestions" role="listbox">
+			{#each suggestions as project, i (project.id)}
+				<li>
+					<button
+						class:on={i === chosen}
+						role="option"
+						aria-selected={i === chosen}
+						onmousedown={(e) => {
+							e.preventDefault();
+							accept(project);
+						}}
+					>
+						<span class="dot" style="background: {colorVar(project.color)}" aria-hidden="true"
+						></span>
+						#{project.name}
+					</button>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+
+	<!-- What the text understands, said where it is being typed. The same idea as
+	     the line under the quick-add box: a note is the other place in this program
+	     where what you type is read for meaning. -->
+	<p class="legend">
+		{#each SYNTAX as item}
+			<span><kbd>{item.mark}</kbd> {t(item.what)}</span>
+		{/each}
+	</p>
 </div>
 
 <style>
@@ -343,6 +470,54 @@
 		border-left: 2px solid var(--line-strong);
 		padding-left: var(--s2);
 		color: var(--ink-muted);
+	}
+
+	.suggestions {
+		position: absolute;
+		z-index: 30;
+		list-style: none;
+		margin: 0;
+		padding: var(--s1);
+		min-width: 200px;
+		background: var(--surface-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+	}
+
+	.suggestions button {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		width: 100%;
+		text-align: left;
+		padding: var(--s1) var(--s2);
+		border-radius: var(--radius-sm);
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+	}
+
+	.suggestions button.on {
+		background: var(--surface);
+		color: var(--ink);
+	}
+
+	.legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--s1) var(--s3);
+		padding-top: var(--s2);
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+	}
+
+	.legend kbd {
+		font-family: var(--mono, ui-monospace, monospace);
+		color: var(--ink-muted);
+	}
+
+	.wrap {
+		position: relative;
 	}
 
 	.page {

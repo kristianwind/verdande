@@ -2129,3 +2129,51 @@ test('en ny note begynder som titel, og linjen efter er brødtekst', async ({ pa
 
 	expect(trouble).toEqual([]);
 });
+
+test('# foreslår et projekt, og titlen følger den første linje', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Forslagsprojektet');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(sidebar.getByRole('link', { name: 'Forslagsprojektet' })).toBeVisible();
+
+	await sidebar.getByRole('link', { name: 'Noter', exact: true }).click();
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await ed.click();
+
+	await page.keyboard.type('Første udkast');
+	await page.keyboard.press('Enter');
+
+	// Half a tag is enough. The name is long and nobody should have to spell it.
+	await page.keyboard.type('Handler om #Forslags');
+	const option = page.getByRole('option', { name: /Forslagsprojektet/ }).first();
+	await expect(option).toBeVisible();
+
+	// Return takes the highlighted one — the list owns the key while it is open.
+	await page.keyboard.press('Enter');
+	await expect(ed).toContainText('#Forslagsprojektet');
+	await expect(option).toBeHidden();
+
+	// And the syntax is spelled out under the field, where it is being typed.
+	await expect(page.getByText('projekt', { exact: false }).first()).toBeVisible();
+
+	// The title is the first line. It used to be derived once and then left alone,
+	// so rewriting the opening left the list calling the note by an old name.
+	await page.keyboard.press('Enter');
+	await ed.blur();
+	await expect(page.getByRole('button', { name: /Første udkast/ })).toBeVisible();
+
+	// Rewrite the first line; the list has to follow.
+	await ed.click();
+	await page.keyboard.press('ControlOrMeta+Home');
+	for (let i = 0; i < 13; i++) await page.keyboard.press('Shift+ArrowRight');
+	await page.keyboard.type('Andet udkast');
+	await ed.blur();
+	await expect(page.getByRole('button', { name: /Andet udkast/ })).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});

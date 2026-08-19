@@ -118,10 +118,10 @@ func TestNotesAreFoundInEitherSpelling(t *testing.T) {
 	db, userID := sealedStore(t)
 	ctx := context.Background()
 
+	// The title is the first line now, so that is where it goes.
 	if err := db.SaveNote(ctx, &Note{
 		CreatedBy: userID,
-		Title:     "Grønt regnskab",
-		Body:      "Målt på årsbasis for Århus.",
+		Body:      "Grønt regnskab\n\nMålt på årsbasis for Århus.",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -243,5 +243,49 @@ func TestTheProjectCountIsWhatIsLeft(t *testing.T) {
 	}
 	if n := count(); n != 1 {
 		t.Errorf("after deleting one, the count is %d, want 1", n)
+	}
+}
+
+// The title follows the first line, always — not only the first time.
+//
+// Derived once and then left alone, it goes stale the moment somebody rewrites
+// the opening, and the list ends up calling a note by a name that is nowhere in
+// it. That is exactly what happened: a note headed "Ny note" was listed as
+// "fdgfgfgh", which was what its first line had been some edits ago.
+func TestTheTitleFollowsTheFirstLine(t *testing.T) {
+	db, userID := sealedStore(t)
+	ctx := context.Background()
+
+	n := &Note{CreatedBy: userID, Body: "Første udgave\n\nnoget tekst"}
+	if err := db.SaveNote(ctx, n); err != nil {
+		t.Fatal(err)
+	}
+	if n.Title != "Første udgave" {
+		t.Fatalf("title started as %q", n.Title)
+	}
+
+	n.Body = "# Ny note\n\nDette er mit nye noteprogram"
+	if err := db.SaveNote(ctx, n); err != nil {
+		t.Fatal(err)
+	}
+	if n.Title != "Ny note" {
+		t.Errorf("after rewriting the first line the title is %q", n.Title)
+	}
+
+	back, err := db.Note(ctx, n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Title != "Ny note" {
+		t.Errorf("the stored title is %q", back.Title)
+	}
+
+	// And a title cannot be set beside the text, because then the two can disagree.
+	n.Title = "noget andet"
+	if err := db.SaveNote(ctx, n); err != nil {
+		t.Fatal(err)
+	}
+	if n.Title != "Ny note" {
+		t.Errorf("a title set by hand survived as %q", n.Title)
 	}
 }

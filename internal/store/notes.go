@@ -62,11 +62,12 @@ func (db *DB) SaveNote(ctx context.Context, n *Note) error {
 	}
 	n.UpdatedAt = now
 
-	// A note with no title takes its first line, the way Apple Notes does. A list
-	// of untitled notes is a list nobody can read.
-	if strings.TrimSpace(n.Title) == "" {
-		n.Title = firstLine(n.Body)
-	}
+	// The title is always the first line, the way Apple Notes does it. Not "when it
+	// is empty": derived once and then left alone, it goes stale the moment somebody
+	// rewrites the opening of a note, and the list ends up calling a note by a name
+	// that is nowhere in it. The column is a cache of the body, not a field beside
+	// it, and every caller gets the same answer because none of them can set it.
+	n.Title = firstLine(n.Body)
 
 	return db.Tx(ctx, func(tx *sql.Tx) error {
 		var projectID any

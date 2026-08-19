@@ -530,8 +530,7 @@ func (s *Server) registerNoteTools(m *mcp.Server) {
 			"links to a note by its title. Use this to bring notes in from elsewhere — " +
 			"Apple Notes, OneNote, a folder of Markdown — one call per note.",
 		InputSchema: mcp.Schema(map[string]any{
-			"body":       mcp.Str("The note as Markdown. #Projekt and [[note]] become links."),
-			"title":      mcp.Str("A title. Left out, the first line of the body becomes it."),
+			"body":       mcp.Str("The note as Markdown. Its first line becomes the title, so start with one. #Projekt and [[note]] become links."),
 			"project_id": mcp.Str("File it under a project by id. Usually unnecessary — a #tag in the body does the same and is what a person would type."),
 			"pinned":     mcp.Bool("Keep it at the top of the list."),
 		}),
@@ -545,8 +544,7 @@ func (s *Server) registerNoteTools(m *mcp.Server) {
 			"removed.",
 		InputSchema: mcp.Schema(map[string]any{
 			"note_id": mcp.Str("Which note."),
-			"body":    mcp.Str("The whole new text, as Markdown."),
-			"title":   mcp.Str("A new title."),
+			"body":    mcp.Str("The whole new text, as Markdown. The title follows its first line."),
 			"pinned":  mcp.Bool("Pin it or unpin it."),
 		}),
 	}, s.mcpUpdateNote)
@@ -604,7 +602,6 @@ func (s *Server) mcpMayRead(ctx context.Context, n *store.Note, userID string) b
 func (s *Server) mcpCreateNote(ctx context.Context, userID string, args json.RawMessage) (any, error) {
 	var params struct {
 		Body      string `json:"body"`
-		Title     string `json:"title"`
 		ProjectID string `json:"project_id"`
 		Pinned    bool   `json:"pinned"`
 	}
@@ -612,7 +609,6 @@ func (s *Server) mcpCreateNote(ctx context.Context, userID string, args json.Raw
 
 	n := &store.Note{
 		CreatedBy: userID,
-		Title:     params.Title,
 		Body:      params.Body,
 		Pinned:    params.Pinned,
 	}
@@ -638,7 +634,6 @@ func (s *Server) mcpUpdateNote(ctx context.Context, userID string, args json.Raw
 	var params struct {
 		NoteID string  `json:"note_id"`
 		Body   *string `json:"body"`
-		Title  *string `json:"title"`
 		Pinned *bool   `json:"pinned"`
 	}
 	_ = json.Unmarshal(args, &params)
@@ -658,9 +653,6 @@ func (s *Server) mcpUpdateNote(ctx context.Context, userID string, args json.Raw
 
 	if params.Body != nil {
 		n.Body = *params.Body
-	}
-	if params.Title != nil {
-		n.Title = *params.Title
 	}
 	if params.Pinned != nil {
 		n.Pinned = *params.Pinned

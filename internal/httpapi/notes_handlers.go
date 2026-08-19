@@ -97,9 +97,10 @@ func (s *Server) handleGetNote(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, n)
 }
 
+// No title. It is the note's first line and is derived on every save — a field
+// here would be a promise this server cannot keep.
 type noteBody struct {
 	ProjectID *string `json:"project_id"`
-	Title     *string `json:"title"`
 	Body      *string `json:"body"`
 	Pinned    *bool   `json:"pinned"`
 }
@@ -118,9 +119,6 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		n.ProjectID = *body.ProjectID
-	}
-	if body.Title != nil {
-		n.Title = *body.Title
 	}
 	if body.Body != nil {
 		n.Body = *body.Body
@@ -163,9 +161,6 @@ func (s *Server) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		n.ProjectID = *body.ProjectID
-	}
-	if body.Title != nil {
-		n.Title = *body.Title
 	}
 	if body.Body != nil {
 		n.Body = *body.Body

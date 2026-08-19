@@ -3308,7 +3308,7 @@ components:
       properties:
         id: { type: string }
         project_id: { type: string }
-        title: { type: string, description: "Taken from the first line when not given." }
+        title: { type: string, readOnly: true, description: "The note's first line. Derived on every save; it cannot be set." }
         body: { type: string, description: Markdown }
         pinned: { type: boolean }
         created_at: { type: string, format: date-time }
@@ -3326,8 +3326,7 @@ components:
       type: object
       properties:
         project_id: { type: string, description: "Empty files it under no project." }
-        title: { type: string }
-        body: { type: string }
+        body: { type: string, description: "Markdown. Its first line becomes the title." }
         pinned: { type: boolean }
 
     Mailbox:

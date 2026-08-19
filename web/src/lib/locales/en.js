@@ -32,6 +32,8 @@ export const en = {
 	'notes.styleNumbered': 'Numbered list',
 	'notes.favourite': 'Make a favourite',
 	'notes.unfavourite': 'Remove from favourites',
+	'notes.syntaxProject': 'project',
+	'notes.syntaxNote': 'another note',
 	'notes.title': 'Notes',
 	'notes.new': 'New note',
 	'notes.search': 'Search notes',

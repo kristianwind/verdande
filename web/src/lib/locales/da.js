@@ -36,6 +36,8 @@ export const da = {
 	'notes.styleNumbered': 'Nummereret liste',
 	'notes.favourite': 'Gør til favorit',
 	'notes.unfavourite': 'Fjern som favorit',
+	'notes.syntaxProject': 'projekt',
+	'notes.syntaxNote': 'en anden note',
 	'notes.title': 'Noter',
 	'notes.new': 'Ny note',
 	'notes.search': 'Søg i noter',
