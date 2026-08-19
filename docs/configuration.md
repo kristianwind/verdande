@@ -55,6 +55,36 @@ One registration serves every user on the instance; each person authorises their
 own mailbox from **Settings → Gmail**. The redirect URI is derived from
 `VERDANDE_BASE_URL`, so it cannot drift out of step with what you registered.
 
+## Secrets
+
+| Variable | Default | What it does |
+|---|---|---|
+| `VERDANDE_SECRET_KEY` | — | Encrypts the mail tokens and mailbox passwords in the database. 32 bytes of base64. |
+
+Mail tokens and [mailbox](mailboxes.md) passwords are encrypted at rest, and the
+key does not live in the database. That is the whole point: **backups can be
+downloaded through the interface**, so a copy that ends up somewhere it should
+not would otherwise open your mail.
+
+Leave the variable empty and verdande writes a key to `secret.key` in the data
+directory on first start, mode `0600`. Backups are a `VACUUM INTO` of the
+database alone, so the key file is not in them.
+
+Generate one yourself if you would rather keep it out of the volume entirely:
+
+```
+openssl rand -base64 32
+```
+
+!!! warning "Lose the key and the mailboxes must be reconnected"
+    Nothing else is lost — tasks, projects, files and history are not encrypted —
+    but a token that cannot be decrypted cannot be used, and there is no way back
+    from a key that is gone. If you restore a database somewhere new, bring
+    `secret.key` with it, or set `VERDANDE_SECRET_KEY` to the same value.
+
+A database written before there was a key is read as it stands and encrypted the
+next time each value is written, so turning this on costs nobody a reconnection.
+
 ## Update checks
 
 | Variable | Default | What it does |
@@ -64,9 +94,13 @@ own mailbox from **Settings → Gmail**. The redirect URI is derived from
 | `VERDANDE_PANEL_TOKEN` | — | An API token from that panel, belonging to somebody with control of this server. |
 | `VERDANDE_PANEL_SERVER_ID` | — | Which server to restart — the id in the panel's URL. |
 
-All three together let **Indstillinger → Notifikationer** restart this instance,
+All three together let **Settings → Notifications** restart this instance,
 which is also how it picks up a new version: a container cannot replace its own
-image, so the panel recreates it and pulls `:latest` on the way. Any one of the
+image, so the panel recreates it and pulls `:latest` on the way. The request asks
+the panel for a *scheduled* restart rather than an immediate one — an immediate
+one is carried out while the request is still open, and stopping the container
+kills the very process waiting for the answer, so the panel never gets to the
+half that starts it again. Any one of the
 three alone does nothing, and the page names the ones that are missing.
 
 The token is a panel credential with control over that server. Anybody who can

@@ -70,7 +70,22 @@ an error message and a lost thought.
     write it, and guessing month-first would silently move a date by months rather
     than failing visibly.
 
-## The shortcuts
+## Just start typing
 
-Press ++q++ to jump to the quick-add box from anywhere, ++t++ for Today, ++u++ for
-Upcoming, ++cmd+k++ to search, and ++question++ for the full list.
+There is no shortcut to remember. Press a letter anywhere in the app and you are
+writing a task, with the letter you pressed already in the field. The thought does
+not have to survive a journey to find somewhere to put it.
+
+It only fires when nothing else has focus — a key pressed at a field, a button or
+a link belongs to that thing.
+
+Under the field is a line saying what the parser reads: `#` project, `/` section,
+`@` label, `p1` priority, and an example date. It appears while you are typing,
+which is the one moment a placeholder cannot help you.
+
+++cmd+k++ opens the palette — search, and navigation to anywhere in the app.
+
+!!! note "The single letters used to navigate"
+    ++t++ for Today and ++u++ for Upcoming are gone. One keyboard cannot both
+    spell *tal med Anders* and jump to Today on the same ++t++, and capturing is
+    the thing done fifty times a day. The palette does the rest.

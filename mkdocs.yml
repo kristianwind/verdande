@@ -48,12 +48,14 @@ nav:
       - As a Rune: rune.md
       - Configuration: configuration.md
   - Using it:
+      - Signing in: signing-in.md
       - Quick add: quick-add.md
       - Filters: filters.md
       - Importing from Todoist: import.md
   - Connecting things:
       - Calendar and CalDAV: caldav.md
       - Mail to task: mail.md
+      - Mailboxes: mailboxes.md
       - Claude (MCP): mcp.md
       - AI features: ai.md
   # openapi.yaml is deliberately not in the nav: MkDocs copies it to the site as a
