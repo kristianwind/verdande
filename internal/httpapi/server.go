@@ -178,6 +178,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Get("/me", s.handleMe)
 				r.Patch("/me", s.handleUpdateProfile)
 				r.Put("/sidebar-sections", s.handleSetSidebarSections)
+				r.Put("/nav-order", s.handleSetNavOrder)
 				r.Post("/logout", s.handleLogout)
 				r.Post("/password/change", s.handleChangePassword)
 				r.Post("/totp/setup", s.handleTOTPSetup)

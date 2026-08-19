@@ -32,6 +32,7 @@ type userJSON struct {
 	// about the work and not about the screen — the sidebar's width is the
 	// opposite case and stays in localStorage.
 	SidebarCollapsed []string `json:"sidebar_collapsed"`
+	NavOrder         []string `json:"nav_order"`
 	CreatedAt        string   `json:"created_at"`
 }
 
@@ -42,10 +43,14 @@ func toUserJSON(u *store.User) userJSON {
 	if collapsed == nil {
 		collapsed = []string{}
 	}
+	order := u.NavOrder
+	if order == nil {
+		order = []string{}
+	}
 	return userJSON{
 		ID: u.ID, Email: u.Email, Name: u.Name, AvatarColor: u.AvatarColor,
 		Timezone: u.Timezone, Locale: u.Locale, IsAdmin: u.IsAdmin,
-		TOTPEnabled: u.TOTPEnabled, SidebarCollapsed: collapsed,
+		TOTPEnabled: u.TOTPEnabled, SidebarCollapsed: collapsed, NavOrder: order,
 		CreatedAt: u.CreatedAt.Format(time.RFC3339),
 	}
 }
@@ -78,6 +83,30 @@ func (s *Server) handleSetSidebarSections(w http.ResponseWriter, r *http.Request
 	user := userFrom(r.Context())
 	if err := s.db.SetSidebarCollapsed(r.Context(), user.ID, req.Sections); err != nil {
 		s.storeError(w, r, "set sidebar sections", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleSetNavOrder records the order of the fixed views in the sidebar.
+//
+// Its own route for the same reason as the folds: this writes on every drop, and
+// sharing the profile's path would make a reorder send a name and a timezone it
+// was never asked to change.
+func (s *Server) handleSetNavOrder(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Order []string `json:"order"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	if len(req.Order) > 20 {
+		writeError(w, http.StatusBadRequest, CodeBadRequest, "too many entries")
+		return
+	}
+	user := userFrom(r.Context())
+	if err := s.db.SetNavOrder(r.Context(), user.ID, req.Order); err != nil {
+		s.storeError(w, r, "set nav order", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

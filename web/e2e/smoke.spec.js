@@ -1875,6 +1875,13 @@ test('tallet ved et projekt er opgaver, og sidebjælken kan foldes med tastature
 	await box.fill('første i dag');
 	await box.press('Enter');
 
+	// In the project itself before looking at the sidebar. Without this the count
+	// can be read while the task is still on its way, or — worse — after it landed
+	// in the inbox because the box that took the text belonged to the previous
+	// view. Then the assertion below fails for a reason that has nothing to do with
+	// what it is testing.
+	await expect(page.getByText('første', { exact: true })).toBeVisible();
+
 	// Reloaded before looking. What is asserted is that the number is open tasks
 	// and comes from the server, which holds on any load.
 	//

@@ -1,0 +1,13 @@
+-- The order of the fixed views in the sidebar.
+--
+-- On the account rather than in the browser, and for the reason the sidebar's
+-- width is the other way round: a width is a fact about the screen you are at, and
+-- the answer on a phone is not the answer on a monitor. Which order you want I dag,
+-- Kommende, Venter and Indbakken in is a fact about you, and it should be the same
+-- on the laptop as on the phone.
+--
+-- A list of keys rather than a number per row, for the same reason sidebar_collapsed
+-- is: the set of views changes with the program, and a key that no longer exists
+-- costs nothing — the sidebar draws what it recognises and appends anything new at
+-- the end. That is what makes adding a view later not a migration.
+ALTER TABLE users ADD COLUMN nav_order TEXT NOT NULL DEFAULT '[]';

@@ -188,6 +188,7 @@ export const api = {
 	updateProfile: (data) => patch('/auth/me', data),
 	// Its own route rather than a field on the profile: that one backs a form with
 	// a save button, and this writes on every click of a chevron.
+	setNavOrder: (order) => put('/auth/nav-order', { order }),
 	setSidebarSections: (sections) => put('/auth/sidebar-sections', { sections }),
 	signup: (data) => post('/auth/signup', data),
 	forgotPassword: (email) => post('/auth/password/forgot', { email }),

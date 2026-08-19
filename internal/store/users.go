@@ -36,8 +36,13 @@ type User struct {
 	// is as true on the laptop as on the desktop. The sidebar's *width* is the
 	// opposite case and is stored per browser.
 	SidebarCollapsed []string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+
+	// NavOrder is the order this person wants the fixed views in, by key. Empty
+	// means the order the program ships with. Unknown keys are ignored and missing
+	// ones are appended, so adding a view later is not a migration.
+	NavOrder  []string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // NormalizeEmail is the one place an address is canonicalised. Addresses arrive
@@ -104,7 +109,7 @@ func (db *DB) UserByID(ctx context.Context, id string) (*User, error) {
 }
 
 const userColumns = `id, email, name, password_hash, totp_secret, totp_enabled,
-	avatar_color, timezone, locale, is_admin, sidebar_collapsed, created_at, updated_at`
+	avatar_color, timezone, locale, is_admin, sidebar_collapsed, nav_order, created_at, updated_at`
 
 func (db *DB) scanUser(ctx context.Context, query string, args ...any) (*User, error) {
 	var u User
@@ -112,11 +117,11 @@ func (db *DB) scanUser(ctx context.Context, query string, args ...any) (*User, e
 	var totpEnabled, isAdmin int
 	var created, updated int64
 
-	var collapsed string
+	var collapsed, navOrder string
 
 	err := db.QueryRowContext(ctx, query, args...).Scan(
 		&u.ID, &u.Email, &u.Name, &u.PasswordHash, &secret, &totpEnabled,
-		&u.AvatarColor, &u.Timezone, &u.Locale, &isAdmin, &collapsed, &created, &updated)
+		&u.AvatarColor, &u.Timezone, &u.Locale, &isAdmin, &collapsed, &navOrder, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -131,9 +136,32 @@ func (db *DB) scanUser(ctx context.Context, query string, args ...any) (*User, e
 	// worst case is a sidebar that opens fully, which is the state it shipped in.
 	u.SidebarCollapsed = []string{}
 	_ = json.Unmarshal([]byte(collapsed), &u.SidebarCollapsed)
+	u.NavOrder = []string{}
+	_ = json.Unmarshal([]byte(navOrder), &u.NavOrder)
 	u.CreatedAt = time.Unix(created, 0).UTC()
 	u.UpdatedAt = time.Unix(updated, 0).UTC()
 	return &u, nil
+}
+
+// SetNavOrder records the order of the fixed views.
+func (db *DB) SetNavOrder(ctx context.Context, userID string, order []string) error {
+	if order == nil {
+		order = []string{}
+	}
+	raw, err := json.Marshal(order)
+	if err != nil {
+		return err
+	}
+	res, err := db.ExecContext(ctx,
+		`UPDATE users SET nav_order = ?, updated_at = ? WHERE id = ?`,
+		string(raw), time.Now().Unix(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SetSidebarCollapsed records which sidebar headings are folded.

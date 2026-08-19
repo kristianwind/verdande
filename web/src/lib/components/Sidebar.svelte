@@ -117,6 +117,70 @@
 	}
 
 
+	// --- the fixed views ---------------------------------------------------------
+
+	// Delegated is only offered where delegating is possible at all: on an instance
+	// with one person that view can never have anything in it, and a permanent empty
+	// entry is a question the sidebar keeps asking and answering "no".
+	let navItems = $derived(
+		[
+			{ key: 'today', href: '/', label: 'nav.today' },
+			{ key: 'upcoming', href: '/upcoming', label: 'nav.upcoming' },
+			app.projects.some((p) => p.shared)
+				? { key: 'delegated', href: '/uddelegeret', label: 'nav.delegated' }
+				: null,
+			// No href: the inbox is a project and is drawn by projectRow, which knows
+			// its id. It is in this list only so it can be dragged with the others.
+			{ key: 'inbox', label: 'nav.inbox' }
+		].filter(Boolean)
+	);
+
+	let orderedNav = $derived(
+		app
+			.navOrder(navItems.map((i) => i.key))
+			.map((key) => navItems.find((i) => i.key === key))
+			.filter(Boolean)
+	);
+
+	let draggingNav = $state(null);
+	let overNav = $state(null);
+
+	function onNavDragStart(event, key) {
+		draggingNav = key;
+		event.dataTransfer.effectAllowed = 'move';
+		// A payload, because Firefox refuses to start a drag without one.
+		event.dataTransfer.setData('text/plain', key);
+	}
+
+	function onNavDragOver(event, key) {
+		if (!draggingNav || key === draggingNav) return;
+		event.preventDefault();
+		overNav = key;
+	}
+
+	function clearNavDrag() {
+		draggingNav = null;
+		overNav = null;
+	}
+
+	async function onNavDrop(event, key) {
+		const moved = draggingNav;
+		// Checked before anything is swallowed. Stopping the event first meant a task
+		// dragged onto I dag never reached the handler that gives it a date — the row
+		// took the drop and then discovered it was not for it.
+		if (!moved || moved === key) {
+			clearNavDrag();
+			return;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		clearNavDrag();
+
+		const keys = orderedNav.map((i) => i.key).filter((k) => k !== moved);
+		keys.splice(keys.indexOf(key), 0, moved);
+		await app.setNavOrder(keys);
+	}
+
 	// --- resizing -------------------------------------------------------------------
 
 	let resizing = $state(false);
@@ -340,43 +404,60 @@
 
 	<div class="views">
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<a
-			href="/"
-			class:active={current === '/'}
-			class:receiving={overToday}
-			onclick={onnavigate}
-			ondragover={(e) => {
-				if (!carries(e, TASK)) return;
-				accept(e);
-				overToday = true;
-			}}
-			ondragleave={() => (overToday = false)}
-			ondrop={onDropOnToday}
-		>
-			<span class="dot today" aria-hidden="true"></span>
-			{t('nav.today')}
-		</a>
-		<a href="/upcoming" class:active={current === '/upcoming'} onclick={onnavigate}>
-			<span class="dot" aria-hidden="true"></span>
-			{t('nav.upcoming')}
-		</a>
-		{#if app.projects.some((p) => p.shared)}
-			<!-- Only where delegating is possible at all. On an instance with one
-			     person this view can never have anything in it, and a permanent empty
-			     entry is a question the sidebar keeps asking and answering "no". -->
-			<a href="/uddelegeret" class:active={current === '/uddelegeret'} onclick={onnavigate}>
-				<span class="dot" aria-hidden="true"></span>
-				{t('nav.delegated')}
-			</a>
-		{/if}
-		<!-- Færdige is not in this list any more. It used to sit here on the argument
-		     that somebody hunting a task they closed by mistake does not know which
-		     view they closed it in — which is true, and is also a rare errand next to
-		     four entries that are read every day. It lives under Settings → Data, with
-		     the trash, where the other "where did that go" questions are answered. -->
-		{#if app.inbox}
-			{@render projectRow(app.inbox, false)}
-		{/if}
+		<!-- The fixed views, in the order this person put them.
+		     Drawn from a list rather than written out, because they can be reordered
+		     now and a hand-written run cannot be. Unknown keys are dropped and new
+		     ones appended, so adding a view later does not strand anybody's order. -->
+		{#each orderedNav as item (item.key)}
+			{#if item.key === 'inbox'}
+				{#if app.inbox}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="navrow"
+						class:dragging={draggingNav === item.key}
+						class:over={overNav === item.key}
+						ondragover={(e) => onNavDragOver(e, item.key)}
+						ondragleave={() => (overNav = null)}
+						ondrop={(e) => onNavDrop(e, item.key)}
+					>
+						{@render grip(item.key)}
+						{@render projectRow(app.inbox, false)}
+					</div>
+				{/if}
+			{:else}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="navrow"
+					class:dragging={draggingNav === item.key}
+					class:over={overNav === item.key}
+					ondragover={(e) => onNavDragOver(e, item.key)}
+					ondragleave={() => (overNav = null)}
+					ondrop={(e) => onNavDrop(e, item.key)}
+				>
+					{@render grip(item.key)}
+					<!-- I dag also takes a task dropped on it — the most-made rescheduling
+					     there is, and the sidebar is where the pointer already is. The
+					     handlers were lost when this run became a list; the test caught
+					     it, which is the second time that drop has earned its test. -->
+					<a
+						href={item.href}
+						class:active={current === item.href}
+						class:receiving={item.key === 'today' && overToday}
+						onclick={onnavigate}
+						ondragover={(e) => {
+							if (item.key !== 'today' || !carries(e, TASK)) return;
+							accept(e);
+							overToday = true;
+						}}
+						ondragleave={() => (overToday = false)}
+						ondrop={(e) => item.key === 'today' && onDropOnToday(e)}
+					>
+						<span class="dot" class:today={item.key === 'today'} aria-hidden="true"></span>
+						{t(item.label)}
+					</a>
+				</div>
+			{/if}
+		{/each}
 	</div>
 
 	<!-- Notes stand apart, with a rule above them.
@@ -395,6 +476,21 @@
 	     three copies of that would be three chances to fix a bug in two of them.
 	     Only your own reorder: `sort_order` is a column on the project, so a shared
 	     one stays where its owner put it. -->
+	<!-- A handle rather than the whole row.
+	     Making the row draggable made everything inside it draggable too, and the
+	     sidebar is already a drop target for tasks — a task dragged onto I dag
+	     stopped landing, because the row had claimed the gesture. A grip claims
+	     nothing until it is grabbed. -->
+	{#snippet grip(key)}
+		<span
+			class="grip"
+			draggable="true"
+			ondragstart={(e) => onNavDragStart(e, key)}
+			ondragend={clearNavDrag}
+			aria-hidden="true">⠿</span
+		>
+	{/snippet}
+
 	{#snippet projectRow(project, sortable)}
 		<a
 			href="/projekt/{project.id}"
@@ -869,6 +965,53 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
+	}
+
+	.navrow {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+
+	/* Takes no room until it is wanted: it sits in the padding the row already has,
+	   so nothing moves when it appears. */
+	.grip {
+		position: absolute;
+		left: -2px;
+		width: 12px;
+		text-align: center;
+		font-size: 10px;
+		line-height: 1;
+		color: var(--ink-faint);
+		cursor: grab;
+		opacity: 0;
+		transition: opacity var(--fast) var(--ease);
+	}
+
+	.navrow:hover .grip {
+		opacity: 1;
+	}
+
+	.navrow > :global(a) {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.navrow.dragging {
+		opacity: 0.4;
+	}
+
+	/* A line where it will land, not a box around what it will land on: the first
+	   reads as a position and the second as a target. */
+	.navrow.over::before {
+		content: '';
+		position: absolute;
+		top: -1px;
+		left: var(--s2);
+		right: var(--s2);
+		height: 2px;
+		background: var(--accent);
+		border-radius: 1px;
 	}
 
 	/* A rule and a little air, which is the whole of "separate". Notes are the other

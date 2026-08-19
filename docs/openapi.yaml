@@ -263,6 +263,36 @@ paths:
         "204": { description: Saved. }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /api/v1/auth/nav-order:
+    put:
+      tags: [auth]
+      summary: The order of the fixed views in the sidebar.
+      description: |
+        I dag, Kommende, Venter and the inbox, in whatever order this person wants
+        them. On the account rather than in the browser: which order you want them
+        in is a fact about you and should be the same on the phone as on the laptop.
+
+        A list of keys rather than a number per view. The set of views changes with
+        the program, and a key that no longer exists costs nothing — the sidebar
+        draws what it recognises and appends anything new at the end, which is what
+        makes adding a view later not a migration. An empty list means the order the
+        program ships with.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                order:
+                  type: array
+                  maxItems: 20
+                  items: { type: string }
+                  example: ["inbox", "today", "upcoming", "delegated"]
+      responses:
+        "204": { description: Saved. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /api/v1/auth/me:
     get:
       tags: [auth]

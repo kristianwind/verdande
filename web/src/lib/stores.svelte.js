@@ -562,6 +562,31 @@ class AppState {
 		}
 	}
 
+	/**
+	 * The order of the fixed views, as keys.
+	 *
+	 * Unknown keys are dropped and missing ones appended, so the stored order never
+	 * has to be migrated when a view is added or taken away — which has already
+	 * happened once, when Færdige left the sidebar.
+	 */
+	navOrder(keys) {
+		const saved = this.user?.nav_order ?? [];
+		const known = new Set(keys);
+		const ordered = saved.filter((k) => known.has(k));
+		return [...ordered, ...keys.filter((k) => !ordered.includes(k))];
+	}
+
+	async setNavOrder(order) {
+		const before = this.user?.nav_order ?? [];
+		this.user = { ...this.user, nav_order: order };
+		try {
+			await api.setNavOrder(order);
+		} catch (e) {
+			this.user = { ...this.user, nav_order: before };
+			this.toast(humanMessage(e));
+		}
+	}
+
 	sectionCollapsed(key) {
 		return (this.user?.sidebar_collapsed ?? []).includes(key);
 	}
