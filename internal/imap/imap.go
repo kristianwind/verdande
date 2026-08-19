@@ -135,6 +135,21 @@ func (c *Client) Since(uid uint32, limit int) ([]Message, uint32, error) {
 	}
 
 	uids := found.AllUIDs()
+
+	// Anything at or below the marker is dropped here rather than trusted to the
+	// range in the query. A server that reads `1272:*` as `0:1272` — and one does,
+	// which is how the same mail became a task every ten minutes with the marker
+	// standing still at 1271 — hands back the whole mailbox. The marker is ours;
+	// enforcing it here costs one pass over a list of at most a few hundred
+	// numbers and does not depend on anybody else's reading of the spec.
+	kept := make([]imap.UID, 0, len(uids))
+	for _, u := range uids {
+		if uint32(u) > uid {
+			kept = append(kept, u)
+		}
+	}
+	uids = kept
+
 	if len(uids) == 0 {
 		return nil, uid, nil
 	}

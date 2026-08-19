@@ -262,3 +262,57 @@ func TestAMultipartMailReadsAsItsText(t *testing.T) {
 		t.Errorf("the snippet does not start with the text of the mail: %q", got)
 	}
 }
+
+// The marker is ours, not the server's.
+//
+// A mailbox read with a marker above everything in it must come back empty. The
+// query says so, but a server is free to read the range differently — one reads
+// `1272:*` as `0:1272` and hands back the lot, which is how the same mail became
+// a task every ten minutes while the marker stood still at 1271. The filter is
+// on this side now, so the invariant holds whatever comes back.
+func TestNothingAtOrBelowTheMarkerComesBack(t *testing.T) {
+	addr, pool := serveMailbox(t, []mail{
+		{subject: "En", from: "a@example.dk", body: "en", flagged: true},
+		{subject: "To", from: "b@example.dk", body: "to", flagged: true},
+		{subject: "Tre", from: "c@example.dk", body: "tre", flagged: true},
+	})
+	client, err := Dial(Account{Host: addr, Username: "kw", Password: "hemmelig", RootCAs: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	all, highest, err := client.Since(0, 25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("got %d messages on the first read, want 3", len(all))
+	}
+
+	// Read again from the marker the first run would have written.
+	rest, again, err := client.Since(highest, 25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rest) != 0 {
+		t.Errorf("%d message(s) came back at or below the marker: %v", len(rest), rest[0].Subject)
+	}
+	// And the marker must not go backwards, or the next run reads them all again.
+	if again < highest {
+		t.Errorf("the marker moved back from %d to %d", highest, again)
+	}
+
+	// Every message, individually: none of them may reappear once passed.
+	for _, m := range all {
+		later, _, err := client.Since(m.UID, 25)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, l := range later {
+			if l.UID <= m.UID {
+				t.Errorf("reading from %d gave %d back", m.UID, l.UID)
+			}
+		}
+	}
+}
