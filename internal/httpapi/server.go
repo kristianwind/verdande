@@ -276,6 +276,18 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			// Mailboxes read over IMAP — iCloud, Fastmail, any ordinary host. Each
 			// belongs to the person who connected it, so there is no admin gate
 			// here and no shared registration: the credential is theirs.
+			// Notes. Listing and searching are the same endpoint because they answer
+			// the same question with different words; the backwards one — what has
+			// been written about this task — hangs off the thing being asked about.
+			r.Route("/notes", func(r chi.Router) {
+				r.Get("/", s.handleListNotes)
+				r.Post("/", s.handleCreateNote)
+				r.Get("/linking/{kind}/{targetID}", s.handleNotesLinking)
+				r.Get("/{noteID}", s.handleGetNote)
+				r.Patch("/{noteID}", s.handleUpdateNote)
+				r.Delete("/{noteID}", s.handleDeleteNote)
+			})
+
 			r.Route("/mailboxes", func(r chi.Router) {
 				r.Get("/", s.handleListMailboxes)
 				r.Post("/", s.handleAddMailbox)

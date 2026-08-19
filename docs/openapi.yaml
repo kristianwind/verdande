@@ -2477,6 +2477,116 @@ paths:
                   created: { type: integer }
         "502": { $ref: "#/components/responses/Upstream" }
 
+  /api/v1/notes:
+    get:
+      tags: [notes]
+      summary: Notes — listed, narrowed to a project, or searched.
+      description: >
+        With no parameters: the notes filed under no project, which are the
+        person's own. With `project`: that project's, which needs read access to
+        it. With `q`: a full-text search across every note they can see, matching
+        Danish spelling either way round — "grøn" finds "gron" and the reverse.
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: project
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notes:
+                    type: array
+                    items: { $ref: "#/components/schemas/Note" }
+    post:
+      tags: [notes]
+      summary: Write a note.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoteInput" }
+      responses:
+        "201":
+          description: Written
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/notes/{noteID}:
+    parameters:
+      - name: noteID
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [notes]
+      summary: One note.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [notes]
+      summary: Change a note. Every field is optional; what is sent is what changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoteInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [notes]
+      summary: Put a note in the trash. It can be brought back.
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/notes/linking/{kind}/{targetID}:
+    get:
+      tags: [notes]
+      summary: What has been written about this.
+      description: >
+        The backwards direction. A task's id gives every note that mentions it,
+        a project's name gives every note carrying that #tag.
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema: { type: string, enum: [task, note, project] }
+        - name: targetID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notes:
+                    type: array
+                    items: { $ref: "#/components/schemas/Note" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /api/v1/mailboxes:
     get:
       tags: [integrations]
@@ -3162,6 +3272,34 @@ components:
                 items: { type: string }
 
   schemas:
+    Note:
+      type: object
+      description: A page of Markdown. The body is the stored form and the exported form.
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        title: { type: string, description: "Taken from the first line when not given." }
+        body: { type: string, description: Markdown }
+        pinned: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        links:
+          type: array
+          description: What the body points at, read out of the text on the way in.
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [task, note, project] }
+              target_id: { type: string }
+
+    NoteInput:
+      type: object
+      properties:
+        project_id: { type: string, description: "Empty files it under no project." }
+        title: { type: string }
+        body: { type: string }
+        pinned: { type: boolean }
+
     Mailbox:
       type: object
       description: One connected mailbox. The password and any token are never returned.

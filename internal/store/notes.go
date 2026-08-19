@@ -176,6 +176,14 @@ func (db *DB) NotesInProject(ctx context.Context, projectID string) ([]Note, err
 		projectID)
 }
 
+// LooseNotes are the ones filed under no project — a person's own, the way a task
+// in the inbox is. Nobody else can see them, so there is no role to ask about.
+func (db *DB) LooseNotes(ctx context.Context, userID string) ([]Note, error) {
+	return db.notesWhere(ctx, `
+		WHERE project_id IS NULL AND created_by = ? AND deleted_at IS NULL
+		ORDER BY pinned DESC, updated_at DESC`, userID)
+}
+
 // NotesLinking answers the backwards question: what points at this thing.
 //
 // The reason note_links exists. Without it this would mean reading every note's
