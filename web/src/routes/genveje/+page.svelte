@@ -14,7 +14,8 @@
 			title: t('keys.navigation'),
 			keys: [
 				[t('keys.anyLetter'), t('keys.typeToCapture')],
-				['⌘K / Ctrl+K', t('nav.search')]
+				['⌘K / Ctrl+K', t('nav.search')],
+				['⌘B / Ctrl+B', t('keys.foldSidebar')]
 			]
 		},
 		{

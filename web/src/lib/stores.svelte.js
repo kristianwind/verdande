@@ -156,6 +156,7 @@ class AppState {
 				break;
 			case 'task.deleted':
 				this.tasks = this.tasks.filter((t) => t.id !== task?.id);
+				this.refreshCounts();
 				break;
 
 			// Projects and labels belong to a person rather than to a project, so
@@ -246,6 +247,11 @@ class AppState {
 	 */
 	upsert(task) {
 		if (!task?.id) return;
+		// Before the branch, not after it. A task that is already in the list can
+		// still change the counts — moved to another project, finished in another
+		// tab, a recurring one that closed and opened itself — and the branch below
+		// returns early for exactly those.
+		this.refreshCounts();
 		if (this.tasks.some((t) => t.id === task.id)) {
 			this.replace(task.id, task);
 			return;
@@ -301,6 +307,7 @@ class AppState {
 		const what = task?.content ?? '';
 
 		await this.#optimistic(id, { completed: true }, () => api.completeTask(id));
+		this.refreshCounts();
 
 		if (!repeats) {
 			this.toast(t('task.completedUndo', { what: truncate(what) }), {
@@ -312,6 +319,7 @@ class AppState {
 
 	async reopen(id) {
 		await this.#optimistic(id, { completed: false }, () => api.reopenTask(id));
+		this.refreshCounts();
 	}
 
 	async update(id, patch) {
@@ -373,6 +381,7 @@ class AppState {
 		this.tasks = this.tasks.filter((t) => t.id !== id);
 		try {
 			await api.deleteTask(id);
+			this.refreshCounts();
 		} catch (e) {
 			this.tasks = previous;
 			this.toast(humanMessage(e));
@@ -416,6 +425,56 @@ class AppState {
 		const { projects } = await api.listProjects();
 		this.projects = projects;
 	}
+
+	/**
+	 * Brings the sidebar's per-project counts back in line after tasks have moved.
+	 *
+	 * The count is open tasks now, which changes on every add, finish and delete —
+	 * where the old one, how many people are in it, changed about twice a year. It
+	 * would be quicker to add and subtract locally, and it would be wrong within a
+	 * day: a task moved between projects, one finished in another tab, a recurring
+	 * one that closed and reopened itself. Asking the server is one request and
+	 * cannot drift.
+	 *
+	 * Coalesced, because a paste of five tasks is five calls in the same tick and
+	 * the answer to all of them is the same.
+	 */
+	#countsRunning = false;
+	#countsAgain = false;
+	#countsTimer = null;
+
+	refreshCounts() {
+		// Two windows to coalesce over, not one. Collapsing calls that arrive within
+		// a tick is the easy half; the half that matters is a change arriving while
+		// the request is already in flight. Dropping those left the sidebar showing
+		// the count as it was one task ago, which is the state the test caught and
+		// which nothing but a reload would have corrected.
+		if (this.#countsRunning) {
+			this.#countsAgain = true;
+			return;
+		}
+		clearTimeout(this.#countsTimer);
+		this.#countsTimer = setTimeout(async () => {
+			this.#countsRunning = true;
+			try {
+				const { projects } = await api.listProjects();
+				const counts = new Map(projects.map((p) => [p.id, p.open_count]));
+				this.projects = this.projects.map((p) =>
+					counts.has(p.id) ? { ...p, open_count: counts.get(p.id) } : p
+				);
+			} catch {
+				// The number is a convenience; failing to update it must not put an
+				// error in front of somebody who was only ticking something off.
+			} finally {
+				this.#countsRunning = false;
+			}
+			if (this.#countsAgain) {
+				this.#countsAgain = false;
+				this.refreshCounts();
+			}
+		}, 120);
+	}
+
 
 	/**
 	 * Puts the projects in the given order.

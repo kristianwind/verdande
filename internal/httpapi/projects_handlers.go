@@ -23,6 +23,7 @@ type projectJSON struct {
 	SortOrder   float64 `json:"sort_order"`
 	Role        string  `json:"role"`
 	MemberCount int     `json:"member_count"`
+	OpenCount   int     `json:"open_count"`
 	Shared      bool    `json:"shared"`
 	// GroupID is the sidebar group the asking user has filed it under, empty for
 	// none. Always empty on a project shared with them: grouping is a column on
@@ -34,7 +35,7 @@ func toProjectJSON(p store.Project) projectJSON {
 	return projectJSON{
 		ID: p.ID, Name: p.Name, Color: p.Color, Icon: p.Icon, ViewMode: p.ViewMode,
 		OwnerID: p.OwnerID, IsInbox: p.IsInbox, Archived: p.Archived,
-		SortOrder: p.SortOrder, Role: string(p.Role), MemberCount: p.MemberCount,
+		SortOrder: p.SortOrder, Role: string(p.Role), MemberCount: p.MemberCount, OpenCount: p.OpenCount,
 		Shared: p.MemberCount > 1, GroupID: p.GroupID,
 	}
 }

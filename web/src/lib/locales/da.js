@@ -377,6 +377,7 @@ export const da = {
 	'data.templatesHint':
 		'Et projekt gemt som en form, der kan bruges igen. Datoerne i skabelonen er relative, så de bliver regnet ud fra den startdato, du vælger.',
 
+	'keys.foldSidebar': 'fold sidebjælken væk',
 	'keys.anyLetter': 'et bogstav',
 	'keys.typeToCapture': 'begynder en opgave, med bogstavet i feltet',
 	'keys.navigation': 'Navigation',

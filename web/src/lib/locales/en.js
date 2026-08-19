@@ -372,6 +372,7 @@ export const en = {
 	'data.templatesHint':
 		'A project saved as a shape you can use again. The dates in a template are relative, so they are worked out from the start date you pick.',
 
+	'keys.foldSidebar': 'fold the sidebar away',
 	'keys.anyLetter': 'any letter',
 	'keys.typeToCapture': 'starts a task, with the letter already in the field',
 	'keys.navigation': 'Navigation',

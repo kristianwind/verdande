@@ -60,6 +60,15 @@
 			paletteOpen = true;
 			return;
 		}
+		// Folding the sidebar had a button and nothing else, and a rectangle with a
+		// line down it is not a word: somebody who wanted the menu out of the way
+		// asked for the feature that was already there. ⌘B is where an editor puts
+		// it. Works while typing as well — it moves nothing in the field.
+		if ((event.metaKey || event.ctrlKey) && (event.key === 'b' || event.key === 'B')) {
+			event.preventDefault();
+			sidebar.toggle();
+			return;
+		}
 		if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
 		if (app.detailId) return;
 
@@ -123,7 +132,7 @@
 					onclick={() => sidebar.toggle()}
 					aria-label={sidebar.collapsed ? t('nav.showSidebar') : t('nav.hideSidebar')}
 					aria-pressed={sidebar.collapsed}
-					title={sidebar.collapsed ? t('nav.showSidebar') : t('nav.hideSidebar')}
+					title={(sidebar.collapsed ? t('nav.showSidebar') : t('nav.hideSidebar')) + ' (⌘B)'}
 				>
 					<svg viewBox="0 0 24 24" aria-hidden="true">
 						<rect x="3" y="4" width="18" height="16" rx="2" />

@@ -412,8 +412,16 @@
 		>
 			<span class="dot" style="background: {colorVar(project.color)}" aria-hidden="true"></span>
 			{projectName(project)}
-			{#if project.shared}
-				<span class="count">{project.member_count}</span>
+			<!-- Open tasks, not people. The same grey number meant three things in this
+			     one column — people at a project, projects at a group, tasks at a label
+			     — and in a task app a number beside a project is read as tasks. Who
+			     else is in it is on the project's own page.
+
+			     Shown when there is something left rather than when the project is
+			     shared, which is what it keyed on before: a nought beside every empty
+			     project is a column of noughts. -->
+			{#if project.open_count > 0}
+				<span class="count">{project.open_count}</span>
 			{/if}
 		</a>
 	{/snippet}

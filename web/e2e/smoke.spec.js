@@ -1846,3 +1846,47 @@ test('en postkasse kan tilføjes, og værtens afvisning når frem til skærmen',
 	// watcher caught still has to be empty.
 	expect(trouble.filter((t) => !t.includes('/mailboxes → 422'))).toEqual([]);
 });
+
+test('tallet ved et projekt er opgaver, og sidebjælken kan foldes med tastaturet', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Tallene');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+
+	const row = sidebar.getByRole('link', { name: /^Tallene/ });
+	await expect(row).toBeVisible();
+	// Nothing in it yet, so no number at all: a nought beside every empty project
+	// is a column of noughts.
+	await expect(row).toHaveText('Tallene');
+
+	await row.click();
+	const box = page.getByLabel('Ny opgave');
+	await box.fill('første i dag');
+	await box.press('Enter');
+
+	// One task, one in the sidebar — live, without a reload.
+	await expect(sidebar.getByRole('link', { name: /^Tallene/ })).toContainText('1', {
+		timeout: 10000
+	});
+
+	// And it counts what is left, not what has been: finishing it takes the number
+	// away entirely, which is the whole reason it is not member_count any more —
+	// that one said 2 on an empty project and meant two people.
+	await page.getByRole('button', { name: 'Markér som færdig' }).first().click();
+	await expect(sidebar.getByRole('link', { name: /^Tallene/ })).toHaveText('Tallene', {
+		timeout: 10000
+	});
+
+	// The fold has a button, but a rectangle with a line down it is not a word.
+	const width = () => sidebar.evaluate((el) => el.getBoundingClientRect().width);
+	expect(await width()).toBeGreaterThan(100);
+	await page.keyboard.press('ControlOrMeta+b');
+	await expect.poll(width).toBeLessThan(5);
+	await page.keyboard.press('ControlOrMeta+b');
+	await expect.poll(width).toBeGreaterThan(100);
+
+	expect(trouble).toEqual([]);
+});

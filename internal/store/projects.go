@@ -30,6 +30,11 @@ type Project struct {
 	Role Role
 	// MemberCount is how many people can see it; 1 means it is not shared.
 	MemberCount int
+
+	// OpenCount is what is left to do: not deleted, not finished. It is the number
+	// the sidebar shows, because a number beside a project in a task app is read as
+	// tasks whatever it was meant to be.
+	OpenCount int
 }
 
 type Section struct {
@@ -50,6 +55,13 @@ func (db *DB) ListProjects(ctx context.Context, userID string, includeArchived b
 		       p.archived, p.sort_order, p.created_at, p.updated_at,
 		       CASE WHEN p.owner_id = ? THEN 'owner' ELSE COALESCE(m.role, '') END AS role,
 		       (SELECT count(*) FROM project_members pm WHERE pm.project_id = p.id) + 1 AS member_count,
+		       -- What is left to do, which is what the number beside a project in the
+		       -- sidebar means to the person reading it. It used to show member_count,
+		       -- and a "2" on an empty project read as two tasks to everybody who saw
+		       -- it — including the person who wrote the app.
+		       (SELECT count(*) FROM tasks t
+		         WHERE t.project_id = p.id AND t.deleted_at IS NULL AND t.completed_at IS NULL
+		       ) AS open_count,
 		       CASE WHEN p.owner_id = ? THEN p.group_id END AS group_id
 		FROM projects p
 		LEFT JOIN project_members m ON m.project_id = p.id AND m.user_id = ?
@@ -88,6 +100,9 @@ func (db *DB) GetProject(ctx context.Context, projectID, userID string) (*Projec
 		       p.archived, p.sort_order, p.created_at, p.updated_at,
 		       ? AS role,
 		       (SELECT count(*) FROM project_members pm WHERE pm.project_id = p.id) + 1,
+		       (SELECT count(*) FROM tasks t
+		         WHERE t.project_id = p.id AND t.deleted_at IS NULL AND t.completed_at IS NULL
+		       ),
 		       CASE WHEN p.owner_id = ? THEN p.group_id END
 		FROM projects p WHERE p.id = ? AND p.deleted_at IS NULL`, string(role), userID, projectID)
 	if err != nil {
@@ -113,7 +128,7 @@ func scanProject(rows *sql.Rows) (Project, error) {
 	var role string
 
 	err := rows.Scan(&p.ID, &p.Name, &p.Color, &icon, &p.ViewMode, &p.OwnerID, &isInbox,
-		&archived, &p.SortOrder, &created, &updated, &role, &p.MemberCount, &groupID)
+		&archived, &p.SortOrder, &created, &updated, &role, &p.MemberCount, &p.OpenCount, &groupID)
 	if err != nil {
 		return p, err
 	}
