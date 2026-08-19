@@ -655,7 +655,15 @@ test('et invitationslink opretter kontoen og giver adgang til projektet', async 
 
 	await page.getByLabel('Ny opgave').fill('males inden fredag #Fælleshuset');
 	await page.getByLabel('Ny opgave').press('Enter');
-	await page.getByText('males inden fredag', { exact: true }).click();
+	// Titlen alene, ikke rækken med datomærket i.
+	//
+	// Hurtig tilføjelse læser "fredag" som forfaldsdatoen og tager ordet ud af
+	// titlen, så rækken er "males inden" plus et mærke, der siger hvornår. Mærkets
+	// ord skifter med ugedagen — "fredag", når der er langt, og "I morgen", når man
+	// kører prøven på en torsdag. Den her linje ledte efter hele rækken og fandt
+	// den derfor ikke én dag om ugen. Prøven handler om invitationer, ikke om
+	// datoer; den skal ikke vide hvilken dag det er.
+	await page.getByText('males inden', { exact: true }).click();
 
 	const drawer = page.getByRole('complementary', { name: 'Opgave' });
 	await drawer.getByLabel('Ansvarlig').selectOption({ label: 'Nabo' });

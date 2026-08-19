@@ -35,10 +35,29 @@
 	 * A flat list of two hundred rows says when nothing. "I dag" and "I går" are
 	 * how anybody looking for something they just closed would describe it.
 	 */
+	/**
+	 * Dagen en opgave blev lukket, målt hvor personen står.
+	 *
+	 * Ikke `completed_at.slice(0, 10)`. Tidsstemplet er i UTC, og de ti første tegn
+	 * er derfor UTC's dato — mens overskriften nedenfor sammenligner med *lokal*
+	 * dato. I to timer efter midnat i dansk sommertid er de to ikke den samme dag,
+	 * så en opgave lukket 00.30 lå under "I går", indtil klokken blev to.
+	 *
+	 * Fundet af prøven, som kørte forbi midnat for første gang. Den havde været
+	 * grøn hver eneste gang før, fordi de to datoer er ens tyve timer i døgnet.
+	 */
+	const localDay = (iso) => {
+		if (!iso) return '';
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return '';
+		const pad = (n) => String(n).padStart(2, '0');
+		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+	};
+
 	let days = $derived.by(() => {
 		const groups = new Map();
 		for (const task of done) {
-			const key = (task.completed_at ?? '').slice(0, 10);
+			const key = localDay(task.completed_at);
 			if (!groups.has(key)) groups.set(key, []);
 			groups.get(key).push(task);
 		}

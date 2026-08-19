@@ -113,6 +113,10 @@
 	 */
 	function plain(body) {
 		return (body ?? '')
+			// Et billede har ingen ord i sig. Uden det her stod der
+			// "![](/api/v1/attachments/01a0…" i uddraget af hver note med et foto i,
+			// hvilket er den eneste tekst i listen, ingen har skrevet.
+			.replace(/!\[[^\]]*\]\([^)]*\)/g, '')
 			.replace(/^#{1,6}\s+/gm, '')
 			.replace(/^\s*[-*+]\s+/gm, '')
 			.replace(/^\s*>\s?/gm, '')
@@ -447,7 +451,7 @@
 		border: 0;
 		background: none;
 		padding: 2px var(--s1);
-		max-width: 11ch;
+		max-width: 13ch;
 	}
 
 	h1 {
