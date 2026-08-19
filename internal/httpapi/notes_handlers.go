@@ -369,11 +369,22 @@ func (s *Server) handleImportNotes(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		n := &store.Note{CreatedBy: user.ID, Body: string(body)}
+		text, wrote, changed := readFrontMatter(string(body))
+
+		n := &store.Note{CreatedBy: user.ID, Body: text}
 		if err := s.db.SaveNote(r.Context(), n); err != nil {
 			s.log.Warn("import note", "err", err, "file", name)
 			skipped++
 			continue
+		}
+
+		// After the save, not as part of it: SaveNote owns `updated_at` and is right
+		// to, so the dates a note had before this program existed are written over
+		// the top rather than passed through it.
+		if !wrote.IsZero() || !changed.IsZero() {
+			if err := s.db.SetNoteTimes(r.Context(), n.ID, wrote, changed); err != nil {
+				s.log.Warn("import note dates", "err", err, "file", name)
+			}
 		}
 
 		// The pictures the note referred to, now that it has an id to hang them on.
@@ -464,6 +475,67 @@ func (s *Server) attachToNote(
 		attached++
 	}
 	return body, attached
+}
+
+// readFrontMatter takes the YAML block off the top of a Markdown file and reads
+// the two dates out of it, returning the rest of the text.
+//
+// Not a YAML parser, and deliberately not: the block this reads is the one this
+// program writes, plus whatever Obsidian and Bear write, and all of them use the
+// same handful of `key: value` lines. Pulling in a parser to read two dates would
+// be a dependency that can fail in ways nobody here would recognise.
+//
+// A file with no front matter comes back untouched — that is the normal case, and
+// it must never lose its first line to a rule about a block that is not there.
+func readFrontMatter(body string) (text string, created, modified time.Time) {
+	if !strings.HasPrefix(body, "---\n") && !strings.HasPrefix(body, "---\r\n") {
+		return body, time.Time{}, time.Time{}
+	}
+	rest := body[strings.Index(body, "\n")+1:]
+
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		// An opening fence with no close is not front matter; it is a horizontal
+		// rule somebody wrote at the top of their note.
+		return body, time.Time{}, time.Time{}
+	}
+	block := rest[:end]
+	after := rest[end+len("\n---"):]
+	after = strings.TrimPrefix(after, "\r")
+	after = strings.TrimPrefix(after, "\n")
+
+	for _, line := range strings.Split(block, "\n") {
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		value = strings.TrimSpace(strings.Trim(strings.TrimSpace(value), `"'`))
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "created", "created_at", "date":
+			created = parseNoteTime(value)
+		case "modified", "updated", "updated_at":
+			modified = parseNoteTime(value)
+		}
+	}
+	return strings.TrimLeft(after, "\n"), created, modified
+}
+
+// parseNoteTime accepts the shapes these files actually carry. A date without a
+// time is that day at midnight, local — the note was written on that day, and
+// pretending to know the hour would be worse than not having one.
+func parseNoteTime(v string) time.Time {
+	for _, layout := range []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02",
+	} {
+		if t, err := time.ParseInLocation(layout, v, time.Local); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 // mimeOf guesses from the extension. The archive does not carry a type, and

@@ -39,12 +39,26 @@ const escapeHtml = (s) =>
 
 /** Inline marks, innermost first so a bold word inside italics survives both. */
 function inlineToHtml(text) {
-	return escapeHtml(text)
-		.replace(/&lt;u&gt;(.+?)&lt;\/u&gt;/g, '<u>$1</u>')
-		.replace(/`([^`]+)`/g, '<code>$1</code>')
-		.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-		.replace(/~~(.+?)~~/g, '<s>$1</s>')
-		.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+	return (
+		escapeHtml(text)
+			// Billedet først, og før alt andet.
+			//
+			// Der var ingen regel for det overhovedet, så en note fra Apple Noter
+			// viste `![](/api/v1/attachments/…)` som ord. Billedet var hentet, gemt og
+			// hæftet på noten — det eneste, der manglede, var at nogen tegnede det.
+			//
+			// Kun vores egen adresse. Et `![](http://…)` fra en indsat tekst ville
+			// ellers hente fra en fremmed vært, når noten åbnes, og fortælle den, at
+			// den er blevet læst — og en note er det sidste sted, man vil have en
+			// sporingspixel. Alt andet står som den tekst, det er.
+			.replace(/!\[([^\]]*)\]\((\/api\/v1\/attachments\/[0-9a-f-]+)\)/g,
+				(_, alt, src) => `<img src="${src}" alt="${alt}">`)
+			.replace(/&lt;u&gt;(.+?)&lt;\/u&gt;/g, '<u>$1</u>')
+			.replace(/`([^`]+)`/g, '<code>$1</code>')
+			.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+			.replace(/~~(.+?)~~/g, '<s>$1</s>')
+			.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
+	);
 }
 
 /**
@@ -184,6 +198,11 @@ function inlineToMarkdown(node) {
 
 	const inner = [...node.childNodes].map(inlineToMarkdown).join('');
 	switch (node.tagName) {
+		// Et billede har ingen tekst i sig, så uden det her læses det som ingenting
+		// — og den første gemning ville tage hvert billede ud af noten uden at
+		// nogen havde rørt det.
+		case 'IMG':
+			return `![${node.getAttribute('alt') ?? ''}](${node.getAttribute('src') ?? ''})`;
 		case 'STRONG':
 		case 'B':
 			return inner ? `**${inner}**` : '';

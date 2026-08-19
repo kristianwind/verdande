@@ -247,6 +247,37 @@ func (db *DB) SearchNotes(ctx context.Context, query string, limit int) ([]Note,
 		LIMIT ?`, expr, limit)
 }
 
+// SetNoteTimes writes the dates a note had somewhere else.
+//
+// Only the import calls this, and it exists because SaveNote is right to refuse:
+// `updated_at` is when this program last wrote the note, and letting any caller
+// set it would make the column mean whatever the last writer felt like. A note
+// brought in from Apple Notes is the one case where the dates are facts from
+// before this database existed — and without them a move of twelve hundred notes
+// is a pile that was all written the same evening, which throws away the order
+// they were written in. That order is half of what an archive is.
+func (db *DB) SetNoteTimes(ctx context.Context, id string, created, updated time.Time) error {
+	if created.IsZero() && updated.IsZero() {
+		return nil
+	}
+	// COALESCE, so a note carrying only one of the two keeps what it already had
+	// for the other rather than being stamped with the zero time — which would sort
+	// it to the year one.
+	var c, u any
+	if !created.IsZero() {
+		c = created.Unix()
+	}
+	if !updated.IsZero() {
+		u = updated.Unix()
+	}
+	_, err := db.ExecContext(ctx, `
+		UPDATE notes
+		   SET created_at = COALESCE(?, created_at),
+		       updated_at = COALESCE(?, updated_at)
+		 WHERE id = ?`, c, u, id)
+	return err
+}
+
 // DeleteNote puts it in the trash. Nothing here removes a row.
 func (db *DB) DeleteNote(ctx context.Context, id string) error {
 	_, err := db.ExecContext(ctx,

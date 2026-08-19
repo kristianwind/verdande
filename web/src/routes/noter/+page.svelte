@@ -19,6 +19,50 @@
 	import NoteEditor from '$lib/components/NoteEditor.svelte';
 
 	let notes = $state([]);
+
+	/**
+	 * Rækkefølgen, og hvorfor den kan vælges.
+	 *
+	 * Serveren svarer i én rækkefølge — senest rørt øverst — og det er den rigtige,
+	 * når man arbejder: den note, man var i gang med, er den, man skal tilbage til.
+	 * Den er også den eneste, der ikke kan svare på "hvad skrev jeg dengang".
+	 * Tolv hundrede noter flyttet ind fra et andet program er et arkiv, og et arkiv
+	 * læses efter, hvornår noget blev skrevet, og efter navn.
+	 *
+	 * Sorteret her frem for i en forespørgsel: hele listen er allerede hentet, den
+	 * fylder ingenting, og et valg, der ikke koster et kald, kan skiftes så hurtigt
+	 * som man kan ombestemme sig.
+	 */
+	const ORDERS = [
+		{ key: 'updated', label: 'notes.sortUpdated' },
+		{ key: 'created', label: 'notes.sortCreated' },
+		{ key: 'title', label: 'notes.sortTitle' }
+	];
+
+	let order = $state('updated');
+
+	$effect(() => {
+		const saved = localStorage.getItem('notes.order');
+		if (saved && ORDERS.some((o) => o.key === saved)) order = saved;
+	});
+
+	function setOrder(next) {
+		order = next;
+		localStorage.setItem('notes.order', next);
+	}
+
+	// Favoritter står øverst uanset rækkefølge. Det er hele meningen med at gøre en
+	// note til favorit, og en sortering, der blandede dem ind igen, ville tage den.
+	let ordered = $derived(
+		[...notes].sort((a, b) => {
+			if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+			if (order === 'title') {
+				return (a.title || '').localeCompare(b.title || '', 'da', { sensitivity: 'base' });
+			}
+			const field = order === 'created' ? 'created_at' : 'updated_at';
+			return new Date(b[field]).getTime() - new Date(a[field]).getTime();
+		})
+	);
 	let selected = $state(null);
 	let query = $state('');
 	let status = $state('loading');
@@ -233,7 +277,22 @@
 	<aside>
 		<div class="head">
 			<h1>{t('notes.title')}</h1>
-			<button class="new" onclick={create} aria-label={t('notes.new')}>+</button>
+			<div class="tools">
+				<!-- En select frem for tre knapper: rækkefølgen vælges sjældent, og tre
+				     knapper ville tage plads fra listen hver eneste dag for at spare et
+				     klik en gang imellem. -->
+				<select
+					class="order"
+					value={order}
+					onchange={(e) => setOrder(e.currentTarget.value)}
+					aria-label={t('notes.sortBy')}
+				>
+					{#each ORDERS as o}
+						<option value={o.key}>{t(o.label)}</option>
+					{/each}
+				</select>
+				<button class="new" onclick={create} aria-label={t('notes.new')}>+</button>
+			</div>
 		</div>
 
 		<input
@@ -250,7 +309,7 @@
 			<p class="hint">{query ? t('notes.noneFound') : t('notes.noneYet')}</p>
 		{:else}
 			<ul>
-				{#each notes as note (note.id)}
+				{#each ordered as note (note.id)}
 					<li>
 						<div class="rowline">
 							<button
@@ -372,6 +431,23 @@
 		display: flex;
 		align-items: baseline;
 		justify-content: space-between;
+		gap: var(--s2);
+	}
+
+	.tools {
+		display: flex;
+		align-items: center;
+		gap: var(--s1);
+		min-width: 0;
+	}
+
+	.order {
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		border: 0;
+		background: none;
+		padding: 2px var(--s1);
+		max-width: 11ch;
 	}
 
 	h1 {

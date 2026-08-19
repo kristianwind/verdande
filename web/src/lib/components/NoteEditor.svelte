@@ -805,6 +805,16 @@
 		margin-bottom: var(--s1);
 	}
 
+	/* Et billede fylder sin egen bredde og ikke mere. Et foto fra en telefon er
+	   fire tusind pixels bredt, og uden det her stikker det ud af arket. */
+	.page :global(img) {
+		max-width: 100%;
+		height: auto;
+		border-radius: var(--radius-sm);
+		display: block;
+		margin: var(--s2) 0;
+	}
+
 	.page :global(blockquote) {
 		margin: 0 0 var(--s2);
 		padding-left: var(--s3);
