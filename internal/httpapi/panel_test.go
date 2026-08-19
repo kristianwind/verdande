@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -81,4 +82,70 @@ func TestAPanelThatRefusesSaysSoAsJSON(t *testing.T) {
 	if msg, _ := body["error"].(string); !strings.Contains(msg, "403") {
 		t.Errorf("the reply does not say what the panel answered: %v", body)
 	}
+}
+
+// Forty copies of one mail arrived in a single second because two runs read the
+// same marker before either wrote a new one — somebody pressing "Fetch now" while
+// the ten-minute sweep was already inside the same mailbox.
+//
+// The lock is what stops it, and a lock is only worth having if something tries
+// the door: this runs the two concurrently on purpose.
+func TestTwoRunsOfOneMailboxDoNotOverlap(t *testing.T) {
+	// A bare server: the lock needs nothing but its own zero value, and building a
+	// database and a session around it would only make the test slower to read.
+	srv := &Server{}
+
+	var inside, most int
+	var mu sync.Mutex
+	release := make(chan struct{})
+
+	// Stands in for a run: takes the lock, notes how many are inside, and holds it
+	// until told to let go.
+	run := func(done chan<- struct{}) {
+		unlock := srv.lockMailbox("box-1")
+		mu.Lock()
+		inside++
+		if inside > most {
+			most = inside
+		}
+		mu.Unlock()
+
+		<-release
+
+		mu.Lock()
+		inside--
+		mu.Unlock()
+		unlock()
+		done <- struct{}{}
+	}
+
+	first, second := make(chan struct{}), make(chan struct{})
+	go run(first)
+	go run(second)
+
+	// Long enough that both would be inside if nothing kept them apart.
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+	<-first
+	<-second
+
+	if most != 1 {
+		t.Errorf("%d runs were inside the same mailbox at once; that is how one mail "+
+			"becomes forty tasks", most)
+	}
+
+	// And two different mailboxes must not wait for each other: one slow host is
+	// not everybody's problem.
+	a := srv.lockMailbox("box-a")
+	done := make(chan struct{})
+	go func() {
+		srv.lockMailbox("box-b")()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Error("a second mailbox waited for the first")
+	}
+	a()
 }

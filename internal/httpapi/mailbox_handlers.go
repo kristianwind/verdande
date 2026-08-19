@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -139,6 +140,18 @@ func (s *Server) handleSyncMailbox(w http.ResponseWriter, r *http.Request) {
 // Exported because the background job calls it too, on the same terms and without
 // a budget: nobody is waiting there.
 func (s *Server) SyncMailbox(ctx context.Context, user *store.User, m *store.Mailbox) (int, error) {
+	// One reader of this mailbox at a time. Held for the whole run, marker and all:
+	// releasing before the marker is written would leave exactly the gap this is
+	// here to close.
+	unlock := s.lockMailbox(m.ID)
+	defer unlock()
+
+	// Re-read under the lock. The row that came in may have been fetched before the
+	// run that just finished moved the marker.
+	if fresh, err := s.db.Mailbox(ctx, m.UserID, m.ID); err == nil && fresh != nil {
+		m = fresh
+	}
+
 	client, err := imap.Dial(imap.Account{
 		Host: m.Host, Username: m.Username, Password: m.Password, Folder: m.Folder,
 	})
@@ -216,4 +229,12 @@ func (s *Server) SyncMailbox(ctx context.Context, user *store.User, m *store.Mai
 		return created, ctx.Err()
 	}
 	return created, nil
+}
+
+// lockMailbox serialises one mailbox against itself and returns the release.
+func (s *Server) lockMailbox(id string) func() {
+	value, _ := s.syncing.LoadOrStore(id, &sync.Mutex{})
+	mu := value.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }

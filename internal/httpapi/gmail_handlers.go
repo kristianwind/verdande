@@ -256,6 +256,16 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if box != nil {
+		// The same guard as the mailboxes read over IMAP, for the same reason: a
+		// press of "Fetch now" during the sweep would otherwise make two runs from
+		// one marker.
+		unlock := s.lockMailbox(box.ID)
+		defer unlock()
+		if fresh, err := s.db.MailboxOfKind(ctx, user.ID, "gmail"); err == nil && fresh != nil {
+			box = fresh
+		}
+	}
 	if box == nil || box.RefreshToken == "" {
 		return 0, nil // not connected; nothing to do and nothing to complain about
 	}

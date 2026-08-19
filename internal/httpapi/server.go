@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -39,6 +40,18 @@ type Server struct {
 	hub     *realtime.Hub
 	mcp     *mcp.Server
 	updates *update.Checker
+
+	// syncing serialises reads of one mailbox against itself. Two runs at once —
+	// somebody pressing "Fetch now" while the ten-minute sweep is in the middle of
+	// the same mailbox — both start from the marker as it was, both fetch the same
+	// messages, and both make tasks out of them. That is how forty copies of one
+	// mail arrived in a single second.
+	//
+	// A map of mutexes rather than one lock: two people's mailboxes have nothing to
+	// say to each other, and a single lock would make one slow host everybody's
+	// problem. Never cleaned out, because the key is a mailbox id and there are as
+	// many of those as there are mailboxes.
+	syncing sync.Map
 
 	// Nil when the base URL is not something an authenticator will accept — a bare
 	// hostname with no scheme, say. The endpoints answer 503 rather than the
