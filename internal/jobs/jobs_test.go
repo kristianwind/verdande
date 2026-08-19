@@ -276,3 +276,59 @@ func backupFiles(t *testing.T, cfg *config.Config) []string {
 	}
 	return out
 }
+
+// A reminder that nobody receives is not a reminder.
+//
+// The job sent them in-app and by mail. Somebody with the tab closed and no mail
+// server configured — which is the setup the docker one-liner produces — got
+// nothing, while the settings page said notifications were on for the device.
+// The push half was simply never wired: notifications from other people's actions
+// went out, only the timed ones did not.
+func TestADueReminderReachesTheDevices(t *testing.T) {
+	runner, db, _ := newRunner(t)
+	user := seedUser(t, db)
+
+	type sent struct{ userID, title, projectID string }
+	var got []sent
+	runner.Push = func(userID, title, body, projectID string) {
+		got = append(got, sent{userID, title, projectID})
+	}
+
+	inbox, err := db.InboxID(t.Context(), user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := &store.Task{ProjectID: inbox, Content: "ring til Anders", CreatedBy: user.ID}
+	if err := db.CreateTask(t.Context(), task, nil); err != nil {
+		t.Fatal(err)
+	}
+	// A minute ago, so it is due rather than upcoming.
+	at := time.Now().Add(-time.Minute)
+	if _, err := db.CreateReminder(t.Context(), task.ID, user.ID, &at, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runner.sendDueReminders(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("%d reminders reached the devices, want 1", len(got))
+	}
+	if got[0].userID != user.ID {
+		t.Errorf("it went to %q", got[0].userID)
+	}
+	if got[0].title != "ring til Anders" {
+		t.Errorf("the title is %q, not the task", got[0].title)
+	}
+
+	// And once. A reminder that arrives on every sweep is worse than one that does
+	// not arrive at all.
+	got = nil
+	if err := runner.sendDueReminders(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("the same reminder went out %d more times", len(got))
+	}
+}

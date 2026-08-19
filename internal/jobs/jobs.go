@@ -41,6 +41,10 @@ type Runner struct {
 	// reason as SyncGmail: it owns turning a message into a task.
 	SyncMailbox func(ctx context.Context, user *store.User, m *store.Mailbox) (int, error)
 
+	// Push delivers a notification to somebody's devices. Supplied by the HTTP
+	// layer, which owns the VAPID keys and the subscription list.
+	Push func(userID, title, body, projectID string)
+
 	wg sync.WaitGroup
 }
 
@@ -126,6 +130,15 @@ func (r *Runner) sendDueReminders(ctx context.Context) error {
 			"due":     rem.RemindAt.Format(time.RFC3339),
 		})
 
+		// And to the devices that asked for it. This was missing: reminders went out
+		// in-app and by mail, so somebody with the tab closed and no mail configured
+		// got a notification that never arrived — which is the case a reminder is
+		// for. Notifications from other people's actions did push; only the timed
+		// ones did not, and the interface said "on for this device" either way.
+		if r.Push != nil {
+			r.Push(rem.UserID, rem.TaskContent, reminderBody(rem.RemindAt), rem.ProjectID)
+		}
+
 		if r.mail.Configured() && rem.UserEmail != "" {
 			link := r.cfg.BaseURL + "/projekt/" + rem.ProjectID
 			if err := r.mail.SendReminder(ctx, rem.UserEmail, rem.UserName, rem.TaskContent, link); err != nil {
@@ -137,6 +150,12 @@ func (r *Runner) sendDueReminders(ctx context.Context) error {
 		r.log.Info("reminders sent", "count", len(due))
 	}
 	return nil
+}
+
+// reminderBody is the line under the task's title. The time rather than the date:
+// a reminder arrives when it is due, so the day is today and saying so is noise.
+func reminderBody(at time.Time) string {
+	return at.Format("15:04")
 }
 
 // --- backups ---------------------------------------------------------------------

@@ -98,6 +98,12 @@ func (s *Server) notifyProject(r *http.Request, projectID, taskID, actorID, kind
 	}
 }
 
+// PushToUser is pushToUser for callers outside this package — the reminder job,
+// which has the schedule but not the keys.
+func (s *Server) PushToUser(userID, title, body, projectID string) {
+	s.pushToUser(userID, title, body, projectID)
+}
+
 func (s *Server) pushToUser(userID, title, body, projectID string) {
 	ctx, cancel := contextWithBackgroundTimeout(30 * time.Second)
 	defer cancel()
