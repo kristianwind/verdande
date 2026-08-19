@@ -14,7 +14,7 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { t } from '$lib/i18n.svelte.js';
-	import { linesOf } from '$lib/markdown.js';
+	import NoteEditor from '$lib/components/NoteEditor.svelte';
 
 	let notes = $state([]);
 	let selected = $state(null);
@@ -89,6 +89,25 @@
 		}
 	}
 
+	/**
+	 * Favourites are the pinned ones. The list already puts them first, so marking
+	 * one is the same act as saying "keep this where I can see it" — one idea, not
+	 * two that have to be explained apart.
+	 */
+	async function favourite(note) {
+		const pinned = !note.pinned;
+		// Moved before the answer comes back: a star that waits for a round trip
+		// feels broken on a slow connection, and the cost of being wrong is a star.
+		notes = notes.map((n) => (n.id === note.id ? { ...n, pinned } : n));
+		try {
+			await api.updateNote(note.id, { pinned });
+			await load(query);
+		} catch (e) {
+			notes = notes.map((n) => (n.id === note.id ? { ...n, pinned: !pinned } : n));
+			app.toast(humanMessage(e));
+		}
+	}
+
 	async function remove(note) {
 		if (!confirm(t('notes.deleteNote', { name: note.title || t('notes.untitled') }))) return;
 		try {
@@ -103,11 +122,7 @@
 	// What the note points at, for the panel under the editor.
 	let links = $derived(selected?.links ?? []);
 
-	// The styled twin of what is in the textarea. Recomputed on every keystroke,
-	// which sounds expensive and is not: it is a split and a handful of regexes
-	// over a page of text, and it runs in the same frame as the character that
-	// caused it.
-	let lines = $derived(linesOf(draft));
+
 </script>
 
 <svelte:head><title>{t('notes.title')} · verdande</title></svelte:head>
@@ -135,10 +150,22 @@
 			<ul>
 				{#each notes as note (note.id)}
 					<li>
-						<button class="row" class:on={selected?.id === note.id} onclick={() => open(note)}>
-							<strong>{note.title || t('notes.untitled')}</strong>
-							<span class="preview">{note.body.slice(0, 80)}</span>
-						</button>
+						<div class="rowline">
+							<button class="row" class:on={selected?.id === note.id} onclick={() => open(note)}>
+								<strong>{note.title || t('notes.untitled')}</strong>
+								<span class="preview">{note.body.slice(0, 80)}</span>
+							</button>
+							<button
+								class="star"
+								class:on={note.pinned}
+								onclick={() => favourite(note)}
+								aria-pressed={note.pinned}
+								aria-label={note.pinned ? t('notes.unfavourite') : t('notes.favourite')}
+								title={note.pinned ? t('notes.unfavourite') : t('notes.favourite')}
+							>
+								{note.pinned ? '★' : '☆'}
+							</button>
+						</div>
 					</li>
 				{/each}
 			</ul>
@@ -147,33 +174,14 @@
 
 	<section class="editor">
 		{#if selected}
-			<!-- The mirror sits behind the textarea and must match it exactly: same font,
-			     same size, same padding, same wrapping. Any difference shows up as
-			     formatting that drifts away from the text as the note grows.
-
-			     A contenteditable would let the text be styled directly and would also
-			     break undo, autocorrect and IME input — a bad trade in the one place in
-			     this program where somebody writes for half an hour at a stretch. -->
-			<div class="paper">
-				<div class="mirror" aria-hidden="true">
-					{#each lines as line}
-						<div class={line.block}>
-							{#each line.parts as part}
-								{#if part.kind}<span class={part.kind}>{part.text}</span>{:else}{part.text}{/if}
-							{/each}{#if !line.parts.length}&nbsp;{/if}
-						</div>
-					{/each}
-				</div>
-
-				<textarea
-					bind:value={draft}
-					oninput={typed}
-					onblur={save}
-					spellcheck="true"
-					aria-label={t('notes.body')}
-					placeholder={t('notes.placeholder')}
-				></textarea>
-			</div>
+			<NoteEditor
+				note={selected}
+				onchange={(body) => {
+					draft = body;
+					typed();
+				}}
+				onsave={save}
+			/>
 
 			<footer>
 				<span class="hint">{saving ? t('notes.saving') : t('notes.saved')}</span>
@@ -184,7 +192,10 @@
 						{/each}
 					</span>
 				{/if}
-				<button class="remove" onclick={() => remove(selected)}>{t('notes.delete')}</button>
+				<div class="actions">
+					<button class="button" onclick={save}>{t('notes.save')}</button>
+					<button class="button danger" onclick={() => remove(selected)}>{t('notes.delete')}</button>
+				</div>
 			</footer>
 		{:else}
 			<p class="empty">{t('notes.pickOne')}</p>
@@ -194,8 +205,10 @@
 
 <style>
 	.notes {
-		/* Air above the heading, so it does not sit against the top bar. */
-		padding-top: var(--s3);
+		/* Air on all sides. The heading, the search box and the list all sat flush
+		   against the sidebar's rule, which reads as a rendering fault rather than
+		   as a layout. */
+		padding: var(--s3) 0 0 var(--s4);
 		display: grid;
 		grid-template-columns: minmax(220px, 300px) 1fr;
 		gap: var(--s4);
@@ -245,9 +258,34 @@
 		min-height: 0;
 	}
 
+	.rowline {
+		display: flex;
+		align-items: center;
+		gap: var(--s1);
+	}
+
+	.star {
+		flex: none;
+		width: 24px;
+		color: var(--ink-faint);
+		opacity: 0;
+		font-size: var(--text-sm);
+	}
+
+	.rowline:hover .star,
+	.star.on,
+	.star:focus-visible {
+		opacity: 1;
+	}
+
+	.star.on {
+		color: var(--accent);
+	}
+
 	.row {
 		display: block;
-		width: 100%;
+		flex: 1;
+		min-width: 0;
 		text-align: left;
 		padding: var(--s2);
 		border-radius: var(--radius);
@@ -398,13 +436,33 @@
 		font-family: var(--mono, ui-monospace, monospace);
 	}
 
-	.remove {
+	/* Real buttons. They were bare words, which on a Mac reads as a web page rather
+	   than as something you can press. */
+	.actions {
 		margin-left: auto;
-		color: var(--ink-faint);
+		display: flex;
+		gap: var(--s2);
 	}
 
-	.remove:hover {
+	.button {
+		border: 1px solid var(--line-strong);
+		border-radius: var(--radius);
+		padding: var(--s1) var(--s3);
+		background: var(--surface);
+		color: var(--ink);
+		font-size: var(--text-xs);
+	}
+
+	.button:hover {
+		background: var(--surface-raised);
+	}
+
+	.button.danger {
 		color: var(--danger);
+	}
+
+	.button.danger:hover {
+		border-color: var(--danger);
 	}
 
 	.empty,

@@ -12,6 +12,22 @@
  */
 export const en = {
 	// --- the shell ---------------------------------------------------------------
+	'notes.save': 'Save',
+	'notes.format': 'Format',
+	'notes.bold': 'Bold',
+	'notes.italic': 'Italic',
+	'notes.underline': 'Underline',
+	'notes.strike': 'Strikethrough',
+	'notes.styleTitle': 'Title',
+	'notes.styleHeading': 'Heading',
+	'notes.styleSubheading': 'Subheading',
+	'notes.styleBody': 'Body',
+	'notes.styleMono': 'Monospaced',
+	'notes.styleQuote': 'Block quote',
+	'notes.styleBullet': 'Bulleted list',
+	'notes.styleNumbered': 'Numbered list',
+	'notes.favourite': 'Make a favourite',
+	'notes.unfavourite': 'Remove from favourites',
 	'notes.title': 'Notes',
 	'notes.new': 'New note',
 	'notes.search': 'Search notes',

@@ -1955,48 +1955,58 @@ test('en note kan skrives, findes igen, og peger på det den nævner', async ({ 
 	expect(trouble).toEqual([]);
 });
 
-test('noteeditoren viser formatering, og lagene flugter', async ({ page }) => {
+test('noteeditoren er rich text, og teksten overlever turen til Markdown og tilbage', async ({
+	page
+}) => {
 	const trouble = watchForTrouble(page);
 	await page.goto('/noter');
 
 	await page.getByRole('button', { name: 'Ny note' }).click();
-	const body = page.getByLabel('Notens tekst');
-	await body.fill(
-		'# Overskrift\n\nDette er **fed** og *kursiv* og `kode`.\n\nHandler om #Firma og [[En anden note]].\n- et punkt\n> et citat'
-	);
+	const page_ = page.getByRole('textbox', { name: 'Notens tekst' });
+	await page_.click();
 
-	// The marks are still there — this is a mirror, not a renderer — but they are
-	// drawn as what they mean.
-	const mirror = page.locator('.mirror');
-	await expect(mirror.locator('.bold')).toHaveText('**fed**');
-	await expect(mirror.locator('.italic')).toHaveText('*kursiv*');
-	await expect(mirror.locator('.code')).toHaveText('`kode`');
-	await expect(mirror.locator('.tag')).toHaveText('#Firma');
-	await expect(mirror.locator('.wikilink')).toHaveText('[[En anden note]]');
-	await expect(mirror.locator('.h1')).toContainText('Overskrift');
+	// Typed and formatted the way somebody would: pick a style, write, pick another.
+	await page.getByRole('button', { name: 'Formatér' }).click();
+	await page.getByRole('menuitem', { name: 'Titel' }).click();
+	await page.keyboard.type('Møde med Anders');
+	await page.keyboard.press('Enter');
 
-	// The whole risk of the technique: two layers that must line up character for
-	// character. If they drift, the formatting slides away from the text as the
-	// note grows, and it is unusable — so this measures rather than trusts.
-	const drift = await page.evaluate(() => {
-		const ta = document.querySelector('.paper textarea');
-		const mi = document.querySelector('.paper .mirror');
-		const a = getComputedStyle(ta), b = getComputedStyle(mi);
-		return {
-			font: a.fontSize === b.fontSize && a.fontFamily === b.fontFamily,
-			line: a.lineHeight === b.lineHeight,
-			wrap: a.whiteSpace === b.whiteSpace,
-			padding: a.paddingTop === b.paddingTop && a.paddingLeft === b.paddingLeft,
-			// And the rendered height, which is what actually proves it: the same text
-			// laid out twice has to take the same room.
-			heights: Math.abs(ta.scrollHeight - mi.scrollHeight)
-		};
-	});
-	expect(drift.font, 'skrifttypen er ikke ens').toBe(true);
-	expect(drift.line, 'linjehøjden er ikke ens').toBe(true);
-	expect(drift.wrap, 'ombrydningen er ikke ens').toBe(true);
-	expect(drift.padding, 'polstringen er ikke ens').toBe(true);
-	expect(drift.heights, 'lagene fylder ikke det samme').toBeLessThanOrEqual(2);
+	await page.getByRole('button', { name: 'Formatér' }).click();
+	await page.getByRole('menuitem', { name: 'Brødtekst' }).click();
+	await page.keyboard.type('Han vil gerne have kaffe hver uge.');
+
+	// The styles are real elements, not asterisks on screen. This is the whole of
+	// "it should feel like Apple Notes".
+	await expect(page_.locator('h1')).toHaveText('Møde med Anders');
+	await expect(page_.locator('p').filter({ hasText: 'kaffe' })).toBeVisible();
+
+	// Bold through the toolbar, on a selection made with the keyboard. Not
+	// Shift+Home — in a contenteditable that is the start of the document, so it
+	// took the heading with it and the button toggled bold off instead of on. Not a
+	// double-click either: it leaves the selection empty here.
+	for (let i = 0; i < 5; i++) await page.keyboard.press('Shift+ArrowLeft');
+	await page.getByRole('button', { name: 'Fed' }).click();
+	// Either tag: the browser's own bold is <b>, the converter writes <strong>, and
+	// both are read as bold on the way back. Asserting one of them would be
+	// asserting which browser this is.
+	await expect(page_.locator('b, strong')).toBeVisible();
+
+	// And the round trip, which is the thing that can quietly ruin a note: what is
+	// stored is Markdown, and reopening it has to give back the same document. A
+	// converter that disagrees with itself reshapes a note a little on every save.
+	await page_.blur();
+	await page.reload();
+	await page.getByRole('button', { name: /Møde med Anders/ }).click();
+
+	const back = page.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(back.locator('h1')).toHaveText('Møde med Anders');
+	await expect(back.locator('b, strong')).toBeVisible();
+	await expect(back).toContainText('kaffe hver uge');
+	// No stray Markdown on screen: if the marks are showing, the conversion failed
+	// in the direction nobody notices until a note looks wrong.
+	await expect(back).not.toContainText('**');
+	await expect(back).not.toContainText('# ');
 
 	expect(trouble).toEqual([]);
 });
+

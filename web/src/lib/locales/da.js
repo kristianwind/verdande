@@ -16,6 +16,22 @@
  */
 export const da = {
 	// --- the shell ---------------------------------------------------------------
+	'notes.save': 'Gem',
+	'notes.format': 'Formatér',
+	'notes.bold': 'Fed',
+	'notes.italic': 'Kursiv',
+	'notes.underline': 'Understreget',
+	'notes.strike': 'Gennemstreget',
+	'notes.styleTitle': 'Titel',
+	'notes.styleHeading': 'Overskrift',
+	'notes.styleSubheading': 'Underrubrik',
+	'notes.styleBody': 'Brødtekst',
+	'notes.styleMono': 'Monotype',
+	'notes.styleQuote': 'Blokcitat',
+	'notes.styleBullet': 'Punktliste',
+	'notes.styleNumbered': 'Nummereret liste',
+	'notes.favourite': 'Gør til favorit',
+	'notes.unfavourite': 'Fjern som favorit',
 	'notes.title': 'Noter',
 	'notes.new': 'Ny note',
 	'notes.search': 'Søg i noter',
