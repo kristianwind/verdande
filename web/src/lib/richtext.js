@@ -58,17 +58,40 @@ function inlineToHtml(text) {
 export function markdownToHtml(markdown) {
 	const lines = (markdown ?? '').split('\n');
 	const out = [];
-	let list = null;
 	let fence = null; // sproget, mens vi er inde i en ```-blok
 
-	const closeList = () => {
-		if (list) {
-			out.push(`</${list}>`);
-			list = null;
+	// Listeniveauerne, der står åbne lige nu — ét mærke pr. dybde.
+	//
+	// En stak frem for én `list`-variabel, fordi en punktliste kan ligge inde i en
+	// anden. Den flade udgave kunne kun beskrive ét niveau, så et indrykket punkt
+	// blev lagt ved siden af sit ophav og kom tilbage som søskende: indrykningen
+	// var væk efter én gemning.
+	//
+	// Underlisten lægges *inde i* sit `<li>`, ikke ved siden af. Browsere viser
+	// begge dele ens, men kun den ene er en liste i en liste, når den læses tilbage
+	// — og det er læsningen tilbage, der skriver filen.
+	const stack = [];
+	let liOpen = false;
+
+	const closeItem = () => {
+		if (liOpen) {
+			out.push('</li>');
+			liOpen = false;
 		}
 	};
 
-	for (const line of lines) {
+	const closeList = (toDepth = 0) => {
+		while (stack.length > toDepth) {
+			closeItem();
+			out.push(`</${stack.pop()}>`);
+			// Efter et niveau lukkes, står vi igen inde i ophavets `<li>`.
+			liOpen = stack.length > 0;
+		}
+		if (stack.length === 0) liOpen = false;
+	};
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
 		// Hegnede blokke først: alt indeni er tekst, ikke Markdown, og en linje der
 		// begynder med - inde i et shell-script er ikke et punkt i en liste.
 		const fenced = /^```(\w*)\s*$/.exec(line);
@@ -88,20 +111,54 @@ export function markdownToHtml(markdown) {
 			continue;
 		}
 
-		const bullet = /^[-*+]\s+(.*)$/.exec(line);
-		const numbered = /^\d+\.\s+(.*)$/.exec(line);
+		// Indrykning bærer niveauet: to mellemrum, eller en tabulator, er ét trin.
+		const item = /^([ \t]*)(?:([-*+])|(\d+)\.)\s+(.*)$/.exec(line);
 
-		if (bullet || numbered) {
-			const want = bullet ? 'ul' : 'ol';
-			if (list !== want) {
-				closeList();
-				out.push(`<${want}>`);
-				list = want;
+		if (item) {
+			const indent = item[1].replace(/\t/g, '  ').length;
+			const depth = Math.floor(indent / 2);
+			const want = item[2] ? 'ul' : 'ol';
+
+			// Dybere end vi står: luk ned til niveauet. Én ad gangen, så hvert
+			// `</ul>` lander inde i det `<li>`, det hører til.
+			closeList(depth + 1);
+
+			// Samme dybde, men den anden slags liste — en punktliste efterfulgt af en
+			// nummereret er to lister, ikke én med blandede mærker.
+			if (stack.length === depth + 1 && stack[depth] !== want) {
+				closeList(depth);
 			}
-			out.push(`<li>${inlineToHtml((bullet ?? numbered)[1])}</li>`);
+
+			while (stack.length < depth + 1) {
+				// Nummeret tælles ikke om. Skrev nogen 10., 11., er det dét, der står i
+				// filen, og en liste, der begynder ved ti, skal begynde ved ti — ellers
+				// gør en gemning uden ændringer noten om.
+				const start = item[3] && item[3] !== '1' && stack.length === depth ? ` start="${Number(item[3])}"` : '';
+				out.push(`<${want}${want === 'ol' ? start : ''}>`);
+				stack.push(want);
+				liOpen = false;
+			}
+
+			closeItem();
+			out.push(`<li>${inlineToHtml(item[4])}`);
+			liOpen = true;
 			continue;
 		}
 		closeList();
+
+		// Et blokcitat, der rummer mere end én linje, læses som ét citat med
+		// indholdet indeni — samme vej tilbage som htmlToMarkdown skrev det. Uden
+		// det blev en liste i et citat til seks citater med et bindestreg i hver.
+		if (/^>(?: |$)/.test(line)) {
+			const inner = [];
+			while (i < lines.length && /^>(?: |$)/.test(lines[i])) {
+				inner.push(lines[i].replace(/^> ?/, ''));
+				i++;
+			}
+			i--;
+			out.push(`<blockquote>${markdownToHtml(inner.join('\n'))}</blockquote>`);
+			continue;
+		}
 
 		const block = BLOCKS.find((b) =>
 			b.prefix === '    ' ? line.startsWith('    ') : line.startsWith(b.prefix)
@@ -167,13 +224,25 @@ function inlineToMarkdown(node) {
  * browser will nest, split and re-wrap as somebody types, and a regular expression
  * over that is a guess.
  */
+/** The tags that are a block of their own, and must never be read as inline text. */
+const BLOCK_TAGS = /^(P|H[1-6]|UL|OL|LI|PRE|BLOCKQUOTE|DIV)$/;
+
+/** Whether an element holds blocks, in which case reading it as one line loses them. */
+const holdsBlocks = (el) => [...el.children].some((c) => BLOCK_TAGS.test(c.tagName));
+
 export function htmlToMarkdown(root) {
 	const lines = [];
 
-	const walk = (node) => {
+	/**
+	 * @param node  hvad der læses
+	 * @param emit  hvor linjerne lægges. Et blokcitat giver sin egen, som sætter
+	 *              `> ` foran alt, hvad der kommer indefra — sådan kan et citat
+	 *              indeholde afsnit og lister uden at de bliver til én linje.
+	 */
+	const walk = (node, emit) => {
 		for (const child of node.childNodes) {
 			if (child.nodeType === Node.TEXT_NODE) {
-				if (child.textContent.trim()) lines.push(child.textContent);
+				if (child.textContent.trim()) emit(child.textContent);
 				continue;
 			}
 			if (child.nodeType !== Node.ELEMENT_NODE) continue;
@@ -181,20 +250,29 @@ export function htmlToMarkdown(root) {
 			switch (child.tagName) {
 				case 'UL':
 				case 'OL': {
-					let n = 1;
-					for (const li of child.children) {
-						const text = inlineToMarkdown(li).trim();
-						lines.push(child.tagName === 'UL' ? `- ${text}` : `${n++}. ${text}`);
+					list(child, 0, emit);
+					break;
+				}
+
+				// Et citat kan rumme blokke. Læst som én streng blev "En", "To" til
+				// "EnTo", og en liste inde i et citat mistede hvert eneste punktmærke
+				// — det var sådan en note kom tilbage som én lang linje efter en
+				// gemning, uden at nogen havde rørt teksten.
+				case 'BLOCKQUOTE': {
+					if (holdsBlocks(child)) {
+						walk(child, (l) => emit(l.trim() === '' ? '>' : `> ${l}`));
+					} else {
+						emit('> ' + inlineToMarkdown(child));
 					}
 					break;
 				}
 				case 'DIV':
 					// The browser's own container when nothing else applies. Read through
 					// it rather than treating it as a block, or every paste adds a level.
-					if ([...child.children].some((c) => /^(P|H[1-3]|UL|OL|PRE|BLOCKQUOTE|DIV)$/.test(c.tagName))) {
-						walk(child);
+					if (holdsBlocks(child)) {
+						walk(child, emit);
 					} else {
-						lines.push(inlineToMarkdown(child));
+						emit(inlineToMarkdown(child));
 					}
 					break;
 				case 'PRE': {
@@ -203,23 +281,62 @@ export function htmlToMarkdown(root) {
 					// out any more, because a fence survives being pasted somewhere
 					// else and an indent does not.
 					const lang = child.getAttribute('data-lang') ?? '';
-					lines.push('```' + lang);
+					emit('```' + lang);
 					for (const l of (child.textContent ?? '').replace(/\n$/, '').split('\n')) {
-						lines.push(l);
+						emit(l);
 					}
-					lines.push('```');
+					emit('```');
 					break;
 				}
 				default: {
 					const block = BLOCKS.find((b) => b.tag === child.tagName.toLowerCase());
+					// En overskrift med en liste i sig er stadig en liste. Samme fælde som
+					// citatet: læst som én linje forsvandt hvert punktmærke.
+					if (holdsBlocks(child)) {
+						walk(child, emit);
+						break;
+					}
 					const text = inlineToMarkdown(child);
-					lines.push(block ? block.prefix + text : text);
+					emit(block ? block.prefix + text : text);
 				}
 			}
 		}
 	};
 
-	walk(root);
+	/**
+	 * Én liste, og de lister der ligger i den.
+	 *
+	 * `start` læses med, så en liste, der begynder ved ti, stadig gør det. Talt om
+	 * fra ét gjorde en gemning uden ændringer noten om — den slags er værre end en
+	 * fejl, fordi den sker uden at nogen har rørt noget.
+	 */
+	const list = (el, depth, emit) => {
+		let n = Number(el.getAttribute('start') || 1);
+		if (!Number.isFinite(n) || n < 1) n = 1;
+		const pad = '  '.repeat(depth);
+
+		for (const li of el.children) {
+			if (li.tagName !== 'LI') continue;
+
+			// Punktets egen tekst er alt undtagen de lister, der ligger under det.
+			const nested = [...li.children].filter((c) => c.tagName === 'UL' || c.tagName === 'OL');
+			let text;
+			if (nested.length) {
+				const clone = li.cloneNode(true);
+				for (const sub of [...clone.children]) {
+					if (sub.tagName === 'UL' || sub.tagName === 'OL') sub.remove();
+				}
+				text = inlineToMarkdown(clone).trim();
+			} else {
+				text = inlineToMarkdown(li).trim();
+			}
+
+			emit(el.tagName === 'UL' ? `${pad}- ${text}` : `${pad}${n++}. ${text}`);
+			for (const sub of nested) list(sub, depth + 1, emit);
+		}
+	};
+
+	walk(root, (l) => lines.push(l));
 	// Trailing blank lines are what an editor accumulates from people pressing
 	// return at the end; they are not content and they grow every time.
 	while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();

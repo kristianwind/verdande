@@ -2312,3 +2312,79 @@ test('en kodeblok ser ud som en terminal og bliver farvet', async ({ page }) => 
 
 	expect(trouble).toEqual([]);
 });
+
+test('lister overlever en gemning — også i et citat, og også med numre', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	// Formerne, der hver især gik tabt: en punktliste, en nummereret, en der
+	// begynder et andet sted end ved ét, en liste i en liste, og en liste inde i et
+	// citat. Den sidste er den, en note fra Apple Noter er fuld af.
+	const markdown = [
+		'# Former',
+		'',
+		'- Punkt',
+		'- Punkt 2',
+		'',
+		'1. Nummer',
+		'2. Nummer 2',
+		'',
+		'10. Ti',
+		'11. Elleve',
+		'',
+		'- Ydre',
+		'  - Indre',
+		'',
+		'> Et citat',
+		'> - med en liste i'
+	].join('\n');
+
+	const id = await page.evaluate(async (body) => {
+		const r = await fetch('/api/v1/notes', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+			body: JSON.stringify({ body })
+		});
+		return (await r.json()).id;
+	}, markdown);
+
+	await page.goto('/noter?note=' + id);
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(ed.locator('ul > li').first()).toBeVisible();
+
+	// Vist som lister, ikke som linjer med bindestreger i.
+	await expect(ed.locator('ol')).toHaveCount(2);
+	await expect(ed.locator('blockquote ul li')).toHaveText('med en liste i');
+	// Den indlejrede ligger inde i sit punkt, ikke ved siden af.
+	await expect(ed.locator('ul li ul li')).toHaveText('Indre');
+	// Og den, der begyndte ved ti, gør det stadig.
+	await expect(ed.locator('ol[start="10"] li').first()).toHaveText('Ti');
+
+	// Rør noten, sådan som en tastning gør, og lad den gemme.
+	await ed.click();
+	await page.keyboard.press('End');
+	await page.keyboard.type(' ');
+	await page.waitForTimeout(1200);
+
+	// Det, der står i filen bagefter, er det, der stod i den før.
+	//
+	// Det var her, det gik galt: alt fra det første punkt blev til én linje —
+	// "PunktPunkt 2NummerNummer 2" — fordi en liste inde i en blok blev læst som
+	// tekst. Ingen havde rørt de linjer.
+	const body = await page.evaluate(async (noteId) => {
+		const r = await fetch('/api/v1/notes/' + noteId, {
+			credentials: 'include',
+			headers: { 'Sec-Fetch-Site': 'same-origin' }
+		});
+		return (await r.json()).body;
+	}, id);
+
+	expect(body).toContain('- Punkt\n- Punkt 2');
+	expect(body).toContain('1. Nummer\n2. Nummer 2');
+	expect(body).toContain('10. Ti\n11. Elleve');
+	expect(body).toContain('- Ydre\n  - Indre');
+	expect(body).toContain('> Et citat\n> - med en liste i');
+
+	expect(trouble).toEqual([]);
+});

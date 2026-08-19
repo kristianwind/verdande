@@ -131,7 +131,21 @@
 				: null,
 			// No href: the inbox is a project and is drawn by projectRow, which knows
 			// its id. It is in this list only so it can be dragged with the others.
-			{ key: 'inbox', label: 'nav.inbox' }
+			{ key: 'inbox', label: 'nav.inbox' },
+			// Noter hører til her, og bærer et ark frem for en prik.
+			//
+			// Den stod før for sig selv over en streg, hvilket sagde det rigtige og
+			// kostede halvfjerds pixels: en streg, luft over og luft under, og
+			// projekterne skubbet så langt ned, at de to første var alt, man så uden
+			// at rulle. Grunden til at skille den ud var, at den ellers læste som
+			// endnu et filter — men det, der gør den til et filter for øjet, er
+			// prikken, ikke pladsen. Et andet mærke siger "en anden slags ting" og
+			// koster ingenting.
+			//
+			// Sidst i rækken, fordi `navOrder` føjer en ukendt nøgle til bagest: står
+			// den et andet sted her, ser en ny konto én rækkefølge og alle
+			// eksisterende en anden.
+			{ key: 'notes', href: '/noter', label: 'notes.title' }
 		].filter(Boolean)
 	);
 
@@ -463,23 +477,25 @@
 						ondragleave={() => (overToday = false)}
 						ondrop={(e) => item.key === 'today' && onDropOnToday(e)}
 					>
-						<span class="dot" class:today={item.key === 'today'} aria-hidden="true"></span>
+						{#if item.key === 'notes'}
+							<svg class="mark" viewBox="0 0 16 16" aria-hidden="true">
+								<path
+									d="M4 1.5h5.2L12.5 5v9.5H4z"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.4"
+									stroke-linejoin="round"
+								/>
+								<path d="M9 1.7V5h3.3" fill="none" stroke="currentColor" stroke-width="1.4" />
+							</svg>
+						{:else}
+							<span class="dot" class:today={item.key === 'today'} aria-hidden="true"></span>
+						{/if}
 						{t(item.label)}
 					</a>
 				</div>
 			{/if}
 		{/each}
-	</div>
-
-	<!-- Notes stand apart, with a rule above them.
-	     They are not a fourth way of looking at the same tasks, which is what
-	     everything above is; they are the other half of the program. Sitting in that
-	     run made them read as one more filter. -->
-	<div class="apart">
-		<a href="/noter" class:active={current === '/noter'} onclick={onnavigate}>
-			<span class="dot" aria-hidden="true"></span>
-			{t('notes.title')}
-		</a>
 	</div>
 
 	<!-- One row for every project the sidebar shows — your own, the Inbox and the
@@ -1025,15 +1041,20 @@
 		border-radius: 1px;
 	}
 
-	/* A rule and a little air, which is the whole of "separate". Notes are the other
-	   half of the program, not a fifth way of looking at the same tasks. */
-	.apart {
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-		margin: var(--s3) 0;
-		padding-top: var(--s3);
-		border-top: 1px solid var(--line);
+	/* Arket. Samme plads som prikken, så teksten står på linje med resten af runden
+	   — mærket skifter, kolonnen gør ikke. */
+	.mark {
+		width: 13px;
+		height: 13px;
+		/* Prikken er 6px bred, og et 13px mærke ville skubbe etiketten tre pixels ud
+		   af flugt med de andre. Negativ margen på hver side lægger det tilbage. */
+		margin: 0 -3.5px;
+		color: var(--ink-faint);
+		flex: none;
+	}
+
+	a.active .mark {
+		color: var(--accent);
 	}
 
 	.group-head {

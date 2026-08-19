@@ -348,7 +348,9 @@
 		/* Air on all sides. The heading, the search box and the list all sat flush
 		   against the sidebar's rule, which reads as a rendering fault rather than
 		   as a layout. */
-		padding: var(--s3) 0 0 var(--s4);
+		/* Luft hele vejen rundt om arket. Højre og bund var nul, dengang editoren
+		   ingen kant havde og ingenting kunne støde imod. */
+		padding: var(--s3) var(--s4) var(--s3) var(--s4);
 		display: grid;
 		grid-template-columns: minmax(220px, 300px) 1fr;
 		gap: var(--s4);
@@ -515,11 +517,25 @@
 		opacity: 0.7;
 	}
 
+	/* Noten er et ark, ikke en flade i appen.
+	 *
+	 * Apple Notes skriver på hvidt, og det er ikke pynt: et ark, der holder op et
+	 * sted, fortæller hvor teksten hører til, og skiller det, man skriver, fra det
+	 * program, man skriver det i. Uden det flød noten ud i siden og lignede endnu
+	 * en rude.
+	 *
+	 * `--surface` frem for `#fff`, fordi der er fem temaer. Rollen er "arket løftet
+	 * fra grunden" — hvid i lyst, cremet i paper, en anelse lysere end grunden i de
+	 * mørke. Et hårdkodet hvidt ville være et blændende ark i mørkt tema. */
 	.editor {
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
 		min-width: 0;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		padding: var(--s3) var(--s4);
 	}
 
 	/* Everything below exists to keep two layers in lockstep. The shared rules are

@@ -22,6 +22,8 @@
 	let { note, onchange, onsave } = $props();
 
 	let editor;
+	// Forslagslisten, så tastaturvalget kan rulle den frem.
+	let list;
 	let stylesOpen = $state(false);
 	// Which marks are on where the caret is, so the toolbar shows state rather than
 	// only offering actions.
@@ -166,9 +168,29 @@
 			return;
 		}
 		const term = partial.term.toLowerCase();
-		suggestions = app.projects
-			.filter((p) => !p.is_inbox && p.name.toLowerCase().includes(term))
-			.slice(0, 6);
+
+		// Alle der passer, ikke de seks første.
+		//
+		// Loftet på seks var sat, dengang listen ikke kunne rulle, og det gjorde
+		// noget værre end at skjule: med tyve projekter og et blot tastet `#` viste
+		// den seks vilkårlige og så færdig ud. Man kunne ikke se, at der manglede
+		// noget — kun at ens eget projekt ikke var der.
+		//
+		// Rækkefølgen bærer nu det, loftet gjorde forkert: det, der begynder med
+		// det tastede, står øverst, resten alfabetisk. Skriver man "ga", er
+		// GarageRisteriet den første, ikke den, der tilfældigvis lå først.
+		const matches = app.projects.filter(
+			(p) => !p.is_inbox && p.name.toLowerCase().includes(term)
+		);
+		matches.sort((a, b) => {
+			const an = a.name.toLowerCase();
+			const bn = b.name.toLowerCase();
+			const ap = an.startsWith(term);
+			const bp = bn.startsWith(term);
+			if (ap !== bp) return ap ? -1 : 1;
+			return an.localeCompare(bn, 'da');
+		});
+		suggestions = matches;
 		chosen = 0;
 	}
 
@@ -227,6 +249,19 @@
 		}
 	}
 
+	/**
+	 * Ruller det valgte forslag frem, når listen er længere end sin egen kasse.
+	 *
+	 * Efter opdateringen, ikke før: `chosen` er netop sat, og rækken bærer klassen
+	 * først når Svelte har skrevet den ud. Uden ventetiden ruller den til den
+	 * forrige.
+	 */
+	function keepChosenInView() {
+		requestAnimationFrame(() => {
+			list?.querySelector('button.on')?.scrollIntoView({ block: 'nearest' });
+		});
+	}
+
 	function onkeydown(event) {
 		// The suggestion list owns the arrows and return while it is open, the way
 		// every other completion does. Escape closes it without choosing.
@@ -234,11 +269,13 @@
 			if (event.key === 'ArrowDown') {
 				event.preventDefault();
 				chosen = (chosen + 1) % suggestions.length;
+				keepChosenInView();
 				return;
 			}
 			if (event.key === 'ArrowUp') {
 				event.preventDefault();
 				chosen = (chosen - 1 + suggestions.length) % suggestions.length;
+				keepChosenInView();
 				return;
 			}
 			if (event.key === 'Enter' || event.key === 'Tab') {
@@ -366,7 +403,7 @@
 		<!-- Anchored to the editor rather than to the caret. Following the caret means
 		     measuring it, and a list that jumps a few pixels as you type is worse than
 		     one that sits still. -->
-		<ul class="suggestions" role="listbox">
+		<ul class="suggestions" role="listbox" bind:this={list}>
 			{#each suggestions as project, i (project.id)}
 				<li>
 					<button
@@ -515,6 +552,10 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius);
 		box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+		/* Nu hvor alle der passer står på listen, skal den kunne rulle. Otte rækker
+		   er nok til at det ses, at der er flere, uden at menuen dækker noten. */
+		max-height: 15rem;
+		overflow-y: auto;
 	}
 
 	.suggestions button {
@@ -590,10 +631,23 @@
 		margin: 0 0 var(--s2);
 	}
 
+	/* Renden skal kunne rumme det bredeste mærke.
+	 *
+	 * Mærket sættes uden for tekstkanten, inde i listens egen indrykning, og en fast
+	 * indrykning på 16px rakte til et punkttegn og ikke til "10." — resten hang ud
+	 * over kanten, hvor `.page`, som ruller lodret og derfor beskærer vandret,
+	 * klippede det af. Man så et punktum uden sit tal.
+	 *
+	 * Samme rende til begge slags, frem for en bredere til den nummererede: mærket
+	 * lægger sig op ad teksten uanset hvor bred renden er, så deler de den, flugter
+	 * punkter og tal — og gør de ikke, står to lister under hinanden med hver sin
+	 * venstrekant.
+	 *
+	 * Målt i em, så den følger skriftstørrelsen, og bred nok til tre cifre. */
 	.page :global(ul),
 	.page :global(ol) {
 		margin: 0 0 var(--s2);
-		padding-left: var(--s4);
+		padding-left: 2.2em;
 	}
 
 	.page :global(li) {
