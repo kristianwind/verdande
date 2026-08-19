@@ -394,18 +394,54 @@ func (s *Server) handleDownloadAttachment(w http.ResponseWriter, r *http.Request
 	}
 	defer f.Close()
 
-	// Everything is served as a download rather than rendered. An uploaded SVG or
-	// HTML file displayed inline would run its own script on this origin, with the
-	// session cookie attached — attachments are the one place a user supplies
-	// content that another user opens.
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+
+	// Almost everything is served as a download rather than rendered. An uploaded
+	// SVG or HTML file displayed inline would run its own script on this origin,
+	// with the session cookie attached — attachments are the one place a user
+	// supplies content that another user opens.
+	//
+	// The exception is a short list of raster images, and it is not a softening of
+	// that rule but what makes a note work: a note carries its pictures in the text
+	// as `![](…)`, and served as octet-stream every one of them is a broken image.
+	// The whole Apple Notes import exists to bring those pictures along.
+	//
+	// Safe because it is an allowlist of formats that cannot carry script, sent as
+	// the exact type with `nosniff` — so the browser must treat it as that image or
+	// not at all, and can never be talked into reading it as HTML. SVG is
+	// deliberately absent: it is a document, not a picture, and it is the one image
+	// type that can run script.
+	disposition := "attachment"
+	contentType := "application/octet-stream"
+	if inlineImage[a.MimeType] {
+		disposition = "inline"
+		contentType = a.MimeType
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", disposition+"; filename*=UTF-8''"+
 		strings.ReplaceAll(mime.QEncoding.Encode("utf-8", a.Filename), " ", "%20"))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Length", fmt.Sprint(a.Size))
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 
 	http.ServeContent(w, r, a.Filename, a.CreatedAt, f)
+}
+
+// inlineImage is what may be shown rather than downloaded.
+//
+// Raster formats only, and named one by one rather than matched on an "image/"
+// prefix: the prefix would let image/svg+xml through, which is a document that
+// can run script, and a list that grows by accident is how that happens.
+var inlineImage = map[string]bool{
+	"image/png":  true,
+	"image/jpeg": true,
+	"image/gif":  true,
+	"image/webp": true,
+	"image/avif": true,
+	// Sendes med, selv om ingen browser viser den endnu. Den er lige så ufarlig
+	// som de andre, og en iPhone-note er fuld af dem — den dag Safari viser dem,
+	// virker de, uden at nogen skal huske hvorfor de ikke gjorde.
+	"image/heic": true,
+	"image/heif": true,
 }
 
 func (s *Server) handleDeleteAttachment(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,7 @@ import (
 	"mime"
 	"net/http"
 	"path"
+	"sort"
 	"strings"
 	"time"
 
@@ -421,10 +422,20 @@ func (s *Server) attachToNote(
 			continue
 		}
 		base := path.Base(f.Name)
-		// The two ways a Markdown file names a neighbouring image: by the path it
-		// was written with, and by its bare name.
+		// The three ways a Markdown file names a neighbouring image: by its path
+		// inside the archive, by the path relative to the note, and by its bare name.
+		//
+		// The archive path was missing, and it is the one an Apple Notes export
+		// actually writes — `vedhaeftninger/751-2-IMG_0615.heic`, with the note at the
+		// root beside the folder. Only the bare name matched, so only the bare name
+		// was replaced, and every picture in every imported note ended up pointing at
+		// `vedhaeftninger//api/v1/attachments/…`, which is nothing. The images were
+		// stored and attached correctly; it was the link that was wrong.
 		relative := strings.TrimPrefix(path.Join(dir, base), "./")
-		if !strings.Contains(body, base) && !strings.Contains(body, relative) {
+		refs := []string{f.Name, relative, base}
+		if !strings.Contains(body, f.Name) &&
+			!strings.Contains(body, relative) &&
+			!strings.Contains(body, base) {
 			continue
 		}
 
@@ -441,9 +452,15 @@ func (s *Server) attachToNote(
 			continue
 		}
 
+		// Længste først. Erstattes det bare navn inde i en længere sti, bliver mappen
+		// stående foran adressen, og linket peger på ingenting.
 		url := "/api/v1/attachments/" + a.ID
-		body = strings.ReplaceAll(body, relative, url)
-		body = strings.ReplaceAll(body, base, url)
+		sort.Slice(refs, func(i, j int) bool { return len(refs[i]) > len(refs[j]) })
+		for _, ref := range refs {
+			if ref != "" {
+				body = strings.ReplaceAll(body, ref, url)
+			}
+		}
 		attached++
 	}
 	return body, attached

@@ -255,11 +255,36 @@ def main() -> int:
         # De tomme linjer skal forbi først: <h1> ligger inde i en <div>, hvis
         # starttag tømmer linjen før den — så første linje er tom, og
         # sammenligningen så på ingenting.
+        # Titlen kan være delt over flere overskrifter.
+        #
+        # Noter kalder noten det, der står på de første linjer, sat sammen med
+        # mellemrum — så en note, hvis to første linjer er "CPU" og "CAN", hedder
+        # "CPU CAN". Sammenlignede man kun med den første linje, gik det fri, og
+        # titlen stod bagefter to gange: én gang som overskrift og én gang som de
+        # stumper, den var lavet af. Fjorten noter ud af tolv hundrede.
+        #
+        # Overskrifterne øverst tages derfor med, så længe de tilsammen stadig er
+        # begyndelsen på titlen, og fjernes kun, hvis de til sidst er hele titlen.
         lines = text.split("\n")
         while lines and not lines[0].strip():
             lines.pop(0)
-        if lines and lines[0].lstrip("# ").strip() == title.strip():
-            lines = lines[1:]
+
+        taken, joined = 0, ""
+        for line in lines:
+            if not line.strip():
+                taken += 1
+                continue
+            if not line.lstrip().startswith("#"):
+                break
+            candidate = (joined + " " + line.lstrip("# ").strip()).strip()
+            if not title.strip().startswith(candidate):
+                break
+            joined, taken = candidate, taken + 1
+            if joined == title.strip():
+                break
+
+        if joined == title.strip():
+            lines = lines[taken:]
             while lines and not lines[0].strip():
                 lines.pop(0)
         text = "\n".join(lines)
