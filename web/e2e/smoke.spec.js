@@ -1954,3 +1954,49 @@ test('en note kan skrives, findes igen, og peger på det den nævner', async ({ 
 
 	expect(trouble).toEqual([]);
 });
+
+test('noteeditoren viser formatering, og lagene flugter', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const body = page.getByLabel('Notens tekst');
+	await body.fill(
+		'# Overskrift\n\nDette er **fed** og *kursiv* og `kode`.\n\nHandler om #Firma og [[En anden note]].\n- et punkt\n> et citat'
+	);
+
+	// The marks are still there — this is a mirror, not a renderer — but they are
+	// drawn as what they mean.
+	const mirror = page.locator('.mirror');
+	await expect(mirror.locator('.bold')).toHaveText('**fed**');
+	await expect(mirror.locator('.italic')).toHaveText('*kursiv*');
+	await expect(mirror.locator('.code')).toHaveText('`kode`');
+	await expect(mirror.locator('.tag')).toHaveText('#Firma');
+	await expect(mirror.locator('.wikilink')).toHaveText('[[En anden note]]');
+	await expect(mirror.locator('.h1')).toContainText('Overskrift');
+
+	// The whole risk of the technique: two layers that must line up character for
+	// character. If they drift, the formatting slides away from the text as the
+	// note grows, and it is unusable — so this measures rather than trusts.
+	const drift = await page.evaluate(() => {
+		const ta = document.querySelector('.paper textarea');
+		const mi = document.querySelector('.paper .mirror');
+		const a = getComputedStyle(ta), b = getComputedStyle(mi);
+		return {
+			font: a.fontSize === b.fontSize && a.fontFamily === b.fontFamily,
+			line: a.lineHeight === b.lineHeight,
+			wrap: a.whiteSpace === b.whiteSpace,
+			padding: a.paddingTop === b.paddingTop && a.paddingLeft === b.paddingLeft,
+			// And the rendered height, which is what actually proves it: the same text
+			// laid out twice has to take the same room.
+			heights: Math.abs(ta.scrollHeight - mi.scrollHeight)
+		};
+	});
+	expect(drift.font, 'skrifttypen er ikke ens').toBe(true);
+	expect(drift.line, 'linjehøjden er ikke ens').toBe(true);
+	expect(drift.wrap, 'ombrydningen er ikke ens').toBe(true);
+	expect(drift.padding, 'polstringen er ikke ens').toBe(true);
+	expect(drift.heights, 'lagene fylder ikke det samme').toBeLessThanOrEqual(2);
+
+	expect(trouble).toEqual([]);
+});

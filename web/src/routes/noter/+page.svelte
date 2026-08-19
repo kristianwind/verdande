@@ -14,6 +14,7 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { t } from '$lib/i18n.svelte.js';
+	import { linesOf } from '$lib/markdown.js';
 
 	let notes = $state([]);
 	let selected = $state(null);
@@ -101,6 +102,12 @@
 
 	// What the note points at, for the panel under the editor.
 	let links = $derived(selected?.links ?? []);
+
+	// The styled twin of what is in the textarea. Recomputed on every keystroke,
+	// which sounds expensive and is not: it is a split and a handful of regexes
+	// over a page of text, and it runs in the same frame as the character that
+	// caused it.
+	let lines = $derived(linesOf(draft));
 </script>
 
 <svelte:head><title>{t('notes.title')} · verdande</title></svelte:head>
@@ -140,14 +147,33 @@
 
 	<section class="editor">
 		{#if selected}
-			<textarea
-				bind:value={draft}
-				oninput={typed}
-				onblur={save}
-				spellcheck="true"
-				aria-label={t('notes.body')}
-				placeholder={t('notes.placeholder')}
-			></textarea>
+			<!-- The mirror sits behind the textarea and must match it exactly: same font,
+			     same size, same padding, same wrapping. Any difference shows up as
+			     formatting that drifts away from the text as the note grows.
+
+			     A contenteditable would let the text be styled directly and would also
+			     break undo, autocorrect and IME input — a bad trade in the one place in
+			     this program where somebody writes for half an hour at a stretch. -->
+			<div class="paper">
+				<div class="mirror" aria-hidden="true">
+					{#each lines as line}
+						<div class={line.block}>
+							{#each line.parts as part}
+								{#if part.kind}<span class={part.kind}>{part.text}</span>{:else}{part.text}{/if}
+							{/each}{#if !line.parts.length}&nbsp;{/if}
+						</div>
+					{/each}
+				</div>
+
+				<textarea
+					bind:value={draft}
+					oninput={typed}
+					onblur={save}
+					spellcheck="true"
+					aria-label={t('notes.body')}
+					placeholder={t('notes.placeholder')}
+				></textarea>
+			</div>
 
 			<footer>
 				<span class="hint">{saving ? t('notes.saving') : t('notes.saved')}</span>
@@ -261,21 +287,92 @@
 		min-height: 0;
 	}
 
-	textarea {
+	/* Everything below exists to keep two layers in lockstep. The shared rules are
+	   set on both at once on purpose: a font-size on one and not the other is a
+	   whole line of drift by the bottom of a long note. */
+	.paper {
+		position: relative;
 		flex: 1;
-		width: 100%;
 		min-height: 50vh;
-		resize: none;
-		border: 0;
-		background: none;
-		color: var(--ink);
+	}
+
+	.paper textarea,
+	.paper .mirror {
 		font: inherit;
+		font-size: var(--text-base, 1rem);
 		line-height: 1.6;
 		padding: var(--s2) 0;
+		border: 0;
+		white-space: pre-wrap;
+		overflow-wrap: break-word;
+		word-break: normal;
+		tab-size: 4;
+	}
+
+	textarea {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		resize: none;
+		background: none;
+		/* Transparent, so what is read is the mirror underneath. The caret keeps its
+		   own colour or there would be nothing to type against. */
+		color: transparent;
+		caret-color: var(--ink);
+	}
+
+	textarea::selection {
+		background: var(--accent);
+		color: var(--accent-ink);
 	}
 
 	textarea:focus {
 		outline: none;
+	}
+
+	.mirror {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		color: var(--ink);
+		overflow: hidden;
+	}
+
+	/* Headings change weight and colour, never size: a larger font would take more
+	   lines than the textarea does and everything below it would slide. */
+	.mirror .h1,
+	.mirror .h2,
+	.mirror .h3,
+	.mirror .h4,
+	.mirror .h5,
+	.mirror .h6 {
+		font-weight: 620;
+	}
+
+	.mirror .h1 {
+		color: var(--ink);
+	}
+
+	.mirror .quote {
+		color: var(--ink-muted);
+	}
+
+	.mirror .bold {
+		font-weight: 620;
+	}
+
+	.mirror .italic {
+		font-style: italic;
+	}
+
+	.mirror .code {
+		font-family: var(--mono, ui-monospace, monospace);
+		color: var(--accent);
+	}
+
+	.mirror .tag,
+	.mirror .wikilink {
+		color: var(--accent);
 	}
 
 	footer {
