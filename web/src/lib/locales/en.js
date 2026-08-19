@@ -22,6 +22,8 @@ export const en = {
 	'notes.italic': 'Italic',
 	'notes.underline': 'Underline',
 	'notes.strike': 'Strikethrough',
+	'notes.showSource': 'Show as code',
+	'notes.source': 'Note source',
 	'notes.styleTitle': 'Title',
 	'notes.styleHeading': 'Heading',
 	'notes.styleSubheading': 'Subheading',

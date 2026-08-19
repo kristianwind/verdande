@@ -535,7 +535,12 @@
 		background: var(--surface);
 		border: 1px solid var(--line);
 		border-radius: var(--radius);
-		padding: var(--s3) var(--s4);
+		/* Luft nok til at teksten ikke rører kanten.
+		 *
+		 * Vandret vokser den med ruden: på en bred skærm skal et ark have marginer,
+		 * ikke bare en kant — clamp holder den mellem en rimelig mindste og en, der
+		 * ikke bliver til et vindue med tekst i midten. */
+		padding: var(--s4) clamp(var(--s4), 3.5%, var(--s6));
 	}
 
 	/* Everything below exists to keep two layers in lockstep. The shared rules are

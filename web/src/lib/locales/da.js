@@ -26,6 +26,8 @@ export const da = {
 	'notes.italic': 'Kursiv',
 	'notes.underline': 'Understreget',
 	'notes.strike': 'Gennemstreget',
+	'notes.showSource': 'Vis som kode',
+	'notes.source': 'Notens kildetekst',
 	'notes.styleTitle': 'Titel',
 	'notes.styleHeading': 'Overskrift',
 	'notes.styleSubheading': 'Underrubrik',

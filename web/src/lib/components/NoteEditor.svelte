@@ -43,6 +43,10 @@
 		editor.innerHTML = note.body.trim() ? markdownToHtml(note.body) : '<h1><br></h1>';
 		loadedId = note.id;
 		active = {};
+		// Kildevisningen hører til den note, den blev slået til på. Skifter man note,
+		// er det den rige flade, man skal møde — ellers står den næste note som kode,
+		// uden at nogen har bedt om det.
+		asSource = false;
 		colourCode();
 	});
 
@@ -136,6 +140,51 @@
 		if (!editor) return;
 		onchange?.(htmlToMarkdown(editor));
 		readSuggestions();
+	}
+
+	// --- kilden ----------------------------------------------------------------------
+
+	/**
+	 * Noten som den Markdown, den er.
+	 *
+	 * Fladen er rig tekst, fordi det er den, folk kan. Men filen under er Markdown,
+	 * og der er to ting, den rige flade ikke kan: tage imod Markdown, nogen har
+	 * skrevet et andet sted — indsat i den rige flade er `## Overskrift` fem tegn og
+	 * ikke en overskrift — og vise, hvad der faktisk bliver gemt. Begge dele er det
+	 * samme svar: lad folk se kilden.
+	 *
+	 * Ikke en tredje tilstand at holde styr på: teksten går gennem de samme to
+	 * funktioner som altid, kun den anden vej. Det, man ser i kildefeltet, er ord for
+	 * ord det, der ligger i databasen.
+	 */
+	let asSource = $state(false);
+	let source = $state('');
+
+	function toggleSource() {
+		if (!asSource) {
+			source = htmlToMarkdown(editor);
+			asSource = true;
+			return;
+		}
+		asSource = false;
+		onchange?.(source);
+		// Fyldt fra kilden, ikke fra `note.body`.
+		//
+		// Noten i lageret er den sidst gemte, og gemningen venter på sin pause — så
+		// den vej ville kaste det, der lige er skrevet i kildefeltet, væk. `loadedId`
+		// røres ikke: $effect ser stadig en note, den har indlæst, og skriver ikke
+		// hen over det her.
+		queueMicrotask(() => {
+			if (!editor) return;
+			editor.innerHTML = source.trim() ? markdownToHtml(source) : '<h1><br></h1>';
+			colourCode();
+		});
+	}
+
+	/** Kilden skrives direkte igennem: det er filen, man redigerer. */
+	function sourceChanged(event) {
+		source = event.currentTarget.value;
+		onchange?.(source);
 	}
 
 	// --- suggesting a project ------------------------------------------------------
@@ -373,11 +422,37 @@
 		<button class:on={active.strike} onclick={() => apply('strikeThrough')} aria-label={t('notes.strike')}>
 			<s>S</s>
 		</button>
+
+		<span class="sep" aria-hidden="true"></span>
+
+		<!-- Kilden. Til højre for de andre, fordi den ikke er et format men en
+		     anden måde at se det hele på. -->
+		<button
+			class="src"
+			class:on={asSource}
+			onclick={toggleSource}
+			aria-pressed={asSource}
+			aria-label={t('notes.showSource')}
+			title={t('notes.showSource')}>&lt;/&gt;</button
+		>
 	</div>
 
+	{#if asSource}
+		<!-- Et almindeligt tekstfelt, fordi det er almindelig tekst. Ingen
+		     contenteditable, ingen execCommand: her er der intet at formatere. -->
+		<textarea
+			class="page source"
+			aria-label={t('notes.source')}
+			spellcheck="false"
+			value={source}
+			oninput={sourceChanged}
+			onblur={() => onsave?.()}
+		></textarea>
+	{/if}
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
 		class="page"
+		class:hidden={asSource}
 		bind:this={editor}
 		contenteditable="true"
 		role="textbox"
@@ -603,6 +678,41 @@
 		outline: none;
 		line-height: 1.55;
 		overflow-y: auto;
+
+		/* Linjelængden har en grænse, som skærmen ikke har.
+		 *
+		 * En note i fuld bredde på en stor skærm er linjer på hundrede og fyrre tegn,
+		 * og øjet mister hvilken linje det var på, når det springer tilbage. Alle,
+		 * der laver noget, man læser i, sætter det her — Apple Noter, Bear, Notion —
+		 * og de sætter det omkring det samme sted.
+		 *
+		 * Kun teksten, ikke arket: værktøjslinjen og foden hører til ruden og skal
+		 * blive i den. */
+		max-width: 46rem;
+		width: 100%;
+	}
+
+	.hidden {
+		display: none;
+	}
+
+	/* Kildeteksten. Monospace, fordi det er en fil — og fordi indrykningen i en
+	   liste er indhold her og ikke pynt: den skal kunne tælles. */
+	.source {
+		font-family: var(--font-mono);
+		font-size: var(--text-sm);
+		line-height: 1.6;
+		tab-size: 2;
+		white-space: pre-wrap;
+		border: 0;
+		background: none;
+		color: var(--ink);
+		resize: none;
+	}
+
+	.src {
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
 	}
 
 	/* The document styles. These are the whole of "it should look like Apple Notes":
