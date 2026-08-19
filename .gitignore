@@ -65,3 +65,4 @@ node_modules.nosync/
 # address — a map of one person's setup, which does not belong in a public repo.
 # Kept on disk because it is how a session hands over to the next one.
 HANDOFF.md
+NOTES-PLAN.md

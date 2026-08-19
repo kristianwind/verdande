@@ -36,8 +36,18 @@ func FoldDanish(s string) string {
 // Returns "" when there is nothing searchable in the input; callers should treat
 // that as "no query" rather than as "match everything".
 func MatchExpr(query string) string {
+	return MatchExprOver(query, "content", "description")
+}
+
+// MatchExprOver is MatchExpr against a named set of columns.
+//
+// The columns have to be named because the index they are searched in decides
+// them: tasks carry content and description, notes carry title and body. Passing
+// one table's column names to the other's index is not a wrong answer but an
+// error — "no such column" — which is at least loud.
+func MatchExprOver(query string, columns ...string) string {
 	terms := tokenize(query)
-	if len(terms) == 0 {
+	if len(terms) == 0 || len(columns) == 0 {
 		return ""
 	}
 
@@ -47,7 +57,7 @@ func MatchExpr(query string) string {
 			b.WriteString(" AND ")
 		}
 		folded := FoldDanish(term)
-		b.WriteString(`({content description} : `)
+		b.WriteString(`({` + strings.Join(columns, " ") + `} : `)
 		b.WriteString(quote(term))
 		b.WriteString(`* OR fold : `)
 		b.WriteString(quote(folded))
