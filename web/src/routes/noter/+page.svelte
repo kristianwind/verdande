@@ -108,6 +108,24 @@
 		}
 	}
 
+	/**
+	 * Moves the note into a project, which is what sharing it means: everybody who
+	 * can read the project can read the note, and an editor can change it. Choosing
+	 * the empty option takes it back out and makes it the author's alone again.
+	 */
+	async function share(projectId) {
+		if (!selected) return;
+		const id = selected.id;
+		try {
+			const saved = await api.updateNote(id, { project_id: projectId });
+			notes = notes.map((n) => (n.id === id ? saved : n));
+			if (selected?.id === id) selected = saved;
+			app.toast(projectId ? t('notes.shared') : t('notes.unshared'));
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
 	async function remove(note) {
 		if (!confirm(t('notes.deleteNote', { name: note.title || t('notes.untitled') }))) return;
 		try {
@@ -192,6 +210,22 @@
 						{/each}
 					</span>
 				{/if}
+				<!-- Sharing a note is filing it in a project.
+				     Not an access list of its own: projects already have members, roles
+				     and invitations, all of them tested and all of them things people
+				     have already learnt here. A second way to give somebody access is a
+				     second place to get it wrong, and the two would disagree on the day
+				     one of them was changed. -->
+				<label class="share">
+					<span class="hint">{t('notes.shareWith')}</span>
+					<select value={selected.project_id ?? ''} onchange={(e) => share(e.currentTarget.value)}>
+						<option value="">{t('notes.private')}</option>
+						{#each app.projects.filter((p) => !p.is_inbox) as project (project.id)}
+							<option value={project.id}>{project.name}</option>
+						{/each}
+					</select>
+				</label>
+
 				<div class="actions">
 					<button class="button" onclick={save}>{t('notes.save')}</button>
 					<button class="button danger" onclick={() => remove(selected)}>{t('notes.delete')}</button>
@@ -434,6 +468,17 @@
 		border-radius: var(--radius-sm);
 		padding: 0 var(--s1);
 		font-family: var(--mono, ui-monospace, monospace);
+	}
+
+	.share {
+		display: flex;
+		align-items: center;
+		gap: var(--s1);
+	}
+
+	.share select {
+		font-size: var(--text-xs);
+		padding: 2px var(--s1);
 	}
 
 	/* Real buttons. They were bare words, which on a Mac reads as a web page rather

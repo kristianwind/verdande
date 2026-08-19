@@ -2010,3 +2010,38 @@ test('noteeditoren er rich text, og teksten overlever turen til Markdown og tilb
 	expect(trouble).toEqual([]);
 });
 
+test('en note kan deles med et projekts folk, og tages tilbage igen', async ({ page, browser }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Delenoter');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(sidebar.getByRole('link', { name: 'Delenoter' })).toBeVisible();
+
+	await sidebar.getByRole('link', { name: 'Noter', exact: true }).click();
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	await page.getByRole('textbox', { name: 'Notens tekst' }).click();
+	await page.keyboard.type('Fælles aftale om leveringen');
+	await page.getByRole('textbox', { name: 'Notens tekst' }).blur();
+
+	// Shared by being filed in a project. Not an access list of its own.
+	await page.getByLabel('Del i').selectOption({ label: 'Delenoter' });
+	await expect(page.getByText('delt med projektets folk')).toBeVisible();
+
+	// And it is really there, not merely labelled: the project's own page shows it.
+	await sidebar.getByRole('link', { name: 'Delenoter' }).click();
+	await expect(page.locator('.notes').getByRole('link', { name: /Fælles aftale/ })).toBeVisible();
+
+	// Taken back out, it is the author's alone again.
+	await sidebar.getByRole('link', { name: 'Noter', exact: true }).click();
+	await page.getByRole('button', { name: /Fælles aftale/ }).click();
+	await page.getByLabel('Del i').selectOption({ label: 'Kun mig' });
+	await expect(page.getByText('din igen')).toBeVisible();
+
+	await sidebar.getByRole('link', { name: 'Delenoter' }).click();
+	await expect(page.locator('.notes').getByRole('link', { name: /Fælles aftale/ })).toBeHidden();
+
+	expect(trouble).toEqual([]);
+});

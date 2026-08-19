@@ -57,7 +57,10 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	found, err := s.db.LooseNotes(r.Context(), user.ID)
+	// Everything they can see, not only the loose ones. Filing a note in a project
+	// is how it gets shared, and a list that dropped it at that moment made sharing
+	// look like deleting.
+	found, err := s.db.AllNotes(r.Context(), user.ID)
 	if err != nil {
 		s.internal(w, r, "list notes", err)
 		return

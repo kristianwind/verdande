@@ -43,21 +43,33 @@
 		load(id);
 	});
 
-	// Notes that mention this project. Looked up by name rather than by id, because
-	// a #tag is written by hand and a person types the name — the same string the
-	// quick-add parser reads out of a task.
+	// Two ways a note belongs here, and both count.
+	//
+	// Filed in the project — which is what sharing a note means — and mentioning it
+	// by #tag, which is what somebody does while writing without stopping to file
+	// anything. Looked up by name for the second, because a #tag is written by hand
+	// and a person types the name: the same string the quick-add parser reads out of
+	// a task.
 	let notes = $state([]);
 
 	$effect(() => {
+		const id = project?.id;
 		const name = project?.name;
-		if (!name) {
+		if (!id || !name) {
 			notes = [];
 			return;
 		}
-		api
-			.notesLinking('project', name)
-			.then((r) => (notes = r.notes ?? []))
-			.catch(() => (notes = []));
+		Promise.all([
+			api.notes({ project: id }).catch(() => ({ notes: [] })),
+			api.notesLinking('project', name).catch(() => ({ notes: [] }))
+		]).then(([filed, mentioned]) => {
+			const seen = new Set();
+			notes = [...(filed.notes ?? []), ...(mentioned.notes ?? [])].filter((n) => {
+				if (seen.has(n.id)) return false;
+				seen.add(n.id);
+				return true;
+			});
+		});
 	});
 
 	async function load(projectId) {

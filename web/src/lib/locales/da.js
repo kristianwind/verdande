@@ -16,6 +16,10 @@
  */
 export const da = {
 	// --- the shell ---------------------------------------------------------------
+	'notes.shareWith': 'Del i',
+	'notes.private': 'Kun mig',
+	'notes.shared': 'Noten er delt med projektets folk.',
+	'notes.unshared': 'Noten er din igen.',
 	'notes.save': 'Gem',
 	'notes.format': 'Formatér',
 	'notes.bold': 'Fed',

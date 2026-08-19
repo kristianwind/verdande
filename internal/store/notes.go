@@ -184,6 +184,26 @@ func (db *DB) LooseNotes(ctx context.Context, userID string) ([]Note, error) {
 		ORDER BY pinned DESC, updated_at DESC`, userID)
 }
 
+// AllNotes is everything a person can see: their own loose ones, and the ones in
+// projects they are part of.
+//
+// This is what the Notes page lists. Filing a note in a project is how it gets
+// shared, and a list that dropped it at that moment would make sharing look like
+// deleting — which is exactly how it read before this existed.
+func (db *DB) AllNotes(ctx context.Context, userID string) ([]Note, error) {
+	return db.notesWhere(ctx, `
+		WHERE deleted_at IS NULL
+		  AND (
+		    (project_id IS NULL AND created_by = ?)
+		    OR project_id IN (
+		      SELECT id FROM projects WHERE owner_id = ? AND deleted_at IS NULL
+		      UNION
+		      SELECT project_id FROM project_members WHERE user_id = ?
+		    )
+		  )
+		ORDER BY pinned DESC, updated_at DESC`, userID, userID, userID)
+}
+
 // NotesLinking answers the backwards question: what points at this thing.
 //
 // The reason note_links exists. Without it this would mean reading every note's

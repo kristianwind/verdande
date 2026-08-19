@@ -12,6 +12,10 @@
  */
 export const en = {
 	// --- the shell ---------------------------------------------------------------
+	'notes.shareWith': 'Share in',
+	'notes.private': 'Only me',
+	'notes.shared': "The note is shared with the project's people.",
+	'notes.unshared': 'The note is yours again.',
 	'notes.save': 'Save',
 	'notes.format': 'Format',
 	'notes.bold': 'Bold',
