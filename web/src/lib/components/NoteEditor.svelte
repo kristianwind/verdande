@@ -29,7 +29,13 @@
 	let loadedId = $state(null);
 	$effect(() => {
 		if (!editor || !note || note.id === loadedId) return;
-		editor.innerHTML = markdownToHtml(note.body) || '<p><br></p>';
+		// An empty note opens on its title. That is what Apple Notes does, and it is
+		// also what the list needs: the first line becomes the name of the note, so a
+		// note whose first line is body text is a note called by its first sentence.
+		//
+		// Tested on the text and not on the rendered result: an empty body renders as
+		// one empty paragraph, not as nothing, so a falsy check here never fired.
+		editor.innerHTML = note.body.trim() ? markdownToHtml(note.body) : '<h1><br></h1>';
 		loadedId = note.id;
 		active = {};
 	});
@@ -92,7 +98,51 @@
 		onchange?.(htmlToMarkdown(editor));
 	}
 
+	/** The block the caret is standing in. */
+	function currentBlock() {
+		const selection = window.getSelection();
+		if (!selection || !selection.anchorNode || !editor) return null;
+		let node = selection.anchorNode;
+		while (node && node.parentNode !== editor) node = node.parentNode;
+		return node?.nodeType === Node.ELEMENT_NODE ? node : null;
+	}
+
+	/**
+	 * Title for the first line, body for everything after it.
+	 *
+	 * Run after the browser has split the block on Enter, because until then there
+	 * is no second block to change. Pressing return at the end of a heading leaves
+	 * the caret in another heading in most browsers, and a note where every line is
+	 * a title is a note with no title at all.
+	 */
+	function keepTitleFirst() {
+		const block = currentBlock();
+		if (!block) return;
+
+		// A heading that is not the first line becomes body.
+		if (block.tagName === 'H1' && block !== editor.firstElementChild) {
+			document.execCommand('formatBlock', false, 'p');
+			return;
+		}
+
+		// And the browser's own container becomes a paragraph. Chromium answers Enter
+		// with a bare <div>, which reads as body but is not styled as one — so the
+		// spacing between paragraphs quietly disappears the moment somebody presses
+		// return rather than choosing Brødtekst from the menu.
+		if (block.tagName === 'DIV') {
+			document.execCommand('formatBlock', false, 'p');
+		}
+	}
+
 	function onkeydown(event) {
+		if (event.key === 'Enter' && !event.shiftKey) {
+			// After the split, not before it.
+			setTimeout(() => {
+				keepTitleFirst();
+				changed();
+			}, 0);
+			return;
+		}
 		// The shortcuts people already have in their fingers. execCommand handles
 		// bold and italic itself; underline and strikethrough are claimed here so
 		// they behave the same way.

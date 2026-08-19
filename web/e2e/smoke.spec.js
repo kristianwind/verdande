@@ -2089,3 +2089,43 @@ test('udseendet kan skiftes uafhængigt af temaet, og overlever en genindlæsnin
 
 	expect(trouble).toEqual([]);
 });
+
+test('en ny note begynder som titel, og linjen efter er brødtekst', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await ed.click();
+
+	// Straight in, without choosing a style. The first line is the title because
+	// that is what the list calls the note by.
+	await page.keyboard.type('Titelprøven');
+	await expect(ed.locator('h1')).toHaveText('Titelprøven');
+
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('Han vil gerne have kaffe hver uge.');
+
+	// And the line after is body, not a second title. A note where every line is a
+	// heading is a note with no heading at all.
+	await expect(ed.locator('h1')).toHaveCount(1);
+	await expect(ed.locator('p').filter({ hasText: 'kaffe' })).toBeVisible();
+
+	// A third line stays body too.
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('Og han ringer selv.');
+	await expect(ed.locator('h1')).toHaveCount(1);
+
+	// It survives the trip through Markdown: the title is a heading again on the
+	// way back, and the body is not.
+	await ed.blur();
+	await page.reload();
+	await page.getByRole('button', { name: /Titelprøven/ }).click();
+
+	const back = page.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(back.locator('h1')).toHaveText('Titelprøven');
+	await expect(back.locator('h1')).toHaveCount(1);
+	await expect(back).toContainText('ringer selv');
+
+	expect(trouble).toEqual([]);
+});

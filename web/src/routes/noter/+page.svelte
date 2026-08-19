@@ -48,6 +48,29 @@
 		draft = note?.body ?? '';
 	}
 
+	/**
+	 * The first line or so of a note, without its marks.
+	 *
+	 * The list showed the Markdown as stored — "# Møde med Anders" and "**fed**" —
+	 * which is exactly the thing the editor was built to stop showing. What is
+	 * wanted here is the sentence, not the notation.
+	 */
+	function plain(body) {
+		return (body ?? '')
+			.replace(/^#{1,6}\s+/gm, '')
+			.replace(/^\s*[-*+]\s+/gm, '')
+			.replace(/^\s*>\s?/gm, '')
+			.replace(/\*\*([^*]+)\*\*/g, '$1')
+			.replace(/~~([^~]+)~~/g, '$1')
+			.replace(/<\/?u>/g, '')
+			.replace(/`([^`]+)`/g, '$1')
+			.replace(/\*([^*]+)\*/g, '$1')
+			.replace(/\[\[([^\]]+)\]\]/g, '$1')
+			.replace(/\s+/g, ' ')
+			.trim()
+			.slice(0, 90);
+	}
+
 	async function create() {
 		try {
 			const note = await api.createNote({ body: '' });
@@ -171,7 +194,7 @@
 						<div class="rowline">
 							<button class="row" class:on={selected?.id === note.id} onclick={() => open(note)}>
 								<strong>{note.title || t('notes.untitled')}</strong>
-								<span class="preview">{note.body.slice(0, 80)}</span>
+								<span class="preview">{plain(note.body)}</span>
 							</button>
 							<button
 								class="star"
