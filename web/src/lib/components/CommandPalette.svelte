@@ -9,6 +9,7 @@
 	let query = $state('');
 	let tasks = $state([]);
 	let projects = $state([]);
+	let notes = $state([]);
 	let selected = $state(0);
 	let input;
 	let controller = null;
@@ -32,13 +33,21 @@
 		if (!value) {
 			tasks = [];
 			projects = [];
+			notes = [];
 			return;
 		}
 		timer = setTimeout(async () => {
 			try {
-				const result = await api.search(value);
+				// Noter er sit eget endepunkt, så de hentes ved siden af. Uden dem
+				// søger ⌘K kun i halvdelen af programmet, hvilket er svært at gætte
+				// som bruger: feltet ser ud til at kunne finde alt.
+				const [result, found] = await Promise.all([
+					api.search(value),
+					api.notes({ q: value }).catch(() => ({ notes: [] }))
+				]);
 				tasks = result.tasks ?? [];
 				projects = result.projects ?? [];
+				notes = found.notes ?? [];
 				selected = 0;
 			} catch {
 				// A failed search shows nothing rather than an error inside a
@@ -49,6 +58,7 @@
 
 	let results = $derived([
 		...projects.map((p) => ({ kind: 'project', id: p.id, label: p.name })),
+		...notes.map((n) => ({ kind: 'note', id: n.id, label: n.title || n.body.slice(0, 60) })),
 		...tasks.map((t) => ({
 			kind: 'task',
 			id: t.id,
@@ -60,6 +70,7 @@
 
 	function choose(item) {
 		open = false;
+		if (item.kind === 'note') return goto(`/noter?note=${item.id}`);
 		goto(item.kind === 'project' ? `/projekt/${item.id}` : `/projekt/${item.project}`);
 	}
 
@@ -109,7 +120,7 @@
 								onclick={() => choose(item)}
 								onmouseenter={() => (selected = i)}
 							>
-								<span class="kind">{item.kind === 'project' ? 'Projekt' : 'Opgave'}</span>
+								<span class="kind">{t('palette.' + item.kind)}</span>
 								<span class="label">{item.label}</span>
 							</button>
 						</li>

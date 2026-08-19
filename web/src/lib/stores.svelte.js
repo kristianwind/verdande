@@ -49,6 +49,8 @@ class AppState {
 	 * small request against modelling a count in two places.
 	 */
 	labelsChanged = $state(0);
+	/** Bumped when a note moves, so a list showing them knows to look again. */
+	notesChanged = $state(0);
 
 	#socket = null;
 	#reconnectDelay = 1000;
@@ -418,6 +420,17 @@ class AppState {
 		} catch (e) {
 			this.toast(humanMessage(e));
 			return null;
+		}
+	}
+
+	/** Files a note under a project, which is what sharing it means. */
+	async moveNoteToProject(noteID, projectID) {
+		try {
+			await api.updateNote(noteID, { project_id: projectID });
+			this.notesChanged++;
+			this.toast(t('notes.filed'));
+		} catch (e) {
+			this.toast(humanMessage(e));
 		}
 	}
 

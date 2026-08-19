@@ -363,7 +363,10 @@ button {
 :focus-visible {
 	outline: 2px solid var(--accent);
 	outline-offset: 2px;
-	border-radius: var(--radius-sm);
+	/* Ingen radius her. En omrids følger elementets egen afrunding af sig selv, og
+	   at tvinge en anden på tegner en firkantet bue uden om en rund kant — to
+	   streger, hvor der skulle være én. Det ses tydeligst om et pilleformet
+	   søgefelt. */
 }
 
 ::selection {

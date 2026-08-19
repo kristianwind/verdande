@@ -14,7 +14,8 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { page } from '$app/stores';
-	import { t } from '$lib/i18n.svelte.js';
+	import { t, tag } from '$lib/i18n.svelte.js';
+	import { NOTE, startDrag } from '$lib/dnd.js';
 	import NoteEditor from '$lib/components/NoteEditor.svelte';
 
 	let notes = $state([]);
@@ -80,6 +81,39 @@
 			.replace(/\s+/g, ' ')
 			.trim()
 			.slice(0, 90);
+	}
+
+	/**
+	 * Hvornår, skrevet som man ville sige det.
+	 *
+	 * "i går" og et klokkeslæt i dag; en dato, når det er længere siden. En note
+	 * fra i formiddags og en fra i fjor skal ikke se ens ud i en liste, man skanner.
+	 */
+	function when(iso) {
+		if (!iso) return '';
+		const at = new Date(iso);
+		const now = new Date();
+		const sameDay = at.toDateString() === now.toDateString();
+		if (sameDay) return at.toLocaleTimeString(tag(), { hour: '2-digit', minute: '2-digit' });
+
+		const yesterday = new Date(now);
+		yesterday.setDate(now.getDate() - 1);
+		if (at.toDateString() === yesterday.toDateString()) return t('notes.yesterday');
+
+		return at.toLocaleDateString(tag(), { day: '2-digit', month: '2-digit', year: 'numeric' });
+	}
+
+	function projectName(id) {
+		return app.projects.find((p) => p.id === id)?.name ?? '';
+	}
+
+	// Trukket ind på et projekt i sidebjælken. Nyttelasten er notens id; sidebjælken
+	// kender allerede formen fra opgaver.
+	let dragging = $state(null);
+
+	function onDragStart(event, note) {
+		dragging = note.id;
+		startDrag(event, NOTE, note.id);
 	}
 
 	async function create() {
@@ -219,9 +253,25 @@
 				{#each notes as note (note.id)}
 					<li>
 						<div class="rowline">
-							<button class="row" class:on={selected?.id === note.id} onclick={() => open(note)}>
+							<button
+								class="row"
+								class:on={selected?.id === note.id}
+								onclick={() => open(note)}
+								draggable="true"
+								ondragstart={(e) => onDragStart(e, note)}
+								ondragend={() => (dragging = null)}
+							>
 								<strong>{note.title || t('notes.untitled')}</strong>
-								<span class="preview">{plain(note.body)}</span>
+								<!-- Dato og begyndelse på samme linje, som Apple Noter gør det: to
+								     linjer pr. note frem for tre, og datoen er dét, man skanner
+								     efter, når man leder efter noget, man skrev i tirsdags. -->
+								<span class="under">
+									<span class="when">{when(note.updated_at)}</span>
+									<span class="preview">{plain(note.body)}</span>
+								</span>
+								{#if note.project_id}
+									<span class="filed">{projectName(note.project_id)}</span>
+								{/if}
 							</button>
 							<button
 								class="star"
@@ -337,8 +387,27 @@
 		color: var(--ink);
 	}
 
+	/* Tegnet af os, ikke af browseren.
+	   Safari giver type="search" sit eget udseende — pilleform og forstørrelsesglas
+	   — og skifter til det almindelige, så snart feltet får fokus: ikonet forsvandt
+	   og formen blev firkantet midt i et klik. Med appearance: none er der kun én
+	   udgave, og den ser ens ud hele tiden. */
 	.search {
 		width: 100%;
+		appearance: none;
+		-webkit-appearance: none;
+		padding-left: 30px;
+		border-radius: 999px;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b918d' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E");
+		background-repeat: no-repeat;
+		background-position: 9px center;
+		background-size: 15px 15px;
+	}
+
+	/* Safaris egen ryd-knap ville sidde oven i vores egen form. */
+	.search::-webkit-search-decoration,
+	.search::-webkit-search-cancel-button {
+		-webkit-appearance: none;
 	}
 
 	ul {
@@ -378,9 +447,14 @@
 		flex: 1;
 		min-width: 0;
 		text-align: left;
-		padding: var(--s2);
+		padding: var(--s2) var(--s2) var(--s3);
 		border-radius: var(--radius);
 		color: var(--ink-muted);
+		border-bottom: 1px solid var(--line);
+	}
+
+	li:last-child .row {
+		border-bottom: 0;
 	}
 
 	.row:hover {
@@ -392,22 +466,53 @@
 		color: var(--ink);
 	}
 
+	/* Samme størrelse som en opgavetitel. En note og en opgave er to ting af samme
+	   slags — noget, der står på en liste og skal læses på et blik — og at give dem
+	   hver sin størrelse får den ene til at se mindre vigtig ud end den anden. */
 	.row strong {
 		display: block;
 		font-size: var(--text-sm);
-		font-weight: 560;
+		font-weight: 600;
+		line-height: 1.45;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
-	.preview {
-		display: block;
+	/* Dato og begyndelse på samme linje, som Apple Noter gør det. To linjer pr.
+	   note frem for tre, og datoen først, fordi det er den, man skanner efter. */
+	.under {
+		display: flex;
+		gap: var(--s2);
+		min-width: 0;
 		font-size: var(--text-xs);
 		color: var(--ink-faint);
+	}
+
+	.when {
+		flex: none;
+		color: var(--ink-muted);
+	}
+
+	.preview {
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	/* Hvor den ligger, med en mappe foran — Apple Noters egen måde at sige det på,
+	   og den eneste linje her, der ikke er notens eget indhold. */
+	.filed {
+		display: block;
+		margin-top: 2px;
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+	}
+
+	.filed::before {
+		content: '▸ ';
+		opacity: 0.7;
 	}
 
 	.editor {

@@ -1,7 +1,7 @@
 <script>
 	import { app, sidebar, projectName } from '$lib/stores.svelte.js';
 	import { api } from '$lib/api.js';
-	import { TASK, PROJECT, GROUP, startDrag, carries, dragged, accept } from '$lib/dnd.js';
+	import { TASK, PROJECT, GROUP, NOTE, startDrag, carries, dragged, accept } from '$lib/dnd.js';
 	import { COLORS, colorVar } from '$lib/colors.js';
 	import { focusOnMount } from '$lib/focus.js';
 	import { t } from '$lib/i18n.svelte.js';
@@ -335,16 +335,27 @@
 	const canReceive = (project) => project.role === 'owner' || project.role === 'editor';
 
 	function onTaskDragOver(event, project) {
-		if (!carries(event, TASK) || !canReceive(project)) return;
+		if (!(carries(event, TASK) || carries(event, NOTE)) || !canReceive(project)) return;
 		accept(event);
 		overProject = project.id;
 	}
 
 	async function onTaskDrop(event, project) {
 		event.preventDefault();
-		const id = dragged(event, TASK);
 		overProject = null;
-		if (!id || !canReceive(project)) return;
+		if (!canReceive(project)) return;
+
+		// The same target takes both. A note dropped on a project is filed there,
+		// which is also how it gets shared — one gesture, one meaning, and the
+		// sidebar already reads as "put this here".
+		const noteID = dragged(event, NOTE);
+		if (noteID) {
+			await app.moveNoteToProject(noteID, project.id);
+			return;
+		}
+
+		const id = dragged(event, TASK);
+		if (!id) return;
 		await app.moveToProject(id, project.id);
 	}
 
