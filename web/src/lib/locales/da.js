@@ -469,6 +469,7 @@ export const da = {
 	'auth.forgot': 'Glemt adgangskode?',
 
 	// --- a task, opened ---------------------------------------------------------------
+	'detail.notFound': 'Opgaven findes ikke, eller den er ikke din.',
 	'detail.task': 'Opgave',
 	'detail.close': 'Luk',
 	'detail.text': 'Opgavens tekst',

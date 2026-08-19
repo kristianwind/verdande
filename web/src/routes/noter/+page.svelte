@@ -13,6 +13,7 @@
 	 */
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
+	import { page } from '$app/stores';
 	import { t } from '$lib/i18n.svelte.js';
 	import NoteEditor from '$lib/components/NoteEditor.svelte';
 
@@ -29,6 +30,16 @@
 
 	$effect(() => {
 		load(query);
+	});
+
+	// Arriving from somewhere that names a note — a task's panel, a project's page —
+	// opens it rather than dropping the person on a list to find it again.
+	let asked = $derived($page.url.searchParams.get('note'));
+	$effect(() => {
+		if (!asked || selected?.id === asked) return;
+		const found = notes.find((n) => n.id === asked);
+		if (found) open(found);
+		else api.note(asked).then(open).catch(() => {});
 	});
 
 	async function load(q) {

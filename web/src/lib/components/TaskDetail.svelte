@@ -43,6 +43,7 @@
 	let subtasks = $state([]);
 	let comments = $state([]);
 	let attachments = $state([]);
+	let notes = $state([]);
 	let reminders = $state([]);
 
 	let newSubtask = $state('');
@@ -80,6 +81,7 @@
 		subtasks = [];
 		comments = [];
 		attachments = [];
+		notes = [];
 		reminders = [];
 
 		const id = task.id;
@@ -95,6 +97,11 @@
 			.catch(() => {});
 		api.listReminders(id)
 			.then((r) => id === seededId && (reminders = r.reminders))
+			.catch(() => {});
+		// Quietly, because a task with no notes is the ordinary case and a failure
+		// here must not put an error in front of somebody reading a task.
+		api.notesLinking('task', id)
+			.then((r) => id === seededId && (notes = r.notes ?? []))
 			.catch(() => {});
 	});
 
@@ -540,6 +547,22 @@
 			</form>
 		</section>
 
+		<!-- What has been written about this task.
+		     The other direction of the same link: a note that mentions a task shows
+		     it, and this is the task showing the note. Without it the connection only
+		     works if you happen to be reading the note — which is the half nobody
+		     needs help with. -->
+		{#if notes.length}
+			<section class="linked-notes">
+				<h3>{t('notes.title')}</h3>
+				{#each notes as note (note.id)}
+					<a class="linked-note" href="/noter?note={note.id}">
+						<strong>{note.title || t('notes.untitled')}</strong>
+					</a>
+				{/each}
+			</section>
+		{/if}
+
 		<section>
 			<h3>{t('detail.comments')}</h3>
 
@@ -582,6 +605,24 @@
 </aside>
 
 <style>
+	.linked-note {
+		display: block;
+		padding: var(--s2);
+		border-radius: var(--radius);
+		color: var(--ink-muted);
+		text-decoration: none;
+	}
+
+	.linked-note:hover {
+		background: var(--surface);
+		color: var(--ink);
+	}
+
+	.linked-note strong {
+		font-size: var(--text-sm);
+		font-weight: 560;
+	}
+
 	.scrim {
 		position: fixed;
 		inset: 0;

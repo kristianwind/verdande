@@ -2211,3 +2211,50 @@ test('et tag finder sit projekt uanset store og små bogstaver', async ({ page }
 
 	expect(trouble).toEqual([]);
 });
+
+test('en opgave viser de noter, der nævner den, og linket åbner noten', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const box = page.getByLabel('Ny opgave');
+	await box.fill('ring til leverandøren i dag');
+	await box.press('Enter');
+	await expect(page.getByText('ring til leverandøren', { exact: true })).toBeVisible();
+
+	// Asked for rather than read off the address bar: opening a task shows a drawer
+	// without navigating, so the URL is still the list's.
+	const taskId = await page.evaluate(async () => {
+		const r = await fetch('/api/v1/tasks?limit=100', {
+			credentials: 'include',
+			headers: { 'Sec-Fetch-Site': 'same-origin' }
+		});
+		const j = await r.json();
+		return (j.tasks ?? []).find((t) => t.content === 'ring til leverandøren')?.id;
+	});
+	expect(taskId, 'opgaven blev ikke oprettet').toBeTruthy();
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('link', { name: 'Noter', exact: true }).click();
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await ed.click();
+	await page.keyboard.type('Referat fra tirsdag');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('Aftalt at han ringer, se /opgave/' + taskId);
+	await ed.blur();
+
+	// Back on the task: the other direction of the same link. Without it the
+	// connection only works if you happen to be reading the note, which is the half
+	// nobody needs help with.
+	await page.goto('/opgave/' + taskId);
+	const linked = page.locator('.linked-notes').getByRole('link', { name: /Referat fra tirsdag/ });
+	await expect(linked).toBeVisible();
+
+	// And it opens the note rather than dropping you on a list to find it again.
+	await linked.click();
+	await expect(page.getByRole('textbox', { name: 'Notens tekst' })).toContainText(
+		'Aftalt at han ringer'
+	);
+
+	expect(trouble).toEqual([]);
+});

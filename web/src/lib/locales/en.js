@@ -465,6 +465,7 @@ export const en = {
 	'auth.forgot': 'Forgotten your password?',
 
 	// --- a task, opened ---------------------------------------------------------------
+	'detail.notFound': 'That task does not exist, or it is not yours.',
 	'detail.task': 'Task',
 	'detail.close': 'Close',
 	'detail.text': 'The task’s text',
