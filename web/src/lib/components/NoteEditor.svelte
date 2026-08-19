@@ -191,6 +191,9 @@
 
 	let suggestions = $state([]);
 	let chosen = $state(0);
+	// Hvor forslagslisten skal stå, og wrappen den måles imod.
+	let menuAt = $state(null);
+	let wrap;
 
 	/**
 	 * The word being typed after a #, if that is what is happening.
@@ -210,6 +213,33 @@
 		return { node, start: selection.anchorOffset - match[1].length, term: match[1] };
 	}
 
+	/**
+	 * Hvor `#` står, målt i wrappens koordinater.
+	 *
+	 * Målt på selve tegnet og ikke på markøren: et sammenfaldet område har ingen
+	 * kasse på en tom linje, mens `#term` altid har en, fordi der står noget i den.
+	 *
+	 * Klemt inden for ruden, så en note skrevet helt ude i højre side ikke sender
+	 * menuen ud over kanten, og vendt op over linjen, når der ikke er plads under.
+	 */
+	function tagPosition(partial) {
+		if (!wrap) return null;
+		const range = document.createRange();
+		range.setStart(partial.node, Math.max(0, partial.start - 1));
+		range.setEnd(partial.node, partial.start + partial.term.length);
+		const at = range.getBoundingClientRect();
+		const box = wrap.getBoundingClientRect();
+		if (!at.width && !at.height) return null;
+
+		const MENU = { w: 210, h: 240 };
+		const below = at.bottom - box.top + 6;
+		const flip = at.bottom + MENU.h > box.bottom && at.top - box.top > MENU.h;
+		return {
+			top: flip ? at.top - box.top - MENU.h - 6 : below,
+			left: Math.max(0, Math.min(at.left - box.left, box.width - MENU.w))
+		};
+	}
+
 	function readSuggestions() {
 		const partial = partialTag();
 		if (!partial) {
@@ -217,6 +247,12 @@
 			return;
 		}
 		const term = partial.term.toLowerCase();
+
+		// Målt når menuen åbner, ikke ved hvert tastetryk. Den skal stå ved det `#`,
+		// man skriver — den stod før øverst i ruden, hvilket i en lang note er et
+		// helt andet sted end det, øjet er — men den må heller ikke rykke sig et par
+		// pixels for hvert bogstav, mens listen snævres ind.
+		if (!suggestions.length) menuAt = tagPosition(partial);
 
 		// Alle der passer, ikke de seks første.
 		//
@@ -371,7 +407,7 @@
 	}
 </script>
 
-<div class="wrap">
+<div class="wrap" bind:this={wrap}>
 	<!-- Nothing in here may take focus. A click that moves focus out of the editor
 	     collapses the selection first, so the format lands on nothing — the button
 	     appears to do nothing at all, which is how it read the first time. -->
@@ -475,10 +511,15 @@
 	></div>
 
 	{#if suggestions.length}
-		<!-- Anchored to the editor rather than to the caret. Following the caret means
-		     measuring it, and a list that jumps a few pixels as you type is worse than
-		     one that sits still. -->
-		<ul class="suggestions" role="listbox" bind:this={list}>
+		<!-- Ved det `#`, der bliver skrevet. Målt én gang, da menuen åbnede, så den
+		     står stille, mens listen snævres ind. -->
+		<ul
+			class="suggestions"
+			role="listbox"
+			bind:this={list}
+			style:top={menuAt ? `${menuAt.top}px` : null}
+			style:left={menuAt ? `${menuAt.left}px` : null}
+		>
 			{#each suggestions as project, i (project.id)}
 				<li>
 					<button
