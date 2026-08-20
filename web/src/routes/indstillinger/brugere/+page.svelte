@@ -177,9 +177,11 @@
 					<div class="what">
 						<span class="primary-line">{pending.email}</span>
 						<span class="secondary">
-							{pending.project_name ? `til ${pending.project_name}` : 'til instansen'}
+							{pending.project_name
+								? t('users.toProject', { name: pending.project_name })
+								: t('users.toInstance')}
 							· {t('tokens.expiresOn', { when: expires(pending.expires_at) })}
-							{#if pending.invited_by}· inviteret af {pending.invited_by}{/if}
+							{#if pending.invited_by}· {t('users.invitedBy', { name: pending.invited_by })}{/if}
 						</span>
 					</div>
 					<button class="secondary" onclick={() => revoke(pending)}>{t('users.revoke')}</button>
@@ -209,7 +211,8 @@
 					</span>
 					<span class="secondary">
 						{user.email} · {ago(user.last_seen_at, { never: 'when.neverSignedIn' })}
-						{#if user.project_count}· {count(user.project_count, 'projekt', 'projekter')}{/if}
+						{#if user.project_count}·
+							{count(user.project_count, 'users.projectOne', 'users.projectMany')}{/if}
 					</span>
 				</div>
 

@@ -64,7 +64,7 @@
 	// The unsectioned column comes first, as it does in the list view: it is where
 	// quick add puts things, so it is where new work appears.
 	let columns = $derived([
-		{ id: '', name: 'Uden sektion' },
+		{ id: '', name: t('project.noSection') },
 		...sections.map((s) => ({ id: s.id, name: s.name }))
 	]);
 

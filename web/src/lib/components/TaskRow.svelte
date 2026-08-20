@@ -10,8 +10,11 @@
 	 */
 	import { app } from '$lib/stores.svelte.js';
 	import { t, tag } from '$lib/i18n.svelte.js';
+	import { repeatLabel } from '$lib/when.js';
 
 	let { task, onedit } = $props();
+
+	let repeats = $derived(repeatLabel(task.recurrence_rule, task.recurrence_text));
 
 	let leaving = $state(false);
 
@@ -84,7 +87,7 @@
 			<span class="description">{task.description}</span>
 		{/if}
 
-		{#if assignee || due || task.labels?.length || task.recurrence_text || task.subtask_count || task.attachment_count}
+		{#if assignee || due || task.labels?.length || repeats || task.subtask_count || task.attachment_count}
 			<span class="meta">
 				{#if assignee}
 					<!-- First in the row, because "who" changes what the rest of the line
@@ -102,15 +105,15 @@
 						{due.text}{#if time}&nbsp;{time}{/if}
 					</span>
 				{/if}
-				{#if task.recurrence_text}
-					<span class="repeat" title={t('task.repeats', { rule: task.recurrence_text })}>
+				{#if repeats}
+					<span class="repeat" title={t('task.repeats', { rule: repeats })}>
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M17 2l4 4-4 4" />
 							<path d="M3 11V9a4 4 0 014-4h14" />
 							<path d="M7 22l-4-4 4-4" />
 							<path d="M21 13v2a4 4 0 01-4 4H3" />
 						</svg>
-						{task.recurrence_text}
+						{repeats}
 					</span>
 				{/if}
 				<!-- What is underneath, said as a fraction rather than a total: "3" tells

@@ -56,7 +56,7 @@
 
 	{#if liveOverdue.length}
 		<section>
-			<h2 class="overdue">Forsinket</h2>
+			<h2 class="overdue">{t('view.overdue')}</h2>
 			{#each liveOverdue as task (task.id)}
 				<TaskRow {task} />
 			{/each}
@@ -65,7 +65,7 @@
 
 	<section>
 		{#if liveOverdue.length}
-			<h2>I dag</h2>
+			<h2>{t('nav.today')}</h2>
 		{/if}
 		{#each liveToday as task (task.id)}
 			<TaskRow {task} />

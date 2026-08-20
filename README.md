@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img src="site/screenshots/today.png" alt="The Today view: projects, filters and labels in the sidebar, beside the tasks due today." width="900">
+  <img src="docs/screenshots/today.png" alt="The Today view: projects, filters and labels in the sidebar, beside the tasks due today." width="900">
 </p>
 
 ---
@@ -35,6 +35,11 @@ mail-to-task address, and an MCP endpoint so Claude can work your task list dire
   in Firma, labelled regnskab. Danish and English, mixed freely in one line.
 - **Projects, sections, sub-tasks, labels, saved filters.** List, board and calendar
   views, and foldable groups over the projects in the sidebar.
+- **Notes, beside the work.** Rich text that is Markdown underneath — headings,
+  lists, quotes, fenced code. A note is shared by filing it in a project;
+  `#project` and `[[another note]]` are links, and a task shows the notes that
+  mention it. A zip of Markdown goes in — Obsidian, Bear, or Apple Notes through
+  the exporter in [`tools/`](tools/) — and comes back out the same shape.
 - **Drag where it means something.** Reorder a list or a board, file a project under
   a group, drop a task on another project, or drop it on another day.
 - **Sharing.** Owner, editor and viewer roles. There is no open registration:
@@ -90,6 +95,8 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | Project templates | Done, tested |
 | Nightly backups with rotation | Done, tested |
 | Comments, attachments, notifications, Web Push | Built |
+| Notes: rich text, Markdown on disk, links to projects, notes and tasks | Done, tested |
+| Notes in and out: a zip of Markdown, both directions | Done, tested |
 | Todoist CSV import and export, account export | Done, tested |
 | MCP server for Claude | Done, tested |
 | CalDAV server (two-way VTODO) | Done, tested |
@@ -116,17 +123,20 @@ accented `o` and a Danish-first app that cannot do this is broken for its own us
 
 | | |
 |---|---|
-| ![Board view](site/screenshots/board.png) | ![Light theme](site/screenshots/today-light.png) |
+| ![Board view](docs/screenshots/board.png) | ![Light theme](docs/screenshots/today-light.png) |
 | Board view — one column per section. | The light theme. |
-| ![A week on Upcoming](site/screenshots/week.png) | ![A task, opened](site/screenshots/detail.png) |
-| A week at a time, so a task can be dragged across a month boundary. | A task, opened. |
-| ![The five themes](site/screenshots/themes.png) | ![Instance history](site/screenshots/history.png) |
-| Five themes, all measured for contrast. | What has been done on the server. |
+| ![A week on Upcoming](docs/screenshots/week.png) | ![A task, opened](docs/screenshots/detail.png) |
+| A week at a time, so a task can be dragged across a month boundary. | A task, opened: description, priority, labels, sub-tasks and its files. |
+| ![Notes](docs/screenshots/notes.png) | ![The same note as Markdown](docs/screenshots/notes-source.png) |
+| Notes, filed in a project to share them. | The same note as its source — which is what the export writes to disk. |
+| ![Themes and looks](docs/screenshots/themes.png) | ![Instance history](docs/screenshots/history.png) |
+| Five themes and four looks: how bright, and how it reads. | What has been done on the server. |
 
 Regenerate these with `node scripts/generate-screenshots.js` from `web/`. It starts
-the real binary, creates its own account, fills it with demo data and photographs
-eleven surfaces — nothing to set up and nothing to remember. (`go run ./tools/shots`
-still works, and is the way to photograph an instance that is already running.)
+the real binary, creates its own account and a second one to share with, fills them
+with demo data and photographs fourteen surfaces — nothing to set up and nothing to
+remember. (`go run ./tools/shots` still works, and is the way to photograph an
+instance that is already running.)
 
 ## Running it
 

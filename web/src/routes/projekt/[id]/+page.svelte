@@ -581,8 +581,9 @@
 								>{entry.user_name || t('history.deletedAccount')}</span
 							>
 							<span class="what">
-								{eventName(entry.event)}{#if eventDetail(entry)}
-									<span class="detail">{eventDetail(entry)}</span>{/if}
+								{eventName(entry.event)}{#if eventDetail(entry)}{' '}<span class="detail"
+										>{eventDetail(entry)}</span
+									>{/if}
 							</span>
 							<span class="when">{when(entry.created_at)}</span>
 						</li>
