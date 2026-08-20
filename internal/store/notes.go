@@ -35,6 +35,14 @@ type NoteLink struct {
 const noteColumns = `id, project_id, title, body, created_by, pinned,
 	created_at, updated_at, deleted_at`
 
+// The same columns, said with the table in front of them.
+//
+// Needed only by the search, which joins `notes_fts` — and that table carries its
+// own `id` and `project_id` (UNINDEXED, so the row can be found from a match).
+// Unqualified, SQLite cannot tell which one is meant and refuses the query.
+const noteColumnsQualified = `notes.id, notes.project_id, notes.title, notes.body,
+	notes.created_by, notes.pinned, notes.created_at, notes.updated_at, notes.deleted_at`
+
 // Reference syntax, and deliberately the same characters the quick-add parser
 // already uses. A `#Firma` in a note means the same project as a `#Firma` typed
 // into the task box — not a second kind of tag that happens to look alike. That
@@ -238,12 +246,27 @@ func (db *DB) SearchNotes(ctx context.Context, query string, limit int) ([]Note,
 	if expr == "" {
 		return nil, nil
 	}
-	// By rowid, the way tasks do it: `id` is UNINDEXED in the table, so selecting
-	// on it would work and read the whole index to do it.
-	return db.notesWhere(ctx, `
-		WHERE deleted_at IS NULL
-		  AND rowid IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH ?)
-		ORDER BY updated_at DESC
+	// Ordered by how well it matched, not by when it was last touched.
+	//
+	// `ORDER BY updated_at DESC` was invisible while there were ten notes and
+	// useless at twelve hundred: every one of them was imported the same evening,
+	// so `updated_at` says nothing, and the limit then cut the list at fifty
+	// arbitrary rows. Searching "Tesla" answered with a note about nginx first and
+	// the note actually called "Tesla Model Y" second — which reads as a search
+	// that does not work, because from where the person is sitting it is one.
+	//
+	// bm25 with the title weighted ten times the body. A word in the title is what
+	// the note is *about*; the same word once in a long body is a mention. `fold`
+	// carries the same text transliterated, so it must weigh the same as the body
+	// or a Danish match would outrank an exact one.
+	//
+	// Joined rather than `rowid IN (…)`: the rank belongs to the match, and a
+	// subquery throws it away.
+	return db.notesJoin(ctx, noteColumnsQualified, `
+		JOIN notes_fts ON notes_fts.rowid = notes.rowid
+		WHERE notes.deleted_at IS NULL
+		  AND notes_fts MATCH ?
+		ORDER BY bm25(notes_fts, 10.0, 1.0, 1.0)
 		LIMIT ?`, expr, limit)
 }
 
@@ -295,7 +318,13 @@ func (db *DB) RestoreNote(ctx context.Context, id string) error {
 }
 
 func (db *DB) notesWhere(ctx context.Context, where string, args ...any) ([]Note, error) {
-	rows, err := db.QueryContext(ctx, `SELECT `+noteColumns+` FROM notes `+where, args...)
+	return db.notesJoin(ctx, noteColumns, where, args...)
+}
+
+// notesJoin is notesWhere with the column list spelled out, for the one caller
+// that joins another table and must therefore say which `id` it means.
+func (db *DB) notesJoin(ctx context.Context, columns, where string, args ...any) ([]Note, error) {
+	rows, err := db.QueryContext(ctx, `SELECT `+columns+` FROM notes `+where, args...)
 	if err != nil {
 		return nil, err
 	}

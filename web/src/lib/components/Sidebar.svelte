@@ -363,6 +363,15 @@
 		overProject = project.id;
 	}
 
+	/**
+	 * Et slip på et projekt, uanset hvad der bliver sluppet.
+	 *
+	 * Rækken kaldte den her for opgaver og lod noter falde ned i grenen, der
+	 * omarrangerer projekter — hvor en note ikke betyder noget. Samtidig tog
+	 * `onTaskDragOver` imod begge, så rækken lyste op, når en note blev trukket hen
+	 * over den. Den værst mulige form for i stykker: den så ud, som om den ville
+	 * virke, helt indtil man slap.
+	 */
 	async function onTaskDrop(event, project) {
 		event.preventDefault();
 		overProject = null;
@@ -569,14 +578,17 @@
 			ondragstart={(e) => sortable && onDragStart(e, project)}
 			ondragend={clearDrag}
 			ondragover={(e) => {
-				if (carries(e, TASK)) onTaskDragOver(e, project);
+				if (carries(e, TASK) || carries(e, NOTE)) onTaskDragOver(e, project);
 				else if (sortable) onDragOver(e, project);
 			}}
 			ondragleave={() => {
 				overId = null;
 				overProject = null;
 			}}
-			ondrop={(e) => (carries(e, TASK) ? onTaskDrop(e, project) : sortable && onDrop(e, project))}
+			ondrop={(e) =>
+				carries(e, TASK) || carries(e, NOTE)
+					? onTaskDrop(e, project)
+					: sortable && onDrop(e, project)}
 		>
 			<span class="dot" style="background: {colorVar(project.color)}" aria-hidden="true"></span>
 			{projectName(project)}

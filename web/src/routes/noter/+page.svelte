@@ -53,7 +53,16 @@
 
 	// Favoritter står øverst uanset rækkefølge. Det er hele meningen med at gøre en
 	// note til favorit, og en sortering, der blandede dem ind igen, ville tage den.
-	let ordered = $derived(
+	let ordered = $derived.by(() => {
+		// En søgning har allerede en rækkefølge, og den er bedre end nogen af de
+		// tre herunder: serveren har sorteret efter hvor godt hver note matchede.
+		// Sorterede vi den om efter dato, ville vi kaste netop det væk, der gør en
+		// søgning i tolv hundrede noter brugbar.
+		if (query.trim()) return notes;
+		return sortedByChoice();
+	});
+
+	const sortedByChoice = () =>
 		[...notes].sort((a, b) => {
 			if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
 			if (order === 'title') {
@@ -61,8 +70,7 @@
 			}
 			const field = order === 'created' ? 'created_at' : 'updated_at';
 			return new Date(b[field]).getTime() - new Date(a[field]).getTime();
-		})
-	);
+		});
 	let selected = $state(null);
 	let query = $state('');
 	let status = $state('loading');
@@ -150,6 +158,14 @@
 
 		return at.toLocaleDateString(tag(), { day: '2-digit', month: '2-digit', year: 'numeric' });
 	}
+
+	/** Hvilken dato rækken viser: den, der sorteres efter. */
+	const shownDate = (note) => (order === 'created' ? note.created_at : note.updated_at);
+
+	/** Begge datoer, til den, der holder musen stille. */
+	const stamp = (note) =>
+		`${t('notes.sortCreated')}: ${new Date(note.created_at).toLocaleString(tag())}\n` +
+		`${t('notes.sortUpdated')}: ${new Date(note.updated_at).toLocaleString(tag())}`;
 
 	function projectName(id) {
 		return app.projects.find((p) => p.id === id)?.name ?? '';
@@ -329,7 +345,12 @@
 								     linjer pr. note frem for tre, og datoen er dét, man skanner
 								     efter, når man leder efter noget, man skrev i tirsdags. -->
 								<span class="under">
-									<span class="when">{when(note.updated_at)}</span>
+									<!-- Datoen, der svarer til den rækkefølge, listen står i.
+									     Den viste altid `updated_at`, og for tolv hundrede
+									     importerede noter er det i aftes — så en note fra 2017
+									     stod som "i går", og den dato, man sorterede efter, var
+									     ingen steder at se. -->
+									<span class="when" title={stamp(note)}>{when(shownDate(note))}</span>
 									<span class="preview">{plain(note.body)}</span>
 								</span>
 								{#if note.project_id}

@@ -2740,3 +2740,57 @@ test('en note kan oprettes inde fra et projekt og hører til det med det samme',
 
 	expect(trouble).toEqual([]);
 });
+
+test('en note kan trækkes hen på et projekt i sidebjælken', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await page.goto('/');
+	await sidebar.getByLabel('Nyt projekt').click();
+	await sidebar.getByLabel('Projektnavn').fill('Trækmål');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(sidebar.getByRole('link', { name: 'Trækmål' })).toBeVisible();
+
+	const id = await page.evaluate(async () => {
+		const r = await fetch('/api/v1/notes', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+			body: JSON.stringify({ body: '# Løs note\n\nSkal flyttes ved at trække.\n' })
+		});
+		return (await r.json()).id;
+	});
+
+	await page.goto('/noter?note=' + id);
+	await page.evaluate((noteId) => (window.__noteId = noteId), id);
+	const row = page.locator('.notes button.row').filter({ hasText: 'Løs note' }).first();
+	await expect(row).toBeVisible();
+
+	// Selve gesten, med de rigtige hændelser og den nyttelast, appen sender.
+	// Rækken tog imod dragover og lod slippet falde ned i grenen, der omarrangerer
+	// projekter — så den lyste op og gjorde ingenting. Prøven skal derfor gå hele
+	// vejen til slippet og se på resultatet, ikke på at rækken blev fremhævet.
+	await page.evaluate(() => {
+		const dt = new DataTransfer();
+		dt.setData('application/x-verdande-note', window.__noteId);
+		const target = [...document.querySelectorAll('nav a')].find((a) =>
+			a.textContent.includes('Trækmål')
+		);
+		for (const type of ['dragover', 'drop']) {
+			target.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));
+		}
+	});
+	await page.waitForTimeout(1000);
+
+	// Det, der tæller: noten ligger i projektet bagefter.
+	const body = await page.evaluate(async (noteId) => {
+		const r = await fetch('/api/v1/notes/' + noteId, {
+			credentials: 'include',
+			headers: { 'Sec-Fetch-Site': 'same-origin' }
+		});
+		return await r.json();
+	}, id);
+	expect(body.project_id).toBeTruthy();
+
+	expect(trouble).toEqual([]);
+});

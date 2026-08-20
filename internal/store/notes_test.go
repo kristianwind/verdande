@@ -333,3 +333,39 @@ func TestATagFindsItsProjectWhateverTheCase(t *testing.T) {
 		t.Error("a note title did not match itself")
 	}
 }
+
+// En søgning skal svare med det, der passer bedst, øverst.
+//
+// Den sorterede efter `updated_at`, hvilket var usynligt med ti noter og
+// ubrugeligt med tolv hundrede: de blev alle importeret samme aften, så datoen
+// siger ingenting, og loftet skar så listen af ved halvtreds tilfældige rækker.
+// At søge "Tesla" svarede med en note om nginx først og noten, der hedder "Tesla
+// Model Y", bagefter — hvilket læses som en søgning, der ikke virker, fordi det
+// fra brugerens plads er præcis dét.
+func TestSearchAnswersWithTheBestMatchFirst(t *testing.T) {
+	db, userID := sealedStore(t)
+	ctx := context.Background()
+
+	// Skrevet i den rækkefølge, der ville give det forkerte svar: den, der kun
+	// nævner ordet i kroppen, gemmes sidst og har derfor den nyeste dato.
+	for _, body := range []string{
+		"# Tesla Model Y\n\nBilen selv.\n",
+		"# Ladestandere\n\nNoter om Tesla og andre mærker.\n",
+		"# nginx proxy manager backup\n\nEn konfiguration. Tesla nævnes i forbifarten.\n",
+	} {
+		if err := db.SaveNote(ctx, &Note{CreatedBy: userID, Body: body}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	found, err := db.SearchNotes(ctx, "Tesla", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 3 {
+		t.Fatalf("fandt %d noter, ventede 3", len(found))
+	}
+	if found[0].Title != "Tesla Model Y" {
+		t.Errorf("øverst stod %q; den note, der hedder det, man søgte efter, skal stå først", found[0].Title)
+	}
+}
