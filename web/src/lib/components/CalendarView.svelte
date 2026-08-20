@@ -279,6 +279,146 @@
 		if (!id) return;
 		await app.reschedule(id, iso(date));
 	}
+
+	// --- ugen som et døgn ---------------------------------------------------------
+	//
+	// En uge, hvor hver dag er en punktopstilling, svarer på "hvad skal der ske
+	// torsdag" og ikke på "hvornår" — og det andet er det, man åbner en uge for.
+	// To møder klokken ti er en konflikt, man skal kunne *se*, ikke læse sig til.
+	//
+	// Måneden bliver som den er. En dag i en månedsrude er halvanden centimeter høj;
+	// et døgn tegnet i den er ikke en visning, det er en streg.
+
+	/** Minutter siden midnat, læst ud af strengen. */
+	const minutesAt = (stamp) => Number(stamp.slice(11, 13)) * 60 + Number(stamp.slice(14, 16));
+
+	const clock = (minutes) =>
+		`${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+
+	/**
+	 * Det, der har et klokkeslæt på denne dag, med start og slut i minutter.
+	 *
+	 * Begivenheder læses som tekst, af samme grund som `timeOn` gør det: Google
+	 * skriver begivenhedens egen forskydning ind i stemplet, og at give det til
+	 * browseren spørger *denne maskine*, hvad klokken er. Opgaver læses med `Date`,
+	 * fordi det er sådan TaskRow gør det ét skærmbillede væk — en opgaves tid er
+	 * kontoens egen, og de to steder skal vise det samme tal.
+	 *
+	 * En begivenhed hen over midnat klippes til dagen. Uden det ville et møde fra
+	 * fredag aften til lørdag morgen blive tegnet fra 20:00 til 09:00, altså baglæns.
+	 */
+	function timedOn(date) {
+		const day = iso(date);
+		const out = [];
+
+		for (const event of events) {
+			if (event.all_day || !event.starts_at) continue;
+			if (event.start_day > day || event.end_day < day) continue;
+			const from = event.start_day === day ? minutesAt(event.starts_at) : 0;
+			let to = 24 * 60;
+			if (event.ends_at && event.end_day === day) to = minutesAt(event.ends_at);
+			else if (!event.ends_at) to = from + 60;
+			// Et kvarters gulv: et nulminuts møde er stadig noget, der skal kunne ses
+			// og klikkes på.
+			out.push({ kind: 'event', ref: event, from, to: Math.max(to, from + 15) });
+		}
+
+		for (const task of tasksOn(date)) {
+			if (!task.due_datetime) continue;
+			const at = new Date(task.due_datetime);
+			const from = at.getHours() * 60 + at.getMinutes();
+			out.push({ kind: 'task', ref: task, from, to: from + 30 });
+		}
+
+		return out.toSorted((a, b) => a.from - b.from || a.to - b.to);
+	}
+
+	/** Det uden klokkeslæt: heldagsbegivenheder og opgaver, der kun har en dato. */
+	function untimedOn(date) {
+		return [
+			...eventsOn(date)
+				.filter((e) => e.all_day || !e.starts_at)
+				.map((e) => ({ kind: 'event', ref: e })),
+			...tasksOn(date)
+				.filter((t) => !t.due_datetime)
+				.map((t) => ({ kind: 'task', ref: t }))
+		];
+	}
+
+	/**
+	 * To ting på samme tid står ved siden af hinanden, ikke oven på hinanden.
+	 *
+	 * Sammenhængende klynger frem for parvise sammenligninger: overlapper A med B og
+	 * B med C, skal alle tre dele bredden — også når A og C ikke rører hinanden.
+	 * Ellers ville A og C hver tro, de havde halvdelen, og lægge sig oven på hver sin
+	 * halvdel af B.
+	 */
+	function packed(items) {
+		const out = [];
+		let cluster = [];
+		let end = -1;
+
+		const flush = () => {
+			const lanes = [];
+			for (const item of cluster) {
+				let lane = lanes.findIndex((free) => free <= item.from);
+				if (lane === -1) {
+					lane = lanes.length;
+					lanes.push(0);
+				}
+				lanes[lane] = item.to;
+				item.lane = lane;
+			}
+			for (const item of cluster) item.lanes = lanes.length;
+			out.push(...cluster);
+			cluster = [];
+			end = -1;
+		};
+
+		for (const item of items) {
+			if (cluster.length && item.from >= end) flush();
+			cluster.push(item);
+			end = Math.max(end, item.to);
+		}
+		if (cluster.length) flush();
+		return out;
+	}
+
+	/**
+	 * Hvilke timer der tegnes.
+	 *
+	 * Et helt døgn er fireogtyve rækker, hvoraf de otte altid er tomme, og så er
+	 * gitteret noget man ruller i frem for noget man ser. Arbejdsdagen er gulvet, og
+	 * ugens egne begivenheder skubber kanterne ud, når de ligger uden for den — en
+	 * vagt klokken fem om morgenen kommer med, uden at alle andre uger betaler for
+	 * den med tomme rækker.
+	 */
+	let hours = $derived.by(() => {
+		let from = 8;
+		let to = 18;
+		if (span === 'week') {
+			for (const date of grid) {
+				for (const item of timedOn(date)) {
+					from = Math.min(from, Math.floor(item.from / 60));
+					to = Math.max(to, Math.ceil(item.to / 60));
+				}
+			}
+		}
+		from = Math.max(0, from);
+		to = Math.min(24, Math.max(to, from + 1));
+		return { from, to, count: to - from, minutes: (to - from) * 60 };
+	});
+
+	/** Hvor på døgnet noget står, som procent af de timer, der tegnes. */
+	function place(item) {
+		const top = Math.max(0, ((item.from - hours.from * 60) / hours.minutes) * 100);
+		const height = ((item.to - item.from) / hours.minutes) * 100;
+		const width = 100 / item.lanes;
+		return (
+			`top:${top}%;height:${Math.min(height, 100 - top)}%;` +
+			`left:${item.lane * width}%;width:${width}%`
+		);
+	}
 </script>
 
 <div class="calendar" class:week={span === 'week'}>
@@ -296,95 +436,195 @@
 		<button class="today" onclick={() => (cursor = startOfSpan(new Date()))}>{t('task.today')}</button>
 	</header>
 
-	<div class="weekdays" aria-hidden="true">
-		{#each WEEKDAYS as day}
-			<span>{day}</span>
-		{/each}
-	</div>
+	<!--
+		Én brik, tegnet ét sted.
 
-	<div class="grid">
-		{#each grid as date (date.toISOString())}
-			{@const dayEvents = eventsOn(date)}
-			<!-- Events first, then whatever room is left goes to tasks. An event is
-			     fixed to a time somebody else chose; a task is only dated, and if
-			     something in a full cell has to fall behind "+3 mere", it should be
-			     the one that can be moved. -->
-			{@const tasks = tasksOn(date).slice(0, Math.max(0, chipLimit - dayEvents.length))}
-			{@const hidden =
-				tasksOn(date).length - tasks.length + Math.max(0, dayEvents.length - chipLimit)}
-			<!-- A week has no outside: every day in it is the week you asked for. -->
-			{@const outside = span !== 'week' && date.getMonth() !== cursor.getMonth()}
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div
-				class="day"
-				data-date={iso(date)}
-				class:outside
-				class:today={iso(date) === todayISO}
-				class:over={over === iso(date)}
-				ondragover={(e) => onDragOver(e, date)}
-				ondragleave={() => (over = null)}
-				ondrop={(e) => onDrop(e, date)}
-			>
-				<!-- The weekday strip above the grid is enough on a wide screen. A week
-				     stacked into rows on a phone hides it, and a column of bare numbers
-				     is not a week — so the cell carries its own name there. -->
-				{#if span === 'week'}
-					<span class="weekday">{WEEKDAYS[(date.getDay() + 6) % 7]}</span>
-				{/if}
-				<span class="number">{date.getDate()}</span>
+		Måneden og ugen viser de samme to ting og skal vise dem ens — men de placerer
+		dem forskelligt: måneden lader dem stå i rækkefølge i en rude, ugen sætter
+		dem på et klokkeslæt. Det er placeringen, der er forskellig, ikke brikken, så
+		det er kun placeringen, der står to steder.
 
-				{#each dayEvents.slice(0, chipLimit) as event (event.id)}
-					{@const link = linkOf(event)}
-					{@const label = t('cal.eventCannotMove', {
-						name: event.summary,
-						calendar: event.calendar_name || t('cal.title')
-					})}
-					<!-- Not draggable, and it says so twice: the attribute stops the
-					     browser dragging an anchor of its own accord, and the title says
-					     why to anybody who tries. The drop targets would refuse it anyway
-					     — they only accept the task MIME type — but a chip that lifts off
-					     the page and then will not land reads as a bug rather than as a
-					     rule. It is also not a button: there is nothing here to complete,
-					     and a checkbox next to a meeting is an offer verdande cannot keep. -->
-					<svelte:element
-						this={link ? 'a' : 'span'}
-						class="event"
-						class:allday={event.all_day}
-						draggable="false"
-						href={link || undefined}
-						target={link ? '_blank' : undefined}
-						rel={link ? 'noreferrer noopener' : undefined}
-						title={link ? `${label} — ${t('cal.openInGoogle')}` : label}
-						style={swatch(event.colour) ? `--event-colour: ${swatch(event.colour)}` : undefined}
-					>
-						{#if timeOn(event, date)}<span class="at">{timeOn(event, date)}</span>{/if}
-						{event.summary}
-					</svelte:element>
+		`extra` er den absolutte placering i ugegitteret og tom i måneden. `at` er
+		klokkeslættet, når det ikke allerede står i brikken selv.
+	-->
+	{#snippet eventChip(event, date, kind, extra = '', at = '')}
+		{@const link = linkOf(event)}
+		{@const label = t('cal.eventCannotMove', {
+			name: event.summary,
+			calendar: event.calendar_name || t('cal.title')
+		})}
+		<!-- Not draggable, and it says so twice: the attribute stops the browser
+		     dragging an anchor of its own accord, and the title says why to anybody
+		     who tries. The drop targets would refuse it anyway — they only accept the
+		     task MIME type — but a chip that lifts off the page and then will not land
+		     reads as a bug rather than as a rule. It is also not a button: there is
+		     nothing here to complete, and a checkbox next to a meeting is an offer
+		     verdande cannot keep. -->
+		<svelte:element
+			this={link ? 'a' : 'span'}
+			class={kind}
+			class:allday={event.all_day}
+			draggable="false"
+			href={link || undefined}
+			target={link ? '_blank' : undefined}
+			rel={link ? 'noreferrer noopener' : undefined}
+			title={link ? `${label} — ${t('cal.openInGoogle')}` : label}
+			style={[swatch(event.colour) ? `--event-colour: ${swatch(event.colour)}` : '', extra]
+				.filter(Boolean)
+				.join(';')}
+		>
+			{#if at}<span class="at">{at}</span>{:else if timeOn(event, date)}<span class="at"
+					>{timeOn(event, date)}</span
+				>{/if}
+			{event.summary}
+		</svelte:element>
+	{/snippet}
+
+	{#snippet taskChip(task, kind, extra = '', at = '')}
+		<!-- Draggable as well as clickable: moving something to another day is the
+		     whole reason to be looking at a calendar. The browser needs a few pixels
+		     of movement before it calls a press a drag, so the click survives. -->
+		<button
+			class={kind}
+			data-priority={task.priority}
+			draggable="true"
+			ondragstart={(e) => startDrag(e, TASK, task.id)}
+			ondragend={() => (over = null)}
+			onclick={() => onselect?.(task)}
+			style={extra}
+		>
+			{#if at}<span class="at">{at}</span>{/if}
+			{task.content}
+		</button>
+	{/snippet}
+
+	{#if span === 'week'}
+		<!-- Ugen som et døgn, ikke som syv punktopstillinger.
+		     Rullet vandret på en smal skærm frem for stablet til én søjle: der er
+		     ét sæt afleveringsmål her, og et andet sæt til telefonen ville være
+		     endnu et sted, den samme regel kunne være næsten rigtig. -->
+		<div class="weekwrap">
+			<div class="weekgrid" style="--hours: {hours.count}">
+				<div class="corner"></div>
+				{#each grid as date (date.toISOString())}
+					<div class="head" class:today={iso(date) === todayISO}>
+						<span class="wd">{WEEKDAYS[(date.getDay() + 6) % 7]}</span>
+						<span class="num">{date.getDate()}</span>
+					</div>
 				{/each}
 
-				{#each tasks as task (task.id)}
-					<!-- Draggable as well as clickable: within a month, moving something
-					     to another day is the whole reason to be looking at a month. The
-					     browser needs a few pixels of movement before it calls a press a
-					     drag, so the click survives. -->
-					<button
-						class="chip"
-						data-priority={task.priority}
-						draggable="true"
-						ondragstart={(e) => startDrag(e, TASK, task.id)}
-						ondragend={() => (over = null)}
-						onclick={() => onselect?.(task)}
+				<!-- Båndet foroven: det, der ikke har et klokkeslæt og derfor ikke kan
+				     stå ét sted på døgnet. En heldagsbegivenhed lagt klokken nul ville
+				     påstå, den holdt fra midnat til midnat. -->
+				<div class="gutter">{t('cal.allDay')}</div>
+				{#each grid as date (date.toISOString())}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="allday"
+						data-allday={iso(date)}
+						class:over={over === iso(date)}
+						ondragover={(e) => onDragOver(e, date)}
+						ondragleave={() => (over = null)}
+						ondrop={(e) => onDrop(e, date)}
 					>
-						{task.content}
-					</button>
+						{#each untimedOn(date) as item (item.kind + item.ref.id)}
+							{#if item.kind === 'event'}
+								{@render eventChip(item.ref, date, 'event')}
+							{:else}
+								{@render taskChip(item.ref, 'chip')}
+							{/if}
+						{/each}
+					</div>
 				{/each}
 
-				{#if hidden > 0}
-					<span class="more">{t('view.more', { n: hidden })}</span>
-				{/if}
+				<div class="gutter times">
+					{#each Array(hours.count) as _, i}
+						<span class="hour">{clock((hours.from + i) * 60)}</span>
+					{/each}
+				</div>
+				{#each grid as date (date.toISOString())}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<!-- `data-date` er dagens navn udadtil. Månedens ruder har altid haft
+					     det, og ugens søjler skal have det af samme grund: det er sådan
+					     noget uden for komponenten peger på en dag — og det er det, en
+					     prøve slipper en opgave på. Heldagsbåndet får sit eget navn, så
+					     de to ikke bliver til det samme svar på ét spørgsmål. -->
+					<div
+						class="daycol"
+						data-date={iso(date)}
+						class:today={iso(date) === todayISO}
+						class:over={over === iso(date)}
+						ondragover={(e) => onDragOver(e, date)}
+						ondragleave={() => (over = null)}
+						ondrop={(e) => onDrop(e, date)}
+					>
+						{#each Array(hours.count) as _, i}
+							<div class="hourline" style="top:{(i / hours.count) * 100}%"></div>
+						{/each}
+						{#each packed(timedOn(date)) as item (item.kind + item.ref.id)}
+							{#if item.kind === 'event'}
+								{@render eventChip(item.ref, date, 'tevent', place(item))}
+							{:else}
+								{@render taskChip(item.ref, 'tevent task', place(item), clock(item.from))}
+							{/if}
+						{/each}
+					</div>
+				{/each}
 			</div>
-		{/each}
-	</div>
+		</div>
+	{:else}
+		<div class="weekdays" aria-hidden="true">
+			{#each WEEKDAYS as day}
+				<span>{day}</span>
+			{/each}
+		</div>
+
+		<div class="grid">
+			{#each grid as date (date.toISOString())}
+				{@const dayEvents = eventsOn(date)}
+				<!-- Events first, then whatever room is left goes to tasks. An event is
+				     fixed to a time somebody else chose; a task is only dated, and if
+				     something in a full cell has to fall behind "+3 mere", it should be
+				     the one that can be moved. -->
+				{@const tasks = tasksOn(date).slice(0, Math.max(0, chipLimit - dayEvents.length))}
+				{@const hidden =
+					tasksOn(date).length - tasks.length + Math.max(0, dayEvents.length - chipLimit)}
+				<!-- A week has no outside: every day in it is the week you asked for. -->
+				{@const outside = span !== 'week' && date.getMonth() !== cursor.getMonth()}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="day"
+					data-date={iso(date)}
+					class:outside
+					class:today={iso(date) === todayISO}
+					class:over={over === iso(date)}
+					ondragover={(e) => onDragOver(e, date)}
+					ondragleave={() => (over = null)}
+					ondrop={(e) => onDrop(e, date)}
+				>
+					<!-- The weekday strip above the grid is enough on a wide screen. A week
+					     stacked into rows on a phone hides it, and a column of bare numbers
+					     is not a week — so the cell carries its own name there. -->
+					{#if span === 'week'}
+						<span class="weekday">{WEEKDAYS[(date.getDay() + 6) % 7]}</span>
+					{/if}
+					<span class="number">{date.getDate()}</span>
+
+					{#each dayEvents.slice(0, chipLimit) as event (event.id)}
+						{@render eventChip(event, date, 'event')}
+					{/each}
+
+					{#each tasks as task (task.id)}
+						{@render taskChip(task, 'chip')}
+					{/each}
+
+					{#if hidden > 0}
+						<span class="more">{t('view.more', { n: hidden })}</span>
+					{/if}
+				</div>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -448,9 +688,19 @@
 		border: 1px solid var(--line);
 	}
 
+	/* `minmax(0, 1fr)` og ikke `1fr`.
+	 *
+	 * `1fr` er `minmax(auto, 1fr)`, og `auto` som minimum betyder, at en søjle ikke
+	 * kan blive smallere end sit længste ord. Én opgave, der hedder "Gårdbutikken på
+	 * Møllerup Gods — opfølgning på mail", gjorde onsdag dobbelt så bred som mandag
+	 * og klemte resten af ugen sammen om den. Syv dage er syv lige store dage; det
+	 * er hele idéen med et gitter.
+	 *
+	 * Nul som minimum lader søjlen blive så smal, den skal — og så er det brikkens
+	 * opgave at klippe sin tekst af, hvilket den allerede gør. */
 	.weekdays {
 		display: grid;
-		grid-template-columns: repeat(7, 1fr);
+		grid-template-columns: repeat(7, minmax(0, 1fr));
 		gap: 1px;
 		margin-bottom: var(--s2);
 	}
@@ -465,12 +715,174 @@
 
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(7, 1fr);
+		grid-template-columns: repeat(7, minmax(0, 1fr));
 		gap: 1px;
 		background: var(--line);
 		border: 1px solid var(--line);
 		border-radius: var(--radius);
 		overflow: hidden;
+	}
+
+	/* --- ugen som et døgn ---------------------------------------------------
+	 *
+	 * Et gitter med en tidsrende og syv dage, og tre rækker: dagenes navne, båndet
+	 * med det, der ikke har et klokkeslæt, og selve døgnet.
+	 *
+	 * Rullet vandret på en smal skærm frem for stablet til én søjle. Syv timeglas
+	 * ved siden af hinanden kan ikke blive smalle nok til en telefon, og en uge
+	 * stablet til en liste er præcis det, den her visning findes for at holde op
+	 * med at være. */
+	.weekwrap {
+		overflow-x: auto;
+	}
+
+	.weekgrid {
+		display: grid;
+		grid-template-columns: 3.25rem repeat(7, minmax(0, 1fr));
+		gap: 1px;
+		min-width: 640px;
+		background: var(--line);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		overflow: hidden;
+	}
+
+	.corner,
+	.head,
+	.gutter,
+	.allday,
+	.daycol {
+		background: var(--ground);
+	}
+
+	.head {
+		padding: var(--s2) var(--s1);
+		text-align: center;
+	}
+
+	.head .wd {
+		display: block;
+		font-size: var(--text-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--ink-faint);
+	}
+
+	.head .num {
+		font-size: var(--text-sm);
+	}
+
+	.head.today .num {
+		color: var(--accent);
+		font-weight: 560;
+	}
+
+	.gutter {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		padding: var(--s1) var(--s2);
+		font-size: var(--text-xs);
+		line-height: 1.2;
+		color: var(--ink-faint);
+		text-align: right;
+	}
+
+	.allday {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: var(--s1);
+		min-height: 1.75rem;
+	}
+
+	/* Rækken er lige så høj som de timer, den viser. `--hours` sættes på gitteret,
+	   fordi tallet kommer fra ugens egne begivenheder og ikke fra stilarket. */
+	.times {
+		display: grid;
+		align-items: start;
+		justify-content: stretch;
+		grid-template-rows: repeat(var(--hours), 1fr);
+		height: calc(var(--hours) * 3rem);
+		padding: 0 var(--s2) 0 0;
+	}
+
+	/* Klokkeslættet står ved sin egen streg og ikke midt i timen under den. */
+	.times .hour {
+		transform: translateY(-0.55em);
+		line-height: 1;
+	}
+
+	/* Undtagen det første, som ellers kravler op i heldagsbåndet: der er ingen streg
+	   over den første time — der er gitterets kant, og et tal, der ligger oven på
+	   den, ser ud til at høre til rækken ovenover. */
+	.times .hour:first-child {
+		transform: none;
+	}
+
+	.daycol {
+		position: relative;
+		height: calc(var(--hours) * 3rem);
+	}
+
+	.hourline {
+		position: absolute;
+		left: 0;
+		right: 0;
+		height: 1px;
+		background: var(--line);
+		pointer-events: none;
+	}
+
+	/* Den første streg er gitterets egen kant. */
+	.hourline:first-child {
+		display: none;
+	}
+
+	.allday.over,
+	.daycol.over {
+		background: var(--accent-sunken, var(--surface-raised));
+		box-shadow: inset 0 0 0 1px var(--accent);
+	}
+
+	/* Placeringen kommer fra `place()` som en inline `style`; alt andet står her.
+	   To ting på samme tid deler bredden, så `margin-right` er den ene hårstrå
+	   luft, der gør to kasser til to kasser. */
+	.tevent {
+		position: absolute;
+		margin-right: 2px;
+		overflow: hidden;
+		padding: 1px var(--s1);
+		border-radius: var(--radius-sm);
+		border-left: 3px solid var(--event-colour, var(--line-strong));
+		background: var(--surface-sunken);
+		color: var(--ink-muted);
+		font-size: var(--text-xs);
+		line-height: 1.3;
+		text-align: left;
+		text-decoration: none;
+	}
+
+	.tevent.task {
+		background: var(--surface-raised);
+		border-left-color: var(--line-strong);
+		color: var(--ink);
+		cursor: grab;
+	}
+
+	.tevent.task[data-priority='1'] {
+		border-left-color: var(--p1);
+	}
+	.tevent.task[data-priority='2'] {
+		border-left-color: var(--p2);
+	}
+	.tevent.task[data-priority='3'] {
+		border-left-color: var(--p3);
+	}
+
+	.tevent .at {
+		color: var(--ink-faint);
+		margin-right: 0.3em;
 	}
 
 	.day {

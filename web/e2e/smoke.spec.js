@@ -976,10 +976,19 @@ test('en opgave kan trækkes hen over et månedsskifte i uge-visningen', async (
 
 	const chip = page.locator('.chip').filter({ hasText: 'skifte dæk' });
 	await expect(chip).toBeVisible();
-	await chip.dragTo(page.locator(`[data-date="${to}"]`));
+	// Sluppet øverst i søjlen og ikke i midten af den. En uge, der viser et døgn, er
+	// højere end skærmen, så søjlens midte kan ligge uden for billedet — og et træk,
+	// der ruller undervejs, er et træk, browseren taber. Det er ikke en finte for at
+	// få prøven til at bestå: det er også sådan et menneske gør det, fordi man
+	// slipper der, hvor man kan se, man slipper.
+	await chip.dragTo(page.locator(`[data-date="${to}"]`), { targetPosition: { x: 30, y: 20 } });
 
-	await expect(page.locator(`[data-date="${to}"]`).getByText('skifte dæk')).toBeVisible();
-	await expect(page.locator(`[data-date="${from}"]`).getByText('skifte dæk')).toBeHidden();
+	// Sluppet på timesøjlen, landet i heldagsbåndet — og det er det rigtige sted.
+	// Et træk hen på en dag flytter datoen og sætter ikke et klokkeslæt, så opgaven
+	// har ingen tid at stå ved. `data-allday` er den anden halvdel af dagen: siden
+	// ugen blev et døgn, er en dag to kasser, og en prøve skal sige hvilken.
+	await expect(page.locator(`[data-allday="${to}"]`).getByText('skifte dæk')).toBeVisible();
+	await expect(page.locator(`[data-allday="${from}"]`).getByText('skifte dæk')).toBeHidden();
 
 	expect(trouble).toEqual([]);
 });
@@ -1131,10 +1140,14 @@ test('kalenderen viser Googles begivenheder over egne opgaver, og kun opgaven ka
 	await expect(page.getByText('Ingen kalender er forbundet endnu.')).toBeHidden();
 	await expect(page.getByText('Ingen af kontoens kalendere er valgt endnu.')).toBeHidden();
 
-	// Both kinds are in the same cell, which is the whole point of the view.
-	const event = cell.locator('.event').filter({ hasText: 'Bestyrelsesmøde' });
-	const allDay = cell.locator('.event').filter({ hasText: 'Feriedag' });
-	const task = cell.locator('.chip').filter({ hasText: 'vande blomster' });
+	// Begge slags på den samme dag, som er hele pointen med visningen — men en dag
+	// er to kasser nu, siden ugen blev et døgn: timesøjlen bærer det, der har et
+	// klokkeslæt, og båndet foroven bærer det, der ikke har. En heldagsbegivenhed
+	// lagt klokken nul ville påstå, den holdt fra midnat til midnat.
+	const band = page.locator(`[data-allday="${day}"]`);
+	const event = cell.locator('.tevent').filter({ hasText: 'Bestyrelsesmøde' });
+	const allDay = band.locator('.event').filter({ hasText: 'Feriedag' });
+	const task = band.locator('.chip').filter({ hasText: 'vande blomster' });
 	await expect(event).toBeVisible();
 	await expect(allDay).toBeVisible();
 	await expect(task).toBeVisible();
@@ -1159,11 +1172,19 @@ test('kalenderen viser Googles begivenheder over egne opgaver, og kun opgaven ka
 	await expect(event).toHaveAttribute('href', /^https:\/\/calendar\.google\.com\//);
 
 	// The task still reschedules by drag, in a grid that now has events in it.
-	await task.dragTo(page.locator(`[data-date="${next}"]`));
-	await expect(page.locator(`[data-date="${next}"]`).getByText('vande blomster')).toBeVisible();
-	await expect(cell.getByText('vande blomster')).toBeHidden();
+	// Sluppet øverst i søjlen og ikke i midten af den. En uge, der viser et døgn, er
+	// højere end skærmen, så søjlens midte kan ligge uden for billedet — og et træk,
+	// der ruller undervejs, er et træk, browseren taber. Det er ikke en finte for at
+	// få prøven til at bestå: det er også sådan et menneske gør det, fordi man
+	// slipper der, hvor man kan se, man slipper.
+	await task.dragTo(page.locator(`[data-date="${next}"]`), { targetPosition: { x: 30, y: 20 } });
+	// Landet i næste dags bånd: et træk hen på en dag flytter datoen og sætter ikke
+	// et klokkeslæt, så opgaven har ingen tid at stå ved.
+	await expect(page.locator(`[data-allday="${next}"]`).getByText('vande blomster')).toBeVisible();
+	await expect(band.getByText('vande blomster')).toBeHidden();
 	// The events stayed where they were; a rescheduled task moves nothing else.
-	await expect(cell.locator('.event')).toHaveCount(2);
+	await expect(cell.locator('.tevent')).toHaveCount(1);
+	await expect(band.locator('.event')).toHaveCount(1);
 
 	expect(trouble).toEqual([]);
 });
@@ -3091,4 +3112,101 @@ test('en note uden krop må ikke låse ruden', async ({ page }) => {
 		'ruden er låst: den næste note åbner ikke'
 	).toHaveText('Beta', { timeout: 5000 });
 	expect(errors, 'ruden efterlod en fejl bag sig').toEqual([]);
+});
+
+/**
+ * Ugen er et døgn, ikke syv punktopstillinger.
+ *
+ * En uge, hvor hver dag er en liste, svarer på "hvad skal der ske torsdag" og ikke
+ * på "hvornår" — og det andet er det, man åbner en uge for. To møder klokken ti er
+ * en konflikt, man skal kunne se, ikke læse sig til.
+ *
+ * Begivenhederne kommer fra en rute, der svarer i stedet for Google: det, der
+ * prøves her, er gitteret, og en prøve, der først skal have en OAuth-forbindelse,
+ * er en prøve, der aldrig kører.
+ */
+test('ugen viser et døgn, og dagene er lige brede', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+
+	// Mandag i den uge, siden åbner på.
+	const monday = (n) => {
+		const d = new Date();
+		d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + n);
+		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+			d.getDate()
+		).padStart(2, '0')}`;
+	};
+	const at = (n, from, to, id, summary) => ({
+		id,
+		calendar_id: 'c1',
+		summary,
+		starts_at: `${monday(n)}T${from}:00+02:00`,
+		ends_at: `${monday(n)}T${to}:00+02:00`,
+		start_day: monday(n),
+		end_day: monday(n),
+		all_day: false,
+		calendar_name: 'Privat'
+	});
+
+	await page.route('**/api/v1/calendar/events*', (route) =>
+		route.fulfill({
+			json: {
+				events: [
+					at(2, '09:00', '10:00', 'e1', 'Morgenmøde'),
+					at(2, '09:30', '11:00', 'e2', 'Oveni det første'),
+					at(2, '17:00', '18:00', 'e3', 'Sent på dagen'),
+					{
+						id: 'e4',
+						calendar_id: 'c1',
+						summary: 'Aalborg',
+						start_day: monday(1),
+						end_day: monday(1),
+						all_day: true,
+						calendar_name: 'Privat'
+					}
+				]
+			}
+		})
+	);
+
+	await page.goto('/kalender');
+	await page.getByRole('button', { name: 'Uge', exact: true }).click();
+	await expect(page.locator('.weekgrid')).toBeVisible();
+
+	// Syv lige brede dage. `1fr` er `minmax(auto, 1fr)`, så ét langt ord i én dag
+	// gjorde den bredere end de seks andre — hvilket er det modsatte af et gitter.
+	const widths = await page
+		.locator('.weekgrid .daycol')
+		.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
+	expect(widths, 'ugen har ikke syv søjler').toHaveLength(7);
+	expect(Math.max(...widths) - Math.min(...widths), 'dagene er ikke lige brede').toBeLessThanOrEqual(1);
+
+	// Klokken bestemmer, hvor noget står. Morgenmødet skal ligge over det sene.
+	const box = async (name) => (await page.locator('.tevent', { hasText: name }).first().boundingBox());
+	const morning = await box('Morgenmøde');
+	const evening = await box('Sent på dagen');
+	expect(morning.y, 'morgenmødet står ikke over det sene møde').toBeLessThan(evening.y);
+
+	// To ting på samme tid står ved siden af hinanden. Oven på hinanden er præcis
+	// den konflikt, visningen findes for at vise.
+	const overlapping = await box('Oveni det første');
+	expect(overlapping.x, 'de to overlappende ligger oven på hinanden').toBeGreaterThan(morning.x);
+	expect(overlapping.x, 'den anden er havnet i næste dag').toBeLessThan(morning.x + morning.width * 2);
+
+	// Heldagsting hører til båndet foroven: en heldagsbegivenhed lagt klokken nul
+	// ville påstå, den holdt fra midnat til midnat.
+	// `.weekgrid > .allday` er selve cellen; brikken indeni bærer også klassen.
+	await expect(page.locator('.weekgrid > .allday', { hasText: 'Aalborg' })).toBeVisible();
+
+	// Og måneden er stadig lige bred hele vejen rundt.
+	await page.getByRole('button', { name: 'Måned', exact: true }).click();
+	const monthWidths = await page
+		.locator('.grid .day')
+		.evaluateAll((els) => els.slice(0, 7).map((e) => Math.round(e.getBoundingClientRect().width)));
+	expect(
+		Math.max(...monthWidths) - Math.min(...monthWidths),
+		'månedens dage er ikke lige brede'
+	).toBeLessThanOrEqual(1);
+
+	expect(trouble).toEqual([]);
 });
