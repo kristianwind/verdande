@@ -6,12 +6,12 @@
 		<title>verdande — self-hosted tasks, shared</title>
 		<meta
 			name="description"
-			content="Self-hosted tasks and projects, shared. One Go binary with SQLite inside it. Your mail as an inbox, CalDAV, passkeys, and an MCP connector for Claude."
+			content="Self-hosted tasks, notes and projects, shared. One Go binary with SQLite inside it. Your mail as an inbox, a CalDAV server, notes in Markdown, passkeys, and an MCP connector for Claude."
 		/>
 		<meta name="theme-color" content="#111312" />
 
 		<meta property="og:title" content="verdande" />
-		<meta property="og:description" content="Self-hosted tasks and projects, shared. One binary, SQLite inside it." />
+		<meta property="og:description" content="Self-hosted tasks, notes and projects, shared. One binary, SQLite inside it." />
 		<meta property="og:type" content="website" />
 		<meta property="og:image" content="screenshots/today.webp" />
 		<meta property="og:image:alt" content="The Today view: projects and filters beside a list of what is due." />
@@ -76,10 +76,10 @@
 			}
 
 			.theme-toggle {
-				position: fixed;
-				top: 1rem;
-				right: 1rem;
-				z-index: 10;
+				/* In the bar now rather than floating over the corner. Fixed, it sat
+				   on top of whatever happened to scroll under it — on a narrow window
+				   that was the first screenshot's own corner. */
+				flex: none;
 				width: 2.25rem;
 				height: 2.25rem;
 				display: grid;
@@ -141,10 +141,86 @@
 				padding: 0 1.5rem;
 			}
 
+			/* --- the bar that stays -------------------------------------------
+
+			   A page this long had its only way out at the very top: somebody who
+			   read as far as "What it will not do" had to scroll back past nine
+			   screenshots to reach the documentation. The bar is the way out from
+			   wherever you are.
+
+			   `sticky` and not `fixed`: sticky keeps its space in the flow, so
+			   nothing below has to be pushed down by a number that then has to be
+			   kept in step with the bar's own height.
+
+			   Full width, with the wrap *inside* it. Put the other way round, the
+			   background would end where the column ends and the page would scroll
+			   past it on both sides. */
+			.topbar {
+				position: sticky;
+				top: 0;
+				z-index: 20;
+				background: var(--ground);
+				border-bottom: 1px solid var(--line);
+			}
+
+			.bar {
+				display: flex;
+				align-items: center;
+				gap: 1.25rem;
+				padding: 0.625rem 1.5rem;
+			}
+
+			.bar-brand {
+				display: flex;
+				align-items: center;
+				gap: 0.5rem;
+				color: var(--ink);
+				text-decoration: none;
+				font-weight: 560;
+				letter-spacing: -0.01em;
+			}
+
+			.bar-brand .rune {
+				color: var(--accent);
+				font-size: 1.125rem;
+				line-height: 1;
+			}
+
+			.bar-links {
+				display: flex;
+				align-items: center;
+				gap: 1.25rem;
+				margin-left: auto;
+				font-size: 0.875rem;
+			}
+
+			.bar-links a {
+				color: var(--ink-muted);
+				text-decoration: none;
+			}
+
+			.bar-links a:hover {
+				color: var(--ink);
+			}
+
+			/* The three in-page links go first on a narrow screen: they are the ones
+			   a phone can reach by scrolling anyway. Documentation and Source cannot
+			   be reached any other way, so they stay. */
+			@media (max-width: 640px) {
+				.bar-links .inpage {
+					display: none;
+				}
+			}
+
+			/* Or the bar covers the heading you just jumped to. */
+			:target {
+				scroll-margin-top: 4.5rem;
+			}
+
 			/* --- hero --- */
 
-			header {
-				padding: 6rem 0 4rem;
+			.hero {
+				padding: 5rem 0 3.5rem;
 				text-align: center;
 			}
 
@@ -172,7 +248,7 @@
 			}
 
 			.norn {
-				margin: 2rem auto 0;
+				margin: 0 auto 1.75rem;
 				max-width: 34rem;
 				font-size: 0.9375rem;
 				color: var(--ink-faint);
@@ -289,42 +365,102 @@
 
 			/* --- features --- */
 
+			/* A hairline between sections rather than under every heading: the page
+			   is one column, and the line says where one subject stops. */
 			section {
-				padding: 3rem 0;
+				padding: 3.5rem 0;
+				border-top: 1px solid var(--line);
 			}
 
 			h2 {
+				display: flex;
+				align-items: baseline;
+				gap: 0.75rem;
 				font-size: 1.5rem;
 				font-weight: 560;
 				letter-spacing: -0.02em;
 				margin: 0 0 2rem;
 			}
 
+			/* A short accent rule in front of every h2. The sections had nothing to
+			   mark them but their own words, and at a glance the page read as one
+			   long run of paragraphs. */
+			h2::before {
+				content: '';
+				flex: none;
+				width: 1.125rem;
+				height: 2px;
+				border-radius: 1px;
+				background: var(--accent);
+				transform: translateY(-0.35em);
+			}
+
+			/* Three groups rather than eighteen cards in a row. Grouped, the list is
+			   read as three answers — what it does, what it talks to, what it
+			   promises — and any of the three can be skipped. */
+			.group-label {
+				margin: 2.5rem 0 1rem;
+				font-size: 0.75rem;
+				font-weight: 560;
+				text-transform: uppercase;
+				letter-spacing: 0.08em;
+				color: var(--ink-faint);
+			}
+
+			.group-label:first-of-type {
+				margin-top: 0;
+			}
+
+			/* Cards with their own edges, not cells in one table.
+			   The table shared a hairline grid, which meant the last row had to be
+			   full or it was a hole in the drawing — and it was a hole, for as long
+			   as there were ten of them. A card that stands alone on its row is a
+			   card; an empty cell is a mistake. */
 			.grid {
 				display: grid;
-				grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-				gap: 1px;
-				background: var(--line);
-				border: 1px solid var(--line);
-				border-radius: var(--radius-lg);
-				overflow: hidden;
+				grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+				gap: 0.875rem;
 			}
 
 			.cell {
-				background: var(--ground);
-				padding: 1.5rem;
+				background: var(--surface);
+				border: 1px solid var(--line);
+				border-radius: var(--radius-lg);
+				padding: 1.125rem 1.25rem 1.25rem;
+				transition: border-color 150ms ease;
+			}
+
+			.cell:hover {
+				border-color: var(--line-strong);
 			}
 
 			.cell h3 {
-				margin: 0 0 0.5rem;
-				font-size: 1rem;
+				margin: 0 0 0.4375rem;
+				font-size: 0.9375rem;
 				font-weight: 560;
 			}
 
 			.cell p {
 				margin: 0;
-				font-size: 0.9375rem;
+				font-size: 0.875rem;
 				color: var(--ink-muted);
+			}
+
+			.cell code {
+				font-family: var(--font-mono);
+				font-size: 0.8125em;
+				color: var(--ink);
+			}
+
+			/* A card that has something to admit rather than something to offer.
+			   It is not a footnote and it is not fine print: it is the same size as
+			   everything else, and it says the same thing the README says. */
+			.cell .caveat {
+				margin: 0.5rem 0 0;
+				padding-top: 0.5rem;
+				border-top: 1px solid var(--line);
+				font-size: 0.8125rem;
+				color: var(--ink-faint);
 			}
 
 			/* --- install --- */
@@ -372,6 +508,109 @@
 				max-width: 32rem;
 				font-size: 0.9375rem;
 				color: var(--ink-muted);
+			}
+
+			/* Four facts under the buttons, in the place where a landing page usually
+			   puts logos it has not earned. They are the four questions somebody
+			   self-hosting asks before anything else. */
+			ul.facts {
+				list-style: none;
+				display: flex;
+				flex-wrap: wrap;
+				justify-content: center;
+				gap: 0.5rem 1.25rem;
+				margin: 2rem 0 0;
+				padding: 0;
+				font-size: 0.8125rem;
+				color: var(--ink-faint);
+			}
+
+			ul.facts li {
+				display: flex;
+				align-items: center;
+				gap: 1.25rem;
+			}
+
+			/* The separator belongs between two facts, not after the last one — so it
+			   is drawn by the item that follows it. */
+			ul.facts li + li::before {
+				content: '';
+				width: 3px;
+				height: 3px;
+				border-radius: 50%;
+				background: var(--line-strong);
+			}
+
+			/* On a phone the row wraps, and a separator drawn by the item that follows
+			   it lands at the *start* of the new line — a dot with nothing before it.
+			   No separators there; the wrap is the separation. */
+			@media (max-width: 640px) {
+				ul.facts {
+					gap: 0.375rem 1.125rem;
+				}
+
+				ul.facts li + li::before {
+					display: none;
+				}
+			}
+
+			/* Two ways to run it, side by side, because they are alternatives rather
+			   than steps. Stacked, the second read as what you do after the first. */
+			.panels {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+				gap: 0.875rem;
+			}
+
+			.panel {
+				background: var(--surface);
+				border: 1px solid var(--line);
+				border-radius: var(--radius-lg);
+				padding: 1.25rem;
+			}
+
+			.panel h3 {
+				margin: 0 0 0.5rem;
+				font-size: 0.9375rem;
+				font-weight: 560;
+			}
+
+			/* Sunk rather than raised: inside a card, a block in --surface would be
+			   the same colour as the card it sits in. */
+			.panel pre {
+				background: var(--ground);
+				margin: 1rem 0 0;
+			}
+
+			.panel p {
+				margin: 0;
+				font-size: 0.875rem;
+				color: var(--ink-muted);
+			}
+
+			/* The non-goals were one paragraph of seven sentences, which is the shape
+			   nobody reads. Each is its own line now, and they can be counted. */
+			ul.nogo {
+				list-style: none;
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+				gap: 0.5rem 1.75rem;
+				margin: 0;
+				padding: 0;
+				font-size: 0.9375rem;
+				color: var(--ink-muted);
+			}
+
+			ul.nogo li {
+				position: relative;
+				padding-left: 1.25rem;
+			}
+
+			ul.nogo li::before {
+				content: '—';
+				position: absolute;
+				left: 0;
+				color: var(--ink-faint);
 			}
 
 			.demo-note {
@@ -524,26 +763,37 @@
 	</head>
 
 	<body>
-		<button class="theme-toggle" type="button" aria-label="Switch between light and dark" title="Light or dark">
-			<span aria-hidden="true">◐</span>
-		</button>
-		<div class="wrap">
-			<header>
+		<div class="topbar">
+			<div class="wrap bar">
+				<a class="bar-brand" href="#top">
+					<span class="rune" aria-hidden="true">ᚹ</span>
+					verdande
+				</a>
+				<nav class="bar-links" aria-label="Sections">
+					<a class="inpage" href="#screens">Screens</a>
+					<a class="inpage" href="#features">Features</a>
+					<a class="inpage" href="#running">Running it</a>
+					<a href="https://kristianwind.github.io/verdande/">Documentation</a>
+					<a href="https://github.com/kristianwind/verdande">Source</a>
+					<button class="theme-toggle" type="button" aria-label="Switch between light and dark" title="Light or dark">
+						<span aria-hidden="true">◐</span>
+					</button>
+				</nav>
+			</div>
+		</div>
+
+		<div class="wrap" id="top">
+			<header class="hero">
 				<span class="mark" aria-hidden="true">ᚹ</span>
 				<h1>verdande</h1>
 				<p class="lede">
-					Self-hosted tasks and projects, shared with the people you share the work with.
-					One binary, SQLite inside it.
+					Self-hosted tasks, notes and projects, shared with the people you share the work
+					with. One binary, SQLite inside it.
 				</p>
 				<p class="rune-note">
 					Built to be deployed as a <strong>Rune</strong> in
 					<a href="https://github.com/kristianwind/yggdrasil">Yggdrasil Panel</a> — upload
 					the manifest, fill in two fields, press start. It also runs anywhere Docker does.
-				</p>
-				<p class="norn">
-					Verdande is one of the three Norns — the one who spins <em>that which is
-					becoming</em>. Not what has been, and not what is fated to be: the thing you are
-					in the middle of. Which is what a to-do list is.
 				</p>
 
 				<div class="actions">
@@ -553,6 +803,14 @@
 					<a class="button" href="https://github.com/kristianwind/verdande">Source</a>
 					<a class="button" href="https://kristianwind.github.io/verdande/">Documentation</a>
 				</div>
+
+				<ul class="facts">
+					<li>One Go binary</li>
+					<li>SQLite inside it</li>
+					<li>amd64 and arm64</li>
+					<li>No account anywhere but yours</li>
+					<li>MIT</li>
+				</ul>
 			</header>
 
 			<!-- No screenshot: the quick-add parser is the thing worth showing, and it
@@ -584,7 +842,7 @@
 				</div>
 			</div>
 
-			<section>
+			<section id="screens">
 				<h2>What it looks like</h2>
 				<figure class="shot only-dark">
 					<img
@@ -669,11 +927,43 @@
 						/>
 						<figcaption>What has been done on the server, across every project.</figcaption>
 					</figure>
+					<figure class="shot">
+						<img
+							src="screenshots/delegated.webp"
+							alt="Waiting on others: tasks that have been handed to somebody else, grouped under the person who has them."
+							width="1400"
+							height="900"
+							loading="lazy"
+						/>
+						<figcaption>Waiting on others — grouped by who has it.</figcaption>
+					</figure>
+					<figure class="shot">
+						<img
+							src="screenshots/notes-source.webp"
+							alt="A note with the source view open: the same note as Markdown, with headings, a list, a quotation, a wiki link and a fenced code block."
+							width="1400"
+							height="900"
+							loading="lazy"
+						/>
+						<figcaption>The same note as Markdown. What is on disk is what you see.</figcaption>
+					</figure>
+					<figure class="shot">
+						<img
+							src="screenshots/settings.webp"
+							alt="The integrations settings page: connecting Gmail with an OAuth client, and below it the calendar feed address."
+							width="1400"
+							height="900"
+							loading="lazy"
+						/>
+						<figcaption>Integrations: your mailbox, your calendar feed, your address.</figcaption>
+					</figure>
 				</div>
 			</section>
 
-			<section>
+			<section id="features">
 				<h2>What it does</h2>
+
+				<p class="group-label">Doing the work</p>
 				<div class="grid">
 					<div class="cell">
 						<h3>Reads what you type</h3>
@@ -683,20 +973,54 @@
 						</p>
 					</div>
 					<div class="cell">
-						<h3>Shared, properly</h3>
+						<h3>Nothing to remember</h3>
 						<p>
-							Owner, editor and viewer roles. People outside your instance join by
-							invite link. Changes appear live.
+							Start typing anywhere and you are writing a task, with the letter you
+							pressed already in the field. <code>⌘K</code> goes anywhere else.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Search that reads Danish</h3>
+						<p>
+							Type <code>gron</code> and find <code>grøn</code>. Unicode does not
+							consider <code>ø</code> an accented <code>o</code>, so a search that
+							leans on that alone is broken for the people this was built for.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Repeats, and says so in words</h3>
+						<p>
+							Recurring tasks are RRULE underneath and "every other Tuesday" on the
+							screen. Reminders are absolute or relative, and go out to the devices
+							you have allowed them on.
 						</p>
 					</div>
 					<div class="cell">
 						<h3>Notes, beside the work</h3>
 						<p>
-							Rich text to write in, Markdown on disk. File a note in a project and
-							everybody in it can read it; <code>#project</code> and
+							Rich text to write in, Markdown on disk — and a source view to see it.
+							Images are pasted or dragged in. <code>#project</code> and
 							<code>[[another note]]</code> are links, and a task shows what has been
-							written about it. A zip of Markdown goes in and comes back out the same
-							shape, so nothing is trapped here.
+							written about it. Archive what is done with it; the bin is for mistakes.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Waiting on others</h3>
+						<p>
+							What you have handed to somebody else, on its own page, grouped under
+							the person who has it. The thing a shared list stops being able to tell
+							you the moment it is shared.
+						</p>
+					</div>
+				</div>
+
+				<p class="group-label">Connected to what you already use</p>
+				<div class="grid">
+					<div class="cell">
+						<h3>Shared, properly</h3>
+						<p>
+							Owner, editor and viewer roles. People outside your instance join by
+							invite link. Changes appear live.
 						</p>
 					</div>
 					<div class="cell">
@@ -707,6 +1031,27 @@
 						</p>
 					</div>
 					<div class="cell">
+						<h3>A calendar of its own</h3>
+						<p>
+							A month or a week of what is due, and a secret ICS address to subscribe
+							to from Apple Calendar, Google or Thunderbird. A Google calendar can be
+							laid over the top, read-only.
+						</p>
+						<p class="caveat">
+							The Google half is written to Google's documentation and has not yet
+							been run against Google. The feed and CalDAV have.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Your mail, as an inbox</h3>
+						<p>
+							Star a mail in Gmail, or flag one over IMAP in iCloud or Fastmail, and
+							it becomes a task. Forward one to your own address instead and the
+							subject is parsed like anything else you type. One way: unstarring it
+							later does nothing to the task you made.
+						</p>
+					</div>
+					<div class="cell">
 						<h3>Claude, connected</h3>
 						<p>
 							A built-in MCP server. Ask what is due this week, or have a task added,
@@ -714,35 +1059,39 @@
 						</p>
 					</div>
 					<div class="cell">
-						<h3>Your mail, as an inbox</h3>
+						<h3>AI only if you ask for it</h3>
 						<p>
-							Star a mail in Gmail, or flag one in iCloud or Fastmail, and it becomes
-							a task. Forward one to your own address instead and the subject is
-							parsed like anything else you type. One way: unstarring it later does
-							nothing to the task you made.
+							Off by default, your own key, and your choice of Anthropic, OpenAI,
+							Google or something local. Nothing leaves the server until you have
+							filled that in, and everything works without it.
 						</p>
 					</div>
+				</div>
+
+				<p class="group-label">Yours, and checkable</p>
+				<div class="grid">
 					<div class="cell">
-						<h3>Nothing to remember</h3>
+						<h3>More than one way in</h3>
 						<p>
-							Start typing anywhere and you are writing a task, with the letter you
-							pressed already in the field. Sign in with a passkey and there is no
-							password to forget either.
-						</p>
-					</div>
-					<div class="cell">
-						<h3>Yours to leave</h3>
-						<p>
-							Import from Todoist, export back to it, or take everything as JSON. The
-							round trip is tested, not promised.
+							Passkeys, or a password hashed with Argon2id and a second factor with
+							recovery codes. Every device you are signed in on is listed, and any of
+							them can be signed out from here.
 						</p>
 					</div>
 					<div class="cell">
 						<h3>Keys stay behind</h3>
 						<p>
-							Mail tokens and mailbox passwords are encrypted in the database, and the
-							key lives in a file beside it — not inside it. So a backup you download,
-							or one that ends up somewhere it should not, does not open your mail.
+							Mail tokens, mailbox passwords, second-factor secrets and AI keys are
+							encrypted in the database, and the key lives in a file beside it — not
+							inside it. So a backup you download, or one that ends up somewhere it
+							should not, does not open your mail.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Nobody signs themselves up</h3>
+						<p>
+							The first account is the administrator, and after that people arrive by
+							invitation. An address on the internet is not an open door.
 						</p>
 					</div>
 					<div class="cell">
@@ -753,50 +1102,85 @@
 							instance's record, not the person's.
 						</p>
 					</div>
+					<div class="cell">
+						<h3>Yours to leave</h3>
+						<p>
+							Import from Todoist, export back to it, take everything as JSON, or
+							hand the notes a zip of Markdown and get the same zip back out. The
+							round trip is tested, not promised.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>It counts itself, out loud</h3>
+						<p>
+							Once a day an instance says it exists — a random id, the version, and
+							nothing else. No tasks, no names, no addresses. It is on to begin with,
+							the settings page prints the exact payload, and one switch stops it.
+						</p>
+					</div>
 				</div>
 			</section>
 
-			<section>
+			<section id="running">
 				<h2>Running it</h2>
 
-				<h3 class="sub">As a Rune in Yggdrasil Panel</h3>
-				<p class="muted">
-					This is what it was built for. <strong>Runes → Carve a rune</strong>, upload
-					<code>rune/verdande.yaml</code>, create a server from it, set the public address
-					and your mail server, and start it. No port forwarding — give it a subdomain and
-					the panel routes it through your Cloudflare Tunnel.
-				</p>
-
-				<h3 class="sub">Or with Docker, anywhere</h3>
-				<pre><code>docker run -d --name verdande \
+				<div class="panels">
+					<div class="panel">
+						<h3>As a Rune in Yggdrasil Panel</h3>
+						<p>
+							This is what it was built for. <strong>Runes → Carve a rune</strong>,
+							upload <code>rune/verdande.yaml</code>, create a server from it, set the
+							public address and your mail server, and start it. No port forwarding —
+							give it a subdomain and the panel routes it through your Cloudflare
+							Tunnel.
+						</p>
+					</div>
+					<div class="panel">
+						<h3>Or with Docker, anywhere</h3>
+						<p>Open the address afterwards and create the first account. That one is the administrator.</p>
+						<pre><code>docker run -d --name verdande \
   -p 8080:8080 \
   -v verdande-data:/data \
   -e VERDANDE_BASE_URL=https://todo.example.dk \
   ghcr.io/kristianwind/verdande:latest</code></pre>
-				<p class="muted" style="margin-top: 1rem">
-					Open the address and create the first account. That one is the administrator.
-				</p>
+					</div>
+				</div>
+
 				<ul class="plain">
 					<li>No database to provision — SQLite is inside the binary.</li>
 					<li>Distroless image: no shell, no package manager, one static file.</li>
 					<li>amd64 and arm64, so a Raspberry Pi is fine.</li>
 					<li>Nightly backups, fourteen kept, written with <code>VACUUM INTO</code>.</li>
+					<li>Twenty-four migrations, run on start. Upgrading is pulling the new image.</li>
 				</ul>
 			</section>
 
-			<section>
+			<section id="limits">
 				<h2>What it will not do</h2>
-				<p class="muted">
-					No karma or points. No team workspaces. No native apps. No mail integration
-					beyond Gmail and the forwarding address. No languages beyond Danish and English.
-					And no sync protocol of its own — CalDAV and the API <em>are</em> the sync.
-				</p>
+				<ul class="nogo">
+					<li>No karma, streaks or points.</li>
+					<li>No team workspaces — projects and the people in them are the whole model.</li>
+					<li>No native apps. It is a PWA, and it installs on a phone.</li>
+					<li>No Outlook or Exchange: Microsoft has closed IMAP to passwords and wants its own flow.</li>
+					<li>No languages beyond Danish and English.</li>
+					<li>No sync protocol of its own — CalDAV and the API <em>are</em> the sync.</li>
+					<li>No hosted version. There is nowhere to sign up, and that is the point.</li>
+				</ul>
 			</section>
 
 			<footer>
+				<!-- The Norn belongs at the end. It was the third paragraph of the hero,
+				     where it stood between somebody arriving and the buttons they came
+				     for — and it is a closing thought, not an opening one. -->
+				<p class="norn">
+					Verdande is one of the three Norns — the one who spins <em>that which is
+					becoming</em>. Not what has been, and not what is fated to be: the thing you are
+					in the middle of. Which is what a to-do list is.
+				</p>
 				<p>
 					MIT licensed ·
 					<a href="https://github.com/kristianwind/verdande">github.com/kristianwind/verdande</a>
+					· <a href="https://kristianwind.github.io/verdande/">Documentation</a>
 				</p>
 				<p>
 					Built to run as a Rune in
