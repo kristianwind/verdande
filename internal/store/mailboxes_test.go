@@ -195,10 +195,14 @@ func TestAGmailConnectedBeforeTheMoveSurvivesIt(t *testing.T) {
 	}
 	values := `{"refresh_token":"` + sealed + `","trigger":"label","label":"Verdande",` +
 		`"email":"kw@nolimit.dk","seen":["abc","def"],"project_id":"p-1"}`
+	// The conflict target is (user_id, scope) since 0025 — before that the table
+	// held one row per person and the upsert renamed its scope, which is the bug
+	// 0025 exists to undo. Nothing conflicts here; the clause only has to be legal
+	// against the schema this test is running on.
 	if _, err := db.ExecContext(context.Background(), `
 		INSERT INTO user_settings (user_id, scope, values_json, updated_at)
 		VALUES (?, 'gmail', ?, 0)
-		ON CONFLICT (user_id) DO UPDATE SET scope = 'gmail', values_json = excluded.values_json`,
+		ON CONFLICT (user_id, scope) DO UPDATE SET values_json = excluded.values_json`,
 		userID, values); err != nil {
 		t.Fatal(err)
 	}

@@ -562,6 +562,48 @@ func TestAIKeyIsNeverReturned(t *testing.T) {
 	}
 }
 
+// Connecting something else must not delete the AI provider.
+//
+// Reported from use as "the AI settings are not saved": they were saved, and then
+// taken. `user_settings` had `user_id` as its whole primary key, and the upsert
+// renamed `scope` on conflict — so the `ai`, `gmail` and `calendar` scopes shared
+// one row and each write deleted the other two. Every write returned 204.
+//
+// Through the handlers, because that is where it was seen. The shape is asserted
+// against the store as well: see TestOnePersonCanHaveSettingsForMoreThanOneThing.
+func TestTheAIProviderSurvivesConnectingSomethingElse(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	ts.do(t, "PUT", "/api/v1/ai/settings", map[string]any{
+		"provider": "anthropic", "model": "claude-sonnet-5", "api_key": "sk-hemmelig-nøgle",
+	})
+
+	user, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What the calendar and the mailbox handlers do when a handshake starts: write
+	// their own scope for the same person.
+	for _, scope := range []string{"calendar", "gmail"} {
+		if err := ts.db.SetUserSettings(t.Context(), user.ID, scope,
+			map[string]any{"pkce_state": "s-" + scope}); err != nil {
+			t.Fatalf("save %s: %v", scope, err)
+		}
+	}
+
+	_, body := ts.do(t, "GET", "/api/v1/ai/settings", nil)
+	if body["provider"] != "anthropic" {
+		t.Errorf("the provider is %v after connecting two other things, want anthropic", body["provider"])
+	}
+	if body["model"] != "claude-sonnet-5" {
+		t.Errorf("the model is %v", body["model"])
+	}
+	if body["has_key"] != true {
+		t.Error("the key was taken with it")
+	}
+}
+
 func TestGmailSettings(t *testing.T) {
 	ts := newTestServer(t)
 	ts.bootstrap(t)

@@ -391,11 +391,15 @@ func (db *DB) SetUserSettings(ctx context.Context, userID, scope string, values 
 	if err != nil {
 		return err
 	}
+	// On (user_id, scope), which is the key since 0025. It used to be on `user_id`
+	// alone and set `scope = excluded.scope` — so writing one scope did not add a
+	// row beside the others, it took theirs and renamed it. The `ai`, `gmail` and
+	// `calendar` settings each deleted the other two, and the write reported
+	// success every time.
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO user_settings (user_id, scope, values_json, updated_at)
 		VALUES (?, ?, ?, ?)
-		ON CONFLICT (user_id) DO UPDATE SET
-		    scope = excluded.scope,
+		ON CONFLICT (user_id, scope) DO UPDATE SET
 		    values_json = excluded.values_json,
 		    updated_at = excluded.updated_at`,
 		userID, scope, string(raw), time.Now().Unix())
