@@ -5,7 +5,29 @@
 	import { app } from '$lib/stores.svelte.js';
 	import { goto } from '$app/navigation';
 	import { ago } from '$lib/when.js';
-	import { t } from '$lib/i18n.svelte.js';
+	import { t, tag } from '$lib/i18n.svelte.js';
+
+	// --- beaconet -----------------------------------------------------------------
+
+	// Hvad denne installation melder, og til hvem. Se internal/beacon for hvorfor
+	// den er slået til som udgangspunkt frem for at være obligatorisk.
+	let beacon = $state(null);
+
+	$effect(() => {
+		if (!app.user?.is_admin) return;
+		api.beacon().then((r) => (beacon = r)).catch(() => {});
+	});
+
+	async function saveBeacon(change) {
+		try {
+			beacon = await api.setBeacon(change);
+		} catch (e) {
+			app.toast(humanMessage(e));
+			// Læst forfra, så en afvist ændring ikke bliver stående som et flueben,
+			// der ikke svarer til, hvad serveren gør.
+			api.beacon().then((r) => (beacon = r)).catch(() => {});
+		}
+	}
 
 	// --- backups ---------------------------------------------------------------------
 
@@ -486,6 +508,95 @@
 	{/if}
 </section>
 
+<!-- Beaconet.
+     Under Data, fordi det er her alt om "hvad forlader denne instans" står — en
+     sikkerhedskopi, en eksport, en import. Telemetri hører til i samme rude som
+     dem, ikke gemt væk under en fane, ingen åbner. -->
+<section class="panel">
+	<header>
+		<h2>{t('beacon.title')}</h2>
+		<p class="hint">{t('beacon.hint')}</p>
+	</header>
+
+	{#if beacon}
+		<label class="check">
+			<input
+				type="checkbox"
+				checked={beacon.enabled}
+				onchange={(e) => saveBeacon({ enabled: e.currentTarget.checked })}
+			/>
+			<span>{t('beacon.send')}</span>
+		</label>
+
+		<!-- Hele beskeden, ord for ord. Et løfte om telemetri er præcis så meget
+		     værd som læserens mulighed for at efterprøve det, så den står her frem
+		     for som en sætning om, hvad der cirka bliver sendt. -->
+		<pre class="payload">{t('beacon.exactly')}
+{JSON.stringify({ instance_id: beacon.instance_id, version: beacon.version }, null, 2)}</pre>
+
+		{#if beacon.last_ping_at}
+			<p class="hint">{t('beacon.lastPing', { when: new Date(beacon.last_ping_at).toLocaleString(tag()) })}</p>
+		{/if}
+
+		<div class="field">
+			<label for="collector">{t('beacon.collector')}</label>
+			<input
+				id="collector"
+				value={beacon.collector_url}
+				onchange={(e) => saveBeacon({ collector_url: e.currentTarget.value })}
+			/>
+			<p class="hint">{t('beacon.collectorHint')}</p>
+		</div>
+
+		<label class="check">
+			<input
+				type="checkbox"
+				checked={beacon.is_collector}
+				onchange={(e) => saveBeacon({ is_collector: e.currentTarget.checked })}
+			/>
+			<span>{t('beacon.beCollector')}</span>
+		</label>
+
+		{#if beacon.is_collector && beacon.stats}
+			<p class="hint">{t('beacon.receiving')}</p>
+			<div class="counts">
+				<div class="count">
+					<strong>{beacon.stats.total}</strong>
+					<span>{t('beacon.total')}</span>
+				</div>
+				<div class="count">
+					<strong>{beacon.stats.active_7d}</strong>
+					<span>{t('beacon.active7')}</span>
+				</div>
+				<div class="count">
+					<strong>{beacon.stats.active_30d}</strong>
+					<span>{t('beacon.active30')}</span>
+				</div>
+			</div>
+
+			{#if Object.keys(beacon.stats.by_version ?? {}).length}
+				<p class="hint">
+					{t('beacon.byVersion')}
+					{Object.entries(beacon.stats.by_version)
+						.sort((a, b) => b[1] - a[1])
+						.map(([v, n]) => `${v} ×${n}`)
+						.join(', ')}
+				</p>
+			{/if}
+
+			<label class="check">
+				<input
+					type="checkbox"
+					checked={beacon.publish_count}
+					onchange={(e) => saveBeacon({ publish_count: e.currentTarget.checked })}
+				/>
+				<span>{t('beacon.publish')}</span>
+			</label>
+			<p class="hint">{t('beacon.publishHint')}</p>
+		{/if}
+	{/if}
+</section>
+
 <style>
 	/* The backup list, which is a list of rows with a right-hand action — the same
 	   shape the settings pages use elsewhere, said once here because this is the
@@ -595,5 +706,49 @@
 
 	.link:hover {
 		text-decoration: underline;
+	}
+
+	/* Beskeden som den sendes. Monospace, fordi den skal kunne sammenlignes tegn
+	   for tegn med det, der står i dokumentationen. */
+	.payload {
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		background: var(--surface-sunken);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		padding: var(--s2) var(--s3);
+		overflow-x: auto;
+		margin: var(--s2) 0;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+
+	.counts {
+		display: flex;
+		gap: var(--s2);
+		margin: var(--s2) 0;
+		flex-wrap: wrap;
+	}
+
+	.count {
+		flex: 1 1 7rem;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+	}
+
+	.count strong {
+		font-size: var(--text-xl);
+		line-height: 1;
+	}
+
+	.count span {
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
 	}
 </style>

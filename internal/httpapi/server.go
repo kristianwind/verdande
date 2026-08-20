@@ -143,6 +143,19 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		})
 
+		// The beacon's receiving end, and the number it produces. Both without a
+		// session, because the caller is a stranger's installation — that is the
+		// whole feature. Rate limited like the login routes: it is the one endpoint
+		// anybody on the internet can write to, and a row per request is a row per
+		// request whether or not the request is honest.
+		//
+		// Refused with a 404 unless this instance has been told it is the collector,
+		// so an ordinary installation is not a spam sink that answers 200 to
+		// anything.
+		r.Method(http.MethodPost, "/beacon",
+			s.rateLimit(s.loginLimiter, http.HandlerFunc(s.handleBeaconPing)))
+		r.Get("/beacon/count", s.handleBeaconCount)
+
 		// Reachable without being signed in — these are how you become signed in.
 		r.Route("/auth", func(r chi.Router) {
 			r.Get("/setup", s.handleSetupState)
@@ -390,6 +403,11 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				// `:latest` on the way, which is what makes a restart an update.
 				r.Get("/panel", s.handlePanelStatus)
 				r.Post("/panel/restart", s.handleRestartFromPanel)
+				// Who this instance reports to, and whether it does. An
+				// administrator's decision, not a person's: there is one
+				// installation and it either phones home or it does not.
+				r.Get("/beacon/settings", s.handleBeaconStatus)
+				r.Put("/beacon/settings", s.handleSetBeacon)
 				// A backup file is a complete copy of the database, so this whole
 				// group is sessions-only as well as administrators-only: a leaked
 				// token must not be able to download everybody's data.

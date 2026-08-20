@@ -76,6 +76,7 @@ func run() error {
 	runner.SyncGmail = api.SyncGmail
 	runner.SyncMailbox = api.SyncMailbox
 	runner.Push = api.PushToUser
+	runner.SendBeacon = api.SendBeacon
 	runner.Start(jobCtx)
 
 	srv := &http.Server{

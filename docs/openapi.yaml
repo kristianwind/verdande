@@ -1396,6 +1396,114 @@ paths:
                     description: The environment variables that are not set.
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /api/v1/beacon:
+    post:
+      tags: [auth]
+      summary: Report that an installation exists. Unauthenticated.
+      description: |
+        The receiving end of the beacon. Open on purpose: the caller is a
+        stranger's installation, which is the whole feature.
+
+        Answers 404 unless this instance has been told it is the collector, so an
+        ordinary installation is not a spam sink that answers 200 to anything.
+        Rate limited like the login routes, and the table behind it has a ceiling:
+        the endpoint inserts a row keyed on an id the caller invented, so without
+        one anybody could grow it until the volume is full.
+
+        Nothing about the request is recorded but the two values in the body. No
+        source address is read or written here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instance_id]
+              properties:
+                instance_id:
+                  type: string
+                  description: A random id the installation generated for itself.
+                version:
+                  type: string
+      responses:
+        "204":
+          description: Recorded.
+        "400":
+          description: The id or the version is not the expected shape.
+        "404":
+          description: This instance is not a collector.
+
+  /api/v1/beacon/count:
+    get:
+      tags: [auth]
+      summary: How many installations reported in the last thirty days.
+      description: |
+        Unauthenticated and cached for a minute, and only answered when the
+        collector has been told to publish it.
+
+        A window rather than a running total: a total only climbs, so it stops
+        meaning "how many people use this" and starts meaning "how many ever
+        tried it".
+      responses:
+        "200":
+          description: The count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installs: { type: integer }
+                  window_days: { type: integer }
+        "404":
+          description: Not a collector, or not published.
+
+  /api/v1/beacon/settings:
+    get:
+      tags: [auth]
+      summary: What this instance reports, and to whom. Administrators only.
+      description: |
+        Includes the exact payload that will be sent, so the settings page can
+        print it in full rather than describe it.
+      responses:
+        "200":
+          description: The current configuration, and the counts if this is the collector.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled: { type: boolean }
+                  collector_url: { type: string }
+                  instance_id: { type: string }
+                  version: { type: string }
+                  is_collector: { type: boolean }
+                  publish_count: { type: boolean }
+                  last_ping_at: { type: string, format: date-time }
+    put:
+      tags: [auth]
+      summary: Turn the beacon off, or point it somewhere else. Administrators only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                collector_url:
+                  type: string
+                  description: |
+                    Where reports go. Fetched through a dialer that refuses
+                    loopback and private address space, so this cannot be used to
+                    make the server reach inside its own network.
+                is_collector: { type: boolean }
+                publish_count: { type: boolean }
+      responses:
+        "200":
+          description: The configuration as it now stands.
+        "422":
+          description: The collector address is not an http or https URL.
+
   /api/v1/panel/restart:
     post:
       tags: [auth]

@@ -45,6 +45,11 @@ type Runner struct {
 	// layer, which owns the VAPID keys and the subscription list.
 	Push func(userID, title, body, projectID string)
 
+	// SendBeacon reports this installation to the collector, if it is switched on
+	// and a day has passed. Supplied by the HTTP layer for the same reason as the
+	// syncs: that is where the instance settings and the version live.
+	SendBeacon func(ctx context.Context) error
+
 	wg sync.WaitGroup
 }
 
@@ -69,6 +74,10 @@ func (r *Runner) Start(ctx context.Context) {
 	// account for a to-do app. Ten minutes is fast enough for something somebody
 	// starred and slow enough not to look like abuse.
 	r.every(ctx, "mailboxes", 10*time.Minute, r.syncMailboxes)
+	// Checked hourly, sent at most daily — the same shape as the backup, and for
+	// the same reason: a container asleep at the scheduled minute would otherwise
+	// skip the day. SendBeacon decides whether a day has passed.
+	r.every(ctx, "beacon", time.Hour, r.sendBeacon)
 }
 
 func (r *Runner) Wait() { r.wg.Wait() }
@@ -101,6 +110,17 @@ func (r *Runner) every(ctx context.Context, name string, interval time.Duration,
 			}
 		}
 	}()
+}
+
+// sendBeacon reports that this installation exists, at most once a day.
+//
+// Every decision about what is sent, and why this is on by default rather than
+// compulsory, lives in internal/beacon. This is only the clock.
+func (r *Runner) sendBeacon(ctx context.Context) error {
+	if r.SendBeacon == nil {
+		return nil
+	}
+	return r.SendBeacon(ctx)
 }
 
 // --- reminders ------------------------------------------------------------------

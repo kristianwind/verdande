@@ -47,36 +47,51 @@ const escapeHtml = (s) =>
  */
 const attr = (s) => escapeHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
+/**
+ * Billeder løftes ud af teksten, før noget andet rører den.
+ *
+ * De stod før først i kæden, og så kørte de fire resterende regler hen over en
+ * streng, der nu indeholdt rigtig HTML — ind i den `alt`, der lige var lavet.
+ * Det gik godt, så længe ingen af erstatningerne indeholdt et anførselstegn, og
+ * det er en betingelse, der stod skrevet ingen steder: den dag nogen tilføjer en
+ * regel for links, er den brudt, og det er præcis den vej, XSS-en kom ind ad.
+ *
+ * Værre endnu var undslupningen. `escapeHtml` kørte på hele teksten, og `attr`
+ * kørte den igen på `alt` — så et og-tegn blev til en dobbelt undslupning, der
+ * voksede ved hver eneste åbning og gemning. En note med "Kaffe & te" i et
+ * billede blev længere, hver gang nogen så på den.
+ *
+ * En pladsholder løser begge dele. Billedet tages ud af den rå tekst, resten
+ * undslippes og formateres som altid, og billedet lægges tilbage til sidst med en
+ * `alt`, der er undsluppet nøjagtig én gang. Rækkefølgen af de øvrige regler kan
+ * så ikke længere betyde noget.
+ *
+ * Nul-tegnet som mærke, fordi det er det ene tegn, en note ikke kan indeholde:
+ * det overlever hverken en contenteditable eller en Markdown-fil.
+ */
+const IMAGE = /!\[([^\]]*)\]\((\/api\/v1\/attachments\/[0-9a-f-]+)\)/g;
+const MARK = "\u0000";
+
 /** Inline marks, innermost first so a bold word inside italics survives both. */
 function inlineToHtml(text) {
-	return (
-		escapeHtml(text)
-			// Billedet først, og før alt andet.
-			//
-			// Der var ingen regel for det overhovedet, så en note fra Apple Noter
-			// viste `![](/api/v1/attachments/…)` som ord. Billedet var hentet, gemt og
-			// hæftet på noten — det eneste, der manglede, var at nogen tegnede det.
-			//
-			// Kun vores egen adresse. Et `![](http://…)` fra en indsat tekst ville
-			// ellers hente fra en fremmed vært, når noten åbnes, og fortælle den, at
-			// den er blevet læst — og en note er det sidste sted, man vil have en
-			// sporingspixel. Alt andet står som den tekst, det er.
-			//
-			// `alt` skal citat-undslippes her, og det er ikke en formalitet.
-			// escapeHtml tager &, < og > — ikke anførselstegn, fordi den er skrevet
-			// til tekst mellem to tags, hvor et anførselstegn ikke betyder noget. Her
-			// står værdien inde i en attribut, og der lukker et anførselstegn den:
-			// `![" onerror="alert(1)](/api/v1/attachments/aaaa)` blev til et img med
-			// en onerror på. En note er delt gennem et projekt, så det ville køre på
-			// vores eget domæne med sessionscookien, hos den, der åbnede noten.
-			.replace(/!\[([^\]]*)\]\((\/api\/v1\/attachments\/[0-9a-f-]+)\)/g,
-				(_, alt, src) => `<img src="${src}" alt="${attr(alt)}">`)
-			.replace(/&lt;u&gt;(.+?)&lt;\/u&gt;/g, '<u>$1</u>')
-			.replace(/`([^`]+)`/g, '<code>$1</code>')
-			.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-			.replace(/~~(.+?)~~/g, '<s>$1</s>')
-			.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
-	);
+	// Kun vores egen adresse bliver til et billede. Et `![](http://…)` fra en
+	// indsat tekst ville ellers hente fra en fremmed vært, når noten åbnes, og
+	// fortælle den, at den er blevet læst — og en note er det sidste sted, man vil
+	// have en sporingspixel. Alt andet står som den tekst, det er.
+	const images = [];
+	const lifted = (text ?? '').replace(IMAGE, (_, alt, src) => {
+		images.push(`<img src="${src}" alt="${attr(alt)}">`);
+		return `${MARK}${images.length - 1}${MARK}`;
+	});
+
+	const marked = escapeHtml(lifted)
+		.replace(/&lt;u&gt;(.+?)&lt;\/u&gt;/g, '<u>$1</u>')
+		.replace(/`([^`]+)`/g, '<code>$1</code>')
+		.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+		.replace(/~~(.+?)~~/g, '<s>$1</s>')
+		.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+
+	return marked.replace(new RegExp(MARK + '(\\d+)' + MARK, 'g'), (_, i) => images[Number(i)] ?? '');
 }
 
 /**
@@ -139,7 +154,12 @@ export function markdownToHtml(markdown) {
 		if (fenced) {
 			closeList();
 			fence = fenced[1] ?? '';
-			out.push(`<pre data-lang="${escapeHtml(fence)}"><code>`);
+			// attr, ikke escapeHtml: værdien står inde i en attribut. Den er sikker i
+			// dag alene fordi hegn-regexen er \w*, som ikke rummer anførselstegn — og
+			// den dag nogen udvider den for at tage imod "c++" eller "f#", er det en
+			// XSS. Undslupningen skal passe til stedet, ikke til det, der
+			// tilfældigvis kan stå der nu.
+			out.push(`<pre data-lang="${attr(fence)}"><code>`);
 			continue;
 		}
 

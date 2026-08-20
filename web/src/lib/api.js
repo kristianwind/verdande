@@ -227,6 +227,9 @@ export const api = {
 	gmailClient: () => get('/gmail/client'),
 	setGmailClient: (data) => put('/gmail/client', data),
 
+	beacon: () => get('/beacon/settings'),
+	setBeacon: (body) => put('/beacon/settings', body),
+
 	listBackups: () => get('/backups'),
 	runBackup: () => post('/backups'),
 	// A link rather than a fetch: the browser's own download handles a file of
