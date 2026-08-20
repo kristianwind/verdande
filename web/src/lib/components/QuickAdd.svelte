@@ -221,6 +221,13 @@
 		gap: var(--s3);
 		padding: var(--s3) var(--s2);
 		border-bottom: 1px solid var(--line);
+		/* Luft under stregen.
+		 *
+		 * Stregen skiller "skriv en ny" fra "det, der allerede er", og uden afstand
+		 * sad den første sektion klods op ad den — så den læste som en kant om
+		 * sektionen frem for som en afslutning på feltet over. En streg skal have
+		 * plads på begge sider for at kunne ses som en streg. */
+		margin-bottom: var(--s4);
 	}
 
 	.plus {
