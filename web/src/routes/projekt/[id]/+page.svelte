@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { api, humanMessage } from '$lib/api.js';
-	import { app, completedView, projectName } from '$lib/stores.svelte.js';
+	import { app, completedView, projectName, projectCalendarView } from '$lib/stores.svelte.js';
 	import { COLORS, colorVar } from '$lib/colors.js';
 	import { eventName, eventDetail } from '$lib/events.js';
 	import { TASK, SECTION, startDrag, carries, dragged, accept } from '$lib/dnd.js';
@@ -786,7 +786,26 @@
 				onsectionadded={(section) => (sections = [...sections, section])}
 			/>
 		{:else if mode === 'calendar'}
-			<CalendarView projectId={project.id} />
+			<!-- Uge eller måned inde i kalendervisningen frem for som en fjerde
+			     `view_mode`.
+			     `view_mode` er projektets og delt med alle, der kan se det; uge eller
+			     måned er et spørgsmål om, hvor bred skærmen er, foran hvilken der
+			     sidder én person. Og en fjerde værdi ville kræve en tabelombygning:
+			     `CHECK (view_mode IN ('list','board','calendar'))` kan SQLite ikke
+			     ændre på plads. -->
+			<div class="span" role="group" aria-label={t('view.mode')}>
+				{#each [['week', t('view.week')], ['month', t('view.month')]] as [value, label]}
+					<button
+						class:active={projectCalendarView.mode === value}
+						onclick={() => projectCalendarView.set(value)}
+						aria-pressed={projectCalendarView.mode === value}>{label}</button
+					>
+				{/each}
+			</div>
+			<CalendarView
+				projectId={project.id}
+				span={projectCalendarView.mode === 'week' ? 'week' : 'month'}
+			/>
 		{:else}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<section
@@ -1261,6 +1280,32 @@
 		box-shadow:
 			0 0 0 2px var(--surface),
 			0 0 0 3px var(--ink);
+	}
+
+	/* Den samme lille vælger som visningerne ovenfor, men ude til højre: den hører
+	   til kalenderen, ikke til siden, og at stille den ved siden af Liste/Board/
+	   Kalender ville lade som om der er fem visninger. */
+	.span {
+		display: flex;
+		justify-content: flex-end;
+		gap: var(--s1);
+		margin-bottom: var(--s2);
+	}
+
+	.span button {
+		padding: 2px var(--s2);
+		border-radius: var(--radius-sm);
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+	}
+
+	.span button:hover {
+		color: var(--ink);
+	}
+
+	.span button.active {
+		background: var(--surface-raised);
+		color: var(--ink);
 	}
 
 	.views {

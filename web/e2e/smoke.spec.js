@@ -3378,3 +3378,48 @@ test('notelisten grupperer favoritter og datoer, også i arkivet', async ({ page
 
 	expect(trouble).toEqual([]);
 });
+
+/**
+ * Et projekts kalender kan vises som en uge.
+ *
+ * Ugen fandtes på Kommende og på Kalender, men ikke dér, hvor et projekt bor — og
+ * det er dér, "hvornår sker de her fire ting" oftest bliver spurgt.
+ *
+ * Inde i kalendervisningen frem for som en fjerde `view_mode`. Den er projektets
+ * og delt med alle, der kan se det, mens uge eller måned er et spørgsmål om, hvor
+ * bred skærmen er, foran hvilken der sidder én person — og en fjerde værdi ville
+ * kræve en tabelombygning, fordi SQLite ikke kan ændre et CHECK på plads.
+ */
+test('et projekts kalender kan vises som en uge', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Ugeprojekt');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Ugeprojekt' })).toBeVisible();
+
+	const box = page.getByLabel('Ny opgave');
+	await box.fill('male døren i dag kl 10');
+	await box.press('Enter');
+	await expect(page.getByText('male døren')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Kalender', exact: true }).click();
+	await page.getByRole('button', { name: 'Uge', exact: true }).click();
+
+	// Døgnet, ikke en rude: opgaven står på sit klokkeslæt.
+	const placed = page.locator('.tevent.task').filter({ hasText: 'male døren' });
+	await expect(placed, 'opgaven står ikke på døgnet').toBeVisible();
+	await expect(placed).toContainText('10:00');
+
+	// Valget huskes — i browseren, ikke på projektet: det er skærmens bredde, der
+	// afgør det, og projektet er delt med andre skærme.
+	await page.reload();
+	await expect(page.locator('.weekgrid'), 'ugen blev ikke husket').toBeVisible();
+
+	await page.getByRole('button', { name: 'Måned', exact: true }).click();
+	await expect(page.locator('.weekgrid')).toBeHidden();
+
+	expect(trouble).toEqual([]);
+});

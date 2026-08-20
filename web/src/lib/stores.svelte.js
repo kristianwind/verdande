@@ -890,26 +890,54 @@ export const upcomingView = new UpcomingView();
 const CALENDAR_MODES = ['week', 'month'];
 
 class CalendarViewMode {
-	mode = $state(readCalendarMode());
+	mode = $state('month');
+
+	// Nøglen som argument frem for som felt på en underklasse.
+	//
+	// Den vej blev prøvet og virkede ikke: en underklasses felter sættes *efter*
+	// basens konstruktør er kørt, så en læsning i konstruktøren brugte basens nøgle
+	// og skrivningen bagefter underklassens. Valget blev gemt ét sted og læst et
+	// andet, og en uge, man havde valgt, var en måned igen efter en genindlæsning.
+	// Et argument har ingen rækkefølge at tage fejl af.
+	constructor(storageKey = 'verdande:calendar') {
+		this.storageKey = storageKey;
+		this.mode = readCalendarMode(storageKey);
+	}
 
 	set(next) {
 		if (!CALENDAR_MODES.includes(next)) return;
 		this.mode = next;
 		try {
-			localStorage.setItem('verdande:calendar', next);
+			localStorage.setItem(this.storageKey, next);
 		} catch {
 			// Private browsing; the choice simply will not persist.
 		}
 	}
 }
 
-function readCalendarMode() {
+function readCalendarMode(key) {
 	if (typeof localStorage === 'undefined') return 'month';
-	const stored = localStorage.getItem('verdande:calendar');
+	const stored = localStorage.getItem(key);
 	return CALENDAR_MODES.includes(stored) ? stored : 'month';
 }
 
 export const calendarView = new CalendarViewMode();
+
+/**
+ * Måned eller uge på et projekts kalender.
+ *
+ * Sin egen nøgle, af samme grund som Kalenders er sin egen: det er tre steder med
+ * hver sit spørgsmål. Kommende åbner på en liste over de næste syv dage, Kalender
+ * *er* gitteret, og et projekts kalender er en del af en side, der også kan være
+ * en liste og et board. At dele værdien ville betyde, at man valgte en uge ét sted
+ * og fandt et andet ændret.
+ *
+ * Og ikke på projektet. `view_mode` er projektets — den er delt med alle, der kan
+ * se det — mens uge eller måned er et spørgsmål om, hvor bred skærmen er, foran
+ * hvilken der sidder én person. Det er den samme grund, som sidebjælkens bredde
+ * ligger i localStorage af.
+ */
+export const projectCalendarView = new CalendarViewMode('verdande:project-calendar');
 
 /**
  * Whether the lists show what has already been finished.

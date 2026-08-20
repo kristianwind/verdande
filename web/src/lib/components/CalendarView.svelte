@@ -64,7 +64,14 @@
 		events = []
 	} = $props();
 
-	let cursor = $state(span === 'week' ? startOfWeek(new Date()) : startOfMonth(new Date()));
+	// Sat til i dag og lagt til rette af effekten nedenfor.
+	//
+	// Ikke `span === 'week' ? … : …` her: den læser `span`, som den er i det
+	// øjeblik komponenten bliver til, og fanger den værdi for altid — hvilket
+	// byggeriet har advaret om lige så længe. Så længe hver visning havde sin egen
+	// komponent, gjorde det ingen forskel; det gjorde det i samme sekund, et
+	// projekts kalender fik en uge/måned-vælger, der skifter `span` på den samme.
+	let cursor = $state(new Date());
 
 	/**
 	 * The weekday names, from Intl rather than written out.
@@ -101,12 +108,25 @@
 	// week with a cursor on the 1st would otherwise show the week containing the
 	// 1st rather than the week you were looking at, and switching back would land
 	// on whichever month that week happened to start in.
+	//
+	// Med én undtagelse, og den er hele grunden til at det her er en effekt og ikke
+	// en udregning: en månedsvisnings markør *er* den første i måneden. Skifter man
+	// til uge, mens man står i den indeværende måned, er den uge man kigger på ikke
+	// ugen omkring den 1. — det er den, i dag ligger i. Uden det her landede et
+	// projekts kalender på "27. jul.–2. aug." for en person, der kiggede på august.
 	$effect(() => {
-		const aligned = startOfSpan(cursor);
+		const anchor =
+			span === 'week' && isMonthStart(cursor) && sameMonth(cursor, new Date())
+				? new Date()
+				: cursor;
+		const aligned = startOfSpan(anchor);
 		// Compared by value, not identity: assigning a fresh Date on every run would
 		// re-trigger this effect forever, since the effect reads what it writes.
 		if (aligned.getTime() !== cursor.getTime()) cursor = aligned;
 	});
+
+	const isMonthStart = (d) => d.getDate() === 1;
+	const sameMonth = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
 
 	function iso(d) {
 		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
