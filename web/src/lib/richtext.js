@@ -37,6 +37,16 @@ const BLOCKS = [
 const escapeHtml = (s) =>
 	s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/**
+ * En værdi, der skal stå inde i en attribut.
+ *
+ * escapeHtml er skrevet til tekst mellem to tags, hvor et anførselstegn ikke
+ * betyder noget, og lader dem derfor stå. Inde i en attribut lukker de den — og
+ * så står resten af strengen som markup. Det er den ene forskel, og den er hele
+ * forskellen mellem tekst og et onerror.
+ */
+const attr = (s) => escapeHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
 /** Inline marks, innermost first so a bold word inside italics survives both. */
 function inlineToHtml(text) {
 	return (
@@ -51,8 +61,16 @@ function inlineToHtml(text) {
 			// ellers hente fra en fremmed vært, når noten åbnes, og fortælle den, at
 			// den er blevet læst — og en note er det sidste sted, man vil have en
 			// sporingspixel. Alt andet står som den tekst, det er.
+			//
+			// `alt` skal citat-undslippes her, og det er ikke en formalitet.
+			// escapeHtml tager &, < og > — ikke anførselstegn, fordi den er skrevet
+			// til tekst mellem to tags, hvor et anførselstegn ikke betyder noget. Her
+			// står værdien inde i en attribut, og der lukker et anførselstegn den:
+			// `![" onerror="alert(1)](/api/v1/attachments/aaaa)` blev til et img med
+			// en onerror på. En note er delt gennem et projekt, så det ville køre på
+			// vores eget domæne med sessionscookien, hos den, der åbnede noten.
 			.replace(/!\[([^\]]*)\]\((\/api\/v1\/attachments\/[0-9a-f-]+)\)/g,
-				(_, alt, src) => `<img src="${src}" alt="${alt}">`)
+				(_, alt, src) => `<img src="${src}" alt="${attr(alt)}">`)
 			.replace(/&lt;u&gt;(.+?)&lt;\/u&gt;/g, '<u>$1</u>')
 			.replace(/`([^`]+)`/g, '<code>$1</code>')
 			.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')

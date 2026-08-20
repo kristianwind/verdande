@@ -2396,3 +2396,41 @@ test('lister overlever en gemning — også i et citat, og også med numre', asy
 
 	expect(trouble).toEqual([]);
 });
+
+test('en note kan ikke smugle et script ind gennem et billedes alt-tekst', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	// Undslap `alt` ikke sine anførselstegn, lukkede den første af dem attributten,
+	// og resten stod som markup: et img med en onerror på. En note deles gennem et
+	// projekt, så det ville køre på vores eget domæne, hos den der åbnede noten.
+	const id = await page.evaluate(async () => {
+		const r = await fetch('/api/v1/notes', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+			body: JSON.stringify({
+				body: '# Ondsindet\n\n![" onerror="window.__pwned = true](/api/v1/attachments/aaaabbbbccccdddd)\n'
+			})
+		});
+		return (await r.json()).id;
+	});
+
+	await page.goto('/noter?note=' + id);
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(ed.locator('img')).toHaveCount(1);
+	// Billedet peger ingen steder, så det fejler at indlæse — hvilket er præcis
+	// den vej, en onerror ville blive kaldt ad.
+	await page.waitForTimeout(800);
+
+	expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
+	// Og hændelsen står som tekst i alt-attributten, hvor den hører hjemme.
+	const alt = await ed.locator('img').getAttribute('alt');
+	expect(alt).toContain('onerror');
+	expect(await ed.locator('img').evaluate((el) => el.hasAttribute('onerror'))).toBe(false);
+
+	// Billedets egen 404 hører til prøven: adressen peger med vilje på et bilag,
+	// der ikke findes, fordi det er den vej en onerror ville blive kaldt ad. Alt
+	// andet skal stadig være stille.
+	expect(trouble.filter((t) => !t.includes('/api/v1/attachments/'))).toEqual([]);
+});
