@@ -588,6 +588,65 @@
 				color: var(--ink-muted);
 			}
 
+			/* Versionsnummeret i sin egen søjle, så øjet kan løbe ned ad dem uden at
+			   læse sætningerne. `ch` frem for pixels: søjlen er lige så bred som de
+			   tal, der står i den, og den følger med, hvis skriften skifter. */
+			ul.lately {
+				list-style: none;
+				margin: 1.5rem 0 0;
+				padding: 0;
+			}
+
+			ul.lately li {
+				display: grid;
+				grid-template-columns: 5ch 1fr;
+				gap: 0 1rem;
+				padding: 0.875rem 0;
+				border-top: 1px solid var(--line);
+				font-size: 0.9375rem;
+				color: var(--ink-muted);
+			}
+
+			ul.lately .ver {
+				font-family: var(--font-mono);
+				font-size: 0.8125rem;
+				color: var(--ink-faint);
+				/* Tallet står på linje med den første tekstlinje og ikke over den. */
+				line-height: 1.7;
+			}
+
+			@media (max-width: 520px) {
+				ul.lately li {
+					grid-template-columns: 1fr;
+					gap: 0.25rem;
+				}
+			}
+
+			/* Risikoen står i kort, ikke i småt.
+			   Et forbehold sat med mindre skrift end resten er et forbehold, der er
+			   skrevet for at kunne peges på bagefter — og det er den ene ting, denne
+			   side ikke skal gøre. Samme størrelse som alt andet. */
+			.risk {
+				border: 1px solid var(--line-strong);
+				border-radius: var(--radius-lg);
+				padding: 1.5rem;
+				background: var(--surface);
+			}
+
+			.risk p {
+				margin: 0 0 1rem;
+				font-size: 0.9375rem;
+				color: var(--ink-muted);
+			}
+
+			.risk p:last-child {
+				margin-bottom: 0;
+			}
+
+			.risk strong {
+				color: var(--ink);
+			}
+
 			/* The non-goals were one paragraph of seven sentences, which is the shape
 			   nobody reads. Each is its own line now, and they can be counted. */
 			ul.nogo {
@@ -1121,6 +1180,43 @@
 				</div>
 			</section>
 
+			<section id="recently">
+				<h2>Lately</h2>
+				<p class="muted">
+					A landing page can say a project is alive; a list of what landed says it
+					better. This is not a changelog — every release has notes, and they are on
+					<a href="https://github.com/kristianwind/verdande/releases">the releases page</a>.
+				</p>
+				<ul class="lately">
+					<li>
+						<span class="ver">0.34</span>
+						Sections can be dragged into the order the work actually happens in. The
+						sidebar keeps its head still while the projects scroll.
+					</li>
+					<li>
+						<span class="ver">0.33</span>
+						Notes grew an archive, selection of many at once, pictures you can paste
+						or drag in, a source view, and a copy button on code blocks. Search
+						stopped answering by date and started answering by relevance.
+					</li>
+					<li>
+						<span class="ver">0.32</span>
+						A calendar of its own as a menu item, with a read-only Google calendar
+						that can be laid over it.
+					</li>
+					<li>
+						<span class="ver">0.31</span>
+						Mailboxes over IMAP, so flagging a mail in iCloud or Fastmail makes a
+						task — not only Gmail.
+					</li>
+					<li>
+						<span class="ver">0.30</span>
+						An installation count that says exactly what it sends, and can be turned
+						off in one click.
+					</li>
+				</ul>
+			</section>
+
 			<section id="running">
 				<h2>Running it</h2>
 
@@ -1166,6 +1262,41 @@
 					<li>No sync protocol of its own — CalDAV and the API <em>are</em> the sync.</li>
 					<li>No hosted version. There is nowhere to sign up, and that is the point.</li>
 				</ul>
+			</section>
+
+			<section id="risk">
+				<h2>At your own risk</h2>
+				<div class="risk">
+					<p>
+						verdande is <strong>MIT licensed and provided as is, without warranty of
+						any kind</strong>. That sentence is in every MIT licence and it is usually
+						skipped, so here it is in the open: if you run this, you run it at your
+						own risk, and nobody is on the hook if it loses your work.
+					</p>
+					<p>
+						It is one person's project, at version 0.x, and 0.x means the shape can
+						still change. <strong>You host it, so the data and the backups are
+						yours.</strong> It writes a backup every night and keeps fourteen — and a
+						backup nobody has ever restored is not yet a backup. Restore one before
+						you need to.
+					</p>
+					<p>
+						Security is worked on rather than claimed. There have been two full
+						reviews of the code, every finding is written down and closed, and what is
+						protected and what is not is spelled out in
+						<a href="https://github.com/kristianwind/verdande/blob/main/SECURITY.md">SECURITY.md</a>
+						— including the parts that are a deliberate trade-off. <strong>Nobody
+						outside the project has audited it.</strong> The last review found two ways
+						to reach something you should not and closed both; a third review will find
+						more, which is the point of having one.
+					</p>
+					<p>
+						It is built to sit behind something — a tunnel, a reverse proxy, a VPN —
+						put there by somebody who knows what they exposed. Found a hole? Mail it
+						rather than opening an issue; the address is in SECURITY.md and you get an
+						answer within a week.
+					</p>
+				</div>
 			</section>
 
 			<footer>
