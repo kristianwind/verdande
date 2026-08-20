@@ -545,6 +545,11 @@
 									<span class="filed">{projectName(note.project_id)}</span>
 								{/if}
 							</button>
+							<!-- De to knapper står oven på hinanden i en smal søjle.
+							     Ved siden af hinanden tog de toogfyrre pixels af en liste,
+							     der er tre hundrede bred — og de bruges sjældent, mens
+							     titlen og uddraget læses hele tiden. -->
+							<div class="rowactions">
 							<!-- Én note lagt væk, uden at markere den først. Markeringen er
 							     til flere; det her er til den ene, man står med — og i
 							     arkivet er det vejen tilbage. -->
@@ -568,6 +573,7 @@
 							>
 								{note.pinned ? '★' : '☆'}
 							</button>
+							</div>
 						</div>
 					</li>
 				{/each}
@@ -890,9 +896,20 @@
 		gap: var(--s1);
 	}
 
+	/* De sjældne handlinger i en søjle, ikke en række. To knapper ved siden af
+	   hinanden er toogfyrre pixels taget fra en liste på tre hundrede — og de er
+	   det, man rører en gang imellem, mens titlen er det, man læser hele tiden. */
+	.rowactions {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		flex: none;
+	}
+
 	.star {
 		flex: none;
-		width: 24px;
+		width: 22px;
+		height: 22px;
 		color: var(--ink-faint);
 		opacity: 0;
 		font-size: var(--text-sm);
