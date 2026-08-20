@@ -1,9 +1,9 @@
 <script>
-	/** Gmail, the calendar feed, and the mail-to-task address. */
+	/** Gmail, Google Calendar, the calendar feed, and the mail-to-task address. */
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { page } from '$app/stores';
-	import { t, plural } from '$lib/i18n.svelte.js';
+	import { t, plural, tag } from '$lib/i18n.svelte.js';
 
 	// --- Gmail ------------------------------------------------------------------
 
@@ -134,6 +134,120 @@
 		} catch (e) {
 			app.toast(humanMessage(e));
 		}
+	}
+
+	// --- Google Calendar -----------------------------------------------------------
+
+	// Its own panel rather than a second mode inside the Gmail one. They sign in
+	// through the same registration and are otherwise nothing alike: one turns mail
+	// into work you own, the other shows a copy of somebody else's calendar and
+	// never writes to it.
+	let calendar = $state(null);
+	let savingCalendars = $state(false);
+	let calendarsSaved = $state(false);
+	let syncingCalendar = $state(false);
+	/** The ids ticked in the form, which is not what is stored until Save. */
+	let shownCalendars = $state([]);
+
+	const CALENDAR_CALLBACK = {
+		connected: { tone: 'ok', text: t('int.calendarConnected') },
+		state: { tone: 'bad', text: t('int.calendarState') },
+		expired: { tone: 'bad', text: t('int.calendarExpired') },
+		invalid: { tone: 'bad', text: t('int.calendarInvalid') },
+		failed: { tone: 'bad', text: t('int.calendarFailed') },
+		norefresh: { tone: 'bad', text: t('int.calendarNoRefresh') },
+		access_denied: { tone: 'bad', text: t('int.calendarDenied') },
+		// The one worth naming. An OAuth app registered as Internal accepts only
+		// accounts inside the organisation, and Google's own screen does not say
+		// that in words anybody could act on.
+		org_internal: { tone: 'bad', text: t('int.calendarOrgInternal') }
+	};
+
+	let calendarCallback = $derived.by(() => {
+		const value = $page.url.searchParams.get('calendar');
+		if (!value) return null;
+		return CALENDAR_CALLBACK[value] ?? { tone: 'bad', text: t('int.calendarOther', { what: value }) };
+	});
+
+	$effect(() => {
+		loadCalendar();
+	});
+
+	async function loadCalendar() {
+		try {
+			calendar = await api.getCalendar();
+			shownCalendars = calendar.calendars.filter((c) => c.shown).map((c) => c.id);
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
+	async function connectCalendar() {
+		try {
+			const { url } = await api.authorizeCalendar();
+			location.href = url;
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
+	async function saveCalendars(event) {
+		event.preventDefault();
+		savingCalendars = true;
+		calendarsSaved = false;
+		try {
+			await api.setCalendars(shownCalendars);
+			calendarsSaved = true;
+			// And fetch, without being asked again.
+			//
+			// Ticking a calendar is somebody saying "show me this one". Saving the
+			// choice and leaving the grid empty until the sweep comes round a quarter
+			// of an hour later is a calendar that says a fortnight is clear — and the
+			// person is on this page, watching, with the button under their hand.
+			// Also what refreshes the panel: syncCalendarNow reloads it when it is done.
+			if (shownCalendars.length) {
+				await syncCalendarNow();
+			} else {
+				await loadCalendar();
+			}
+		} catch (e) {
+			app.toast(humanMessage(e));
+		} finally {
+			savingCalendars = false;
+		}
+	}
+
+	async function syncCalendarNow() {
+		syncingCalendar = true;
+		try {
+			const result = await api.syncCalendar();
+			app.toast(
+				result?.events
+					? plural(result.events, 'int.calendarFetchedOne', 'int.calendarFetchedMany')
+					: t('int.calendarNothingNew')
+			);
+			await loadCalendar();
+		} catch (e) {
+			app.toast(humanMessage(e));
+		} finally {
+			syncingCalendar = false;
+		}
+	}
+
+	async function disconnectCalendar() {
+		if (!confirm(t('int.disconnectCalendarQuestion'))) return;
+		try {
+			await api.disconnectCalendar();
+			await loadCalendar();
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
+	function toggleCalendar(id) {
+		shownCalendars = shownCalendars.includes(id)
+			? shownCalendars.filter((c) => c !== id)
+			: [...shownCalendars, id];
 	}
 
 	// --- calendar feed -------------------------------------------------------------
@@ -357,6 +471,87 @@
 
 <section class="panel">
 	<header>
+		<h2>{t('int.calendar')}</h2>
+		<p class="hint">{t('int.calendarHint')}</p>
+	</header>
+
+	{#if calendarCallback}
+		<p class="callback" data-tone={calendarCallback.tone}>{calendarCallback.text}</p>
+	{/if}
+
+	{#if calendar === null}
+		<p class="empty">…</p>
+	{:else if !calendar.connected}
+		<div class="row">
+			<button class="primary" onclick={connectCalendar} disabled={!calendar.has_client}>
+				{t('int.connectCalendar')}
+			</button>
+		</div>
+
+		<!-- The registration is the Gmail panel's — one client, two features — so
+		     this only spells out the second redirect URI, which has to be added to
+		     it. It is the single most likely thing to be wrong, and the error Google
+		     gives for it names neither value. -->
+		{#if app.user?.is_admin}
+			<div class="field">
+				<label for="calendar-redirect">{t('int.redirectURI')}</label>
+				<input id="calendar-redirect" class="mono" readonly value={calendar.redirect_uri} />
+				<p class="hint">{t('int.calendarSameClient')}</p>
+			</div>
+		{:else if !calendar.has_client}
+			<p class="hint">{t('int.noClient')}</p>
+		{/if}
+	{:else}
+		<p class="hint">
+			{t('int.calendarConnectedAs')}
+			<strong>{calendar.account || t('int.unknownAccount')}</strong>.
+		</p>
+
+		<form onsubmit={saveCalendars}>
+			{#if calendar.calendars.length}
+				<fieldset>
+					<legend>{t('int.whichCalendars')}</legend>
+					{#each calendar.calendars as c (c.id)}
+						<label class="pick">
+							<input
+								type="checkbox"
+								checked={shownCalendars.includes(c.id)}
+								onchange={() => toggleCalendar(c.id)}
+							/>
+							<!-- Google's own colour for the calendar, which is what the grid
+							     draws its events in. Told apart by the colour the person
+							     already knows it by, not by one of verdande's ten names. -->
+							<span class="swatch" style:background={c.colour || 'var(--line-strong)'}></span>
+							{c.name}
+						</label>
+					{/each}
+				</fieldset>
+			{:else}
+				<p class="hint">{t('int.noCalendars')}</p>
+			{/if}
+
+			<p class="hint">
+				{calendar.last_sync_at
+					? t('int.calendarLastSync', {
+							when: new Date(calendar.last_sync_at).toLocaleString(tag())
+						})
+					: t('int.calendarNeverSynced')}
+			</p>
+
+			<div class="row">
+				<button class="primary" type="submit" disabled={savingCalendars}>{t('int.save')}</button>
+				{#if calendarsSaved}<span class="saved">{t('int.saved')}</span>{/if}
+				<button class="secondary" onclick={syncCalendarNow} disabled={syncingCalendar}>
+					{syncingCalendar ? t('int.fetching') : t('int.fetchNow')}
+				</button>
+				<button class="danger" onclick={disconnectCalendar}>{t('int.disconnect')}</button>
+			</div>
+		</form>
+	{/if}
+</section>
+
+<section class="panel">
+	<header>
 		<h2>{t('int.feed')}</h2>
 		<p class="hint">
 			{t('int.feedHint')}
@@ -527,6 +722,38 @@
 		color: var(--danger);
 		background: var(--danger-sunken);
 		border-color: var(--danger);
+	}
+
+	fieldset {
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		padding: var(--s3);
+		display: flex;
+		flex-direction: column;
+		gap: var(--s2);
+	}
+
+	legend {
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+		padding: 0 var(--s1);
+	}
+
+	.pick {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		font-size: var(--text-sm);
+	}
+
+	/* A solid mark beside a label that carries the meaning, so it only has to be
+	   tellable from its neighbours and visible on both near-black and white — the
+	   same job the project colours' dots do. */
+	.swatch {
+		width: 10px;
+		height: 10px;
+		border-radius: var(--radius-full);
+		flex: none;
 	}
 
 	a {

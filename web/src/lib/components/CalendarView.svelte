@@ -49,7 +49,19 @@
 		 * flight swallows the click that would page. A week that straddles the
 		 * 31st and the 1st has both days in the same row.
 		 */
-		span = 'month'
+		span = 'month',
+		/**
+		 * Events read from somewhere else, laid over the same grid.
+		 *
+		 * An event is not a task, and the cell has to say so. It has a span of time
+		 * rather than a day, it cannot be ticked off, and — while the connection is
+		 * read-only — it cannot be moved: verdande holds a copy of somebody else's
+		 * calendar, and a chip that lets itself be dragged is a promise the server
+		 * has no way to keep.
+		 *
+		 * Empty everywhere but Kalender, so no other view pays for it.
+		 */
+		events = []
 	} = $props();
 
 	let cursor = $state(span === 'week' ? startOfWeek(new Date()) : startOfMonth(new Date()));
@@ -136,6 +148,66 @@
 				t.due_date === iso(date) &&
 				(!projectId || t.project_id === projectId)
 		);
+
+	/**
+	 * Which cells an event covers, rather than where it starts. A trip from Friday
+	 * to Monday is in all four, and asking only about the start day would draw it
+	 * once and leave three days looking clear.
+	 *
+	 * Ordered here rather than trusted from the caller. The server does sort, but a
+	 * cell that shows 14:00 above 09:15 does not look like a list in the wrong
+	 * order — it looks like the clock on the chip is wrong, which is a far worse
+	 * thing to have to rule out. All-day first, because an all-day event is a band
+	 * over the whole day rather than something that happens at a point in it.
+	 */
+	const eventsOn = (date) => {
+		const day = iso(date);
+		return events
+			.filter((e) => e.start_day <= day && e.end_day >= day)
+			.toSorted((a, b) => {
+				if (a.all_day !== b.all_day) return a.all_day ? -1 : 1;
+				return (a.starts_at ?? '').localeCompare(b.starts_at ?? '');
+			});
+	};
+
+	/**
+	 * The time on the chip, and only where it means something.
+	 *
+	 * An all-day event has no time. A timed one shows its start, and only on the
+	 * day it starts: a meeting that runs past midnight would otherwise claim to
+	 * begin at 20:00 on both days.
+	 *
+	 * The clock is read out of the string rather than parsed into a Date. Google
+	 * writes the event's own offset into it, and handing that to the browser asks
+	 * *this device* what time it is — so a phone in another time zone would show a
+	 * Copenhagen meeting an hour out.
+	 */
+	function timeOn(event, date) {
+		if (event.all_day || !event.starts_at) return '';
+		if (event.start_day !== iso(date)) return '';
+		return event.starts_at.slice(11, 16);
+	}
+
+	/**
+	 * The calendar's own colour, or nothing.
+	 *
+	 * Checked rather than trusted, even though it comes from Google: this goes into
+	 * an inline `style`, and a value that is not a colour is a value that can close
+	 * the declaration and open another. A hex triple is the whole of what Google
+	 * sends, so anything else is not a colour that failed to render — it is a
+	 * string that has no business being here.
+	 */
+	const HEX = /^#[0-9a-f]{3,8}$/i;
+	const swatch = (colour) => (HEX.test(colour ?? '') ? colour : '');
+
+	/**
+	 * Whether the event links back to Google.
+	 *
+	 * `https:` and nothing else. An href is where a `javascript:` URL becomes a
+	 * click that runs, and the address in this field was written by a service, not
+	 * by the person looking at it.
+	 */
+	const linkOf = (event) => (String(event.url ?? '').startsWith('https://') ? event.url : '');
 
 	const monthName = $derived(
 		cursor.toLocaleDateString(tag(), { month: 'long', year: 'numeric' })
@@ -232,7 +304,14 @@
 
 	<div class="grid">
 		{#each grid as date (date.toISOString())}
-			{@const tasks = tasksOn(date)}
+			{@const dayEvents = eventsOn(date)}
+			<!-- Events first, then whatever room is left goes to tasks. An event is
+			     fixed to a time somebody else chose; a task is only dated, and if
+			     something in a full cell has to fall behind "+3 mere", it should be
+			     the one that can be moved. -->
+			{@const tasks = tasksOn(date).slice(0, Math.max(0, chipLimit - dayEvents.length))}
+			{@const hidden =
+				tasksOn(date).length - tasks.length + Math.max(0, dayEvents.length - chipLimit)}
 			<!-- A week has no outside: every day in it is the week you asked for. -->
 			{@const outside = span !== 'week' && date.getMonth() !== cursor.getMonth()}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -254,7 +333,36 @@
 				{/if}
 				<span class="number">{date.getDate()}</span>
 
-				{#each tasks.slice(0, chipLimit) as task (task.id)}
+				{#each dayEvents.slice(0, chipLimit) as event (event.id)}
+					{@const link = linkOf(event)}
+					{@const label = t('cal.eventCannotMove', {
+						name: event.summary,
+						calendar: event.calendar_name || t('cal.title')
+					})}
+					<!-- Not draggable, and it says so twice: the attribute stops the
+					     browser dragging an anchor of its own accord, and the title says
+					     why to anybody who tries. The drop targets would refuse it anyway
+					     — they only accept the task MIME type — but a chip that lifts off
+					     the page and then will not land reads as a bug rather than as a
+					     rule. It is also not a button: there is nothing here to complete,
+					     and a checkbox next to a meeting is an offer verdande cannot keep. -->
+					<svelte:element
+						this={link ? 'a' : 'span'}
+						class="event"
+						class:allday={event.all_day}
+						draggable="false"
+						href={link || undefined}
+						target={link ? '_blank' : undefined}
+						rel={link ? 'noreferrer noopener' : undefined}
+						title={link ? `${label} — ${t('cal.openInGoogle')}` : label}
+						style={swatch(event.colour) ? `--event-colour: ${swatch(event.colour)}` : undefined}
+					>
+						{#if timeOn(event, date)}<span class="at">{timeOn(event, date)}</span>{/if}
+						{event.summary}
+					</svelte:element>
+				{/each}
+
+				{#each tasks as task (task.id)}
 					<!-- Draggable as well as clickable: within a month, moving something
 					     to another day is the whole reason to be looking at a month. The
 					     browser needs a few pixels of movement before it calls a press a
@@ -271,8 +379,8 @@
 					</button>
 				{/each}
 
-				{#if tasks.length > chipLimit}
-					<span class="more">{t('view.more', { n: tasks.length - chipLimit })}</span>
+				{#if hidden > 0}
+					<span class="more">{t('view.more', { n: hidden })}</span>
 				{/if}
 			</div>
 		{/each}
@@ -451,6 +559,58 @@
 		background: var(--surface);
 	}
 
+	/* An event reads as a different kind of thing at a glance, before any of the
+	   words are read: a solid bar of colour where a task is a card with a coloured
+	   edge. That is the whole distinction the eye needs — a task is something you
+	   can move and finish, an event is something that is simply happening.
+
+	   The colour is Google's own for that calendar, so two calendars in one grid
+	   are told apart by the colour the person already knows them by. `--line-strong`
+	   is the fallback for a calendar Google gave no colour, which is rare and not
+	   worth a second decision. */
+	.event {
+		--event-colour: var(--line-strong);
+		font-size: var(--text-xs);
+		text-align: left;
+		display: block;
+		padding: 1px var(--s1);
+		border-radius: var(--radius-sm);
+		border-left: 3px solid var(--event-colour);
+		background: var(--surface-sunken);
+		color: var(--ink-muted);
+		text-decoration: none;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		/* A drag that cannot land is worse than one that cannot start. The grab
+		   cursor is the promise; this withholds it. */
+		cursor: default;
+	}
+
+	.event[href] {
+		cursor: pointer;
+	}
+
+	.event:hover {
+		background: var(--surface);
+		color: var(--ink);
+	}
+
+	/* An all-day event has no clock to show, so the colour carries it instead:
+	   filled rather than merely edged, which is what an all-day band looks like in
+	   every calendar anybody has used. */
+	.event.allday {
+		border-left: none;
+		background: color-mix(in oklab, var(--event-colour) 22%, var(--ground));
+		box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--event-colour) 45%, transparent);
+	}
+
+	.at {
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-faint);
+		margin-right: 2px;
+	}
+
 	.more {
 		font-size: var(--text-xs);
 		color: var(--ink-faint);
@@ -480,6 +640,29 @@
 		}
 		.chip[data-priority='3'] {
 			background: var(--p3);
+		}
+
+		/* Counted rather than read, like the task chips beside it — a 45px column
+		   fits no title. A bar rather than a dot, so an event is still tellable from
+		   a task at a glance: what the month grid says on a phone is "how much is
+		   on this day, and how much of it is somebody else's". */
+		.event {
+			font-size: 0;
+			padding: 0;
+			height: 4px;
+			border-radius: 1px;
+			border-left: none;
+			box-shadow: none;
+			background: var(--event-colour);
+		}
+
+		.event.allday {
+			background: var(--event-colour);
+			box-shadow: none;
+		}
+
+		.at {
+			display: none;
 		}
 
 		.more {
@@ -534,6 +717,27 @@
 		.calendar.week .chip[data-priority='3'] {
 			border-left-color: var(--p3);
 			background: var(--surface-raised);
+		}
+
+		/* Readable again in the week, for the reason the task chips are: a
+		   full-width row has room for a title, and a week somebody opened on
+		   purpose is one they want to read rather than count. */
+		.calendar.week .event {
+			font-size: var(--text-xs);
+			height: auto;
+			padding: 1px var(--s1);
+			border-radius: var(--radius-sm);
+			border-left: 3px solid var(--event-colour);
+			background: var(--surface-sunken);
+		}
+
+		.calendar.week .event.allday {
+			border-left: none;
+			background: color-mix(in oklab, var(--event-colour) 22%, var(--ground));
+		}
+
+		.calendar.week .at {
+			display: inline;
 		}
 
 		.calendar.week .more {

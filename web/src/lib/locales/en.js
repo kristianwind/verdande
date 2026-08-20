@@ -76,6 +76,7 @@ export const en = {
 	'nav.upcoming': 'Upcoming',
 	'nav.delegated': 'Waiting on others',
 	'nav.inbox': 'Inbox',
+	'nav.calendar': 'Calendar',
 	'nav.settings': 'Settings',
 	'nav.signOut': 'Sign out',
 	'nav.main': 'Main menu',
@@ -589,7 +590,7 @@ export const en = {
 		'The client is set in the environment (VERDANDE_GMAIL_CLIENT_ID), so it cannot be changed here. That is deliberate: a value in the Rune’s manifest is a decision reapplied on every restart, and a form that could overwrite it would make the manifest a lie.',
 	'int.oauthClient': 'OAuth client at Google',
 	'int.registerHint':
-		'Register a client in Google Cloud Console → APIs & Services → Credentials → OAuth client ID → Web application, enable the Gmail API, and paste the two values here. Your own account has to be listed as a test user for as long as the app is unverified with Google.',
+		'Register a client in Google Cloud Console → APIs & Services → Credentials → OAuth client ID → Web application and paste the two values here. The same client serves both Gmail and Google Calendar: enable whichever API you need, and add both redirect URIs — the one below and the calendar\'s, which is shown in the Google Calendar panel. Your own account has to be listed as a test user for as long as the app is unverified with Google.',
 	'int.redirectURI': 'Authorised redirect URI',
 	'int.clientID': 'Client ID',
 	'int.clientSecret': 'Client secret',
@@ -629,6 +630,31 @@ export const en = {
 	'int.server': 'Server',
 	'int.caldavAuth':
 		'The username is your email. The password is an API token — not your real password.',
+	'int.calendar': 'Google Calendar',
+	'int.calendarHint':
+		'Read, never written. The events appear in Calendar beside your own tasks with due dates — they cannot be moved or completed from here, because they belong to Google.',
+	'int.connectCalendar': 'Connect Google Calendar',
+	'int.calendarConnectedAs': 'Connected as',
+	'int.calendarSameClient':
+		'Uses the same OAuth client as Gmail above. The Google Calendar API has to be enabled, and this address has to be listed as an authorised redirect URI.',
+	'int.whichCalendars': 'Which calendars are shown',
+	'int.noCalendars': 'The account has no calendars to show.',
+	'int.calendarLastSync': 'Last fetched {when}.',
+	'int.calendarNeverSynced': 'Not fetched yet.',
+	'int.calendarFetchedOne': '{n} event fetched.',
+	'int.calendarFetchedMany': '{n} events fetched.',
+	'int.calendarNothingNew': 'No events in the window.',
+	'int.calendarConnected': 'Google Calendar is connected.',
+	'int.calendarState': 'Google’s reply did not match the attempt that started here. Try again.',
+	'int.calendarExpired': 'The attempt expired on the way. Try again.',
+	'int.calendarInvalid': 'Google’s reply could not be read. Try again.',
+	'int.calendarFailed': 'Google refused to exchange the code.',
+	'int.calendarNoRefresh':
+		'Google sent no refresh token. Remove verdande from your Google account and connect again.',
+	'int.calendarDenied': 'Access was refused at Google.',
+	'int.calendarOrgInternal':
+		'The Google app is registered as Internal and only accepts accounts inside the organisation. A private account cannot consent to it, whatever the screen says.',
+	'int.calendarOther': 'Google replied: {what}',
 	'int.gmailFetchedOne': '{n} task fetched.',
 	'int.gmailFetchedMany': '{n} tasks fetched.',
 	'int.gmailNothingNew': 'No new messages.',
@@ -641,6 +667,17 @@ export const en = {
 		'Google sent no refresh token. Remove verdande from your Google account and connect again.',
 	'int.gmailDenied': 'Access was refused at Google.',
 	'int.gmailOther': 'Gmail replied: {what}',
+
+	// --- the calendar, with Google’s events laid over ------------------------------------
+	'cal.title': 'Calendar',
+	'cal.notConnected': 'No calendar is connected yet. That is done under Settings → Integrations.',
+	'cal.settings': 'Settings',
+	'cal.noneChosen': 'None of the account’s calendars are chosen yet.',
+	'cal.allDay': 'All day',
+	'cal.openInGoogle': 'Open in Google Calendar',
+	'cal.beyondWindow':
+		'Events are kept from {from} to {to}. Outside that the grid shows only your own tasks.',
+	'cal.eventCannotMove': '{name} — an event in {calendar}. It cannot be moved from here.',
 
 	// --- a project ----------------------------------------------------------------------
 	'project.name': 'The project’s name',
@@ -784,6 +821,10 @@ export const en = {
 		'This instance cannot restart itself: {missing} are not set. A container cannot replace its own image — the panel does the work, and this is only the way to ask.',
 
 	'error.gmailSaid': 'Gmail said: {what}',
+	'error.calendarRefused': 'Google refused the call. Try connecting the calendar again.',
+	'error.calendarSaid': 'Google replied: {what}',
+	'int.disconnectCalendarQuestion':
+		'Disconnect Google Calendar? The tokens are forgotten and the fetched copy of the events is deleted. Your own tasks are untouched.',
 
 	'error.mailboxRefused': 'The mailbox could not be read.',
 	'error.mailboxSaid': 'The mailbox answered: {what}',

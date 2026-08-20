@@ -1,110 +1,16 @@
 package gmail
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
-	"net/url"
 	"strings"
 	"testing"
 )
 
-// The challenge has to be the SHA-256 of the verifier, base64url without padding.
-// Getting this wrong means Google refuses every exchange with a message that does
-// not say which end is at fault.
-func TestPKCEChallengeMatchesItsVerifier(t *testing.T) {
-	p, err := NewPKCE()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sum := sha256.Sum256([]byte(p.Verifier))
-	want := base64.RawURLEncoding.EncodeToString(sum[:])
-	if p.Challenge != want {
-		t.Errorf("challenge = %q, want %q", p.Challenge, want)
-	}
-
-	// RFC 7636 requires 43–128 characters, and no padding.
-	if n := len(p.Verifier); n < 43 || n > 128 {
-		t.Errorf("verifier is %d characters, outside the 43–128 the spec allows", n)
-	}
-	if strings.ContainsAny(p.Verifier, "=+/") {
-		t.Errorf("verifier %q contains characters that are not URL-safe", p.Verifier)
-	}
-	if p.State == "" {
-		t.Error("no state was generated")
-	}
-
-	// Two attempts must not share anything.
-	other, err := NewPKCE()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if other.Verifier == p.Verifier || other.State == p.State {
-		t.Error("two authorisation attempts produced the same secrets")
-	}
-}
-
-func TestAuthURL(t *testing.T) {
-	cfg := Config{
-		ClientID:     "client-123",
-		ClientSecret: "secret",
-		RedirectURL:  "https://todo.example.dk/oauth/gmail/callback",
-	}
-	p, err := NewPKCE()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	raw := cfg.AuthURL(p)
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		t.Fatalf("the URL does not parse: %v", err)
-	}
-	q := parsed.Query()
-
-	checks := map[string]string{
-		"client_id":             cfg.ClientID,
-		"redirect_uri":          cfg.RedirectURL,
-		"response_type":         "code",
-		"scope":                 Scope,
-		"code_challenge":        p.Challenge,
-		"code_challenge_method": "S256",
-		"state":                 p.State,
-		// Without both of these Google returns no refresh token on a
-		// re-authorisation, and the connection dies silently an hour later.
-		"access_type": "offline",
-		"prompt":      "consent",
-	}
-	for key, want := range checks {
-		if got := q.Get(key); got != want {
-			t.Errorf("%s = %q, want %q", key, got, want)
-		}
-	}
-
-	// The verifier itself must never leave the server.
-	if strings.Contains(raw, p.Verifier) {
-		t.Error("the code verifier was put in the authorisation URL")
-	}
-	// Read-only, and only mail.
+// The scope is the one thing verdande chooses about the connection, and it is the
+// one the person reads on the consent screen. The flow itself is exercised in
+// internal/google; what belongs here is that Gmail still asks for read-only mail.
+func TestTheScopeIsReadOnlyMail(t *testing.T) {
 	if !strings.HasSuffix(Scope, "gmail.readonly") {
 		t.Errorf("scope = %q; verdande never needs to send or modify", Scope)
-	}
-}
-
-func TestConfigured(t *testing.T) {
-	full := Config{ClientID: "a", ClientSecret: "b", RedirectURL: "c"}
-	if !full.Configured() {
-		t.Error("a complete config is not reported as configured")
-	}
-	for _, partial := range []Config{
-		{},
-		{ClientID: "a"},
-		{ClientID: "a", ClientSecret: "b"},
-		{ClientSecret: "b", RedirectURL: "c"},
-	} {
-		if partial.Configured() {
-			t.Errorf("%+v was reported as configured", partial)
-		}
 	}
 }
 

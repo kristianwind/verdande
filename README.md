@@ -103,15 +103,16 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | Mail-to-task | Done, tested |
 | AI layer (Anthropic/OpenAI/Google/local) | Built, degrades when unconfigured |
 | Gmail: OAuth2 with PKCE, polling, one-way to tasks | Done, tested |
+| Google Calendar: read-only, laid over the task calendar | Built, never run against Google |
 | Update notice for administrators | Done, tested |
 | Personal API tokens | Done, tested |
 | OpenAPI 3.1 spec, checked against the router | Done, tested |
 | End-to-end smoke tests (Playwright) | Done |
 | Documentation, landing page, licence | Done |
 
-**Not finished:** Web Push, the AI providers and the Gmail API calls are
-implemented against their specifications and have only ever been exercised there,
-not against live services. Everything else has an interface: opening a task shows
+**Not finished:** Web Push, the AI providers, and the Gmail and Google Calendar
+API calls are implemented against their specifications and have only ever been
+exercised there, not against live services. Everything else has an interface: opening a task shows
 its description, sub-tasks, comments, files and reminders, and the settings pages
 cover the account, notifications, integrations, AI, API tokens, import, export and
 templates.

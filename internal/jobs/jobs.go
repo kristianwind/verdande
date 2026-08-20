@@ -41,6 +41,10 @@ type Runner struct {
 	// reason as SyncGmail: it owns turning a message into a task.
 	SyncMailbox func(ctx context.Context, user *store.User, m *store.Mailbox) (int, error)
 
+	// SyncCalendars refreshes one person's connected calendars. Supplied the same
+	// way and for the same reason: the HTTP layer owns the token refresh.
+	SyncCalendars func(ctx context.Context, user *store.User) (int, error)
+
 	// Push delivers a notification to somebody's devices. Supplied by the HTTP
 	// layer, which owns the VAPID keys and the subscription list.
 	Push func(userID, title, body, projectID string)
@@ -74,6 +78,13 @@ func (r *Runner) Start(ctx context.Context) {
 	// account for a to-do app. Ten minutes is fast enough for something somebody
 	// starred and slow enough not to look like abuse.
 	r.every(ctx, "mailboxes", 10*time.Minute, r.syncMailboxes)
+	// Fifteen minutes rather than ten. A calendar is not a mailbox: nothing here
+	// becomes a task, so being a quarter of an hour behind on a meeting next
+	// Tuesday costs nothing — and the "fetch now" button covers the one case where
+	// it matters, which is somebody who has just moved something and is looking at
+	// the grid to check. A person who has just connected does not wait for this
+	// either; connecting fetches the list, and the first sync is one click away.
+	r.every(ctx, "calendars", 15*time.Minute, r.syncCalendars)
 	// Checked hourly, sent at most daily — the same shape as the backup, and for
 	// the same reason: a container asleep at the scheduled minute would otherwise
 	// skip the day. SendBeacon decides whether a day has passed.
@@ -337,6 +348,44 @@ func (r *Runner) syncMailboxes(ctx context.Context) error {
 				r.log.Info("tasks created from a mailbox", "user", id,
 					"kind", boxes[i].Kind, "count", created)
 			}
+		}
+	}
+	return nil
+}
+
+// --- calendars ------------------------------------------------------------------------
+
+// syncCalendars refreshes everybody's connected calendars.
+//
+// Its own sweep rather than a branch inside the mailbox one. They share nothing
+// past the word "poll": that loop asks each mailbox how far it has read and makes
+// tasks, this one replaces a window of somebody else's events. Folding them
+// together would mean one interval for two questions that do not want the same
+// answer, and a Google that is down would count against a mailbox that is not.
+//
+// Nobody is waiting, so no budget of its own — the request handler has one because
+// a person is watching a spinner. One account that has gone quiet costs this run
+// its own timeout and nothing else: the loop moves on per person.
+func (r *Runner) syncCalendars(ctx context.Context) error {
+	if r.SyncCalendars == nil {
+		return nil
+	}
+	userIDs, err := r.db.UsersWithCalendars(ctx)
+	if err != nil {
+		return err
+	}
+	for _, id := range userIDs {
+		user, err := r.db.UserByID(ctx, id)
+		if err != nil || user == nil {
+			continue
+		}
+		written, err := r.SyncCalendars(ctx, user)
+		if err != nil {
+			r.log.Warn("calendar sync", "err", err, "user", id)
+			continue
+		}
+		if written > 0 {
+			r.log.Info("calendar refreshed", "user", id, "events", written)
 		}
 	}
 	return nil

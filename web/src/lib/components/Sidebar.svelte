@@ -145,7 +145,16 @@
 			// Sidst i rækken, fordi `navOrder` føjer en ukendt nøgle til bagest: står
 			// den et andet sted her, ser en ny konto én rækkefølge og alle
 			// eksisterende en anden.
-			{ key: 'notes', href: '/noter', label: 'notes.title' }
+			{ key: 'notes', href: '/noter', label: 'notes.title' },
+			// Kalenderen bærer et gitter, af samme grund som Noter bærer et ark: den
+			// er ikke endnu et filter over de samme opgaver. Den er de samme opgaver
+			// med noget andet lagt over — Googles begivenheder — og en prik ville
+			// sige, at den hørte til blandt I dag og Kommende.
+			//
+			// Sidst i rækken, fordi `navOrder` føjer en ukendt nøgle til bagest: står
+			// den et andet sted her, ser en ny konto én rækkefølge og alle
+			// eksisterende en anden.
+			{ key: 'calendar', href: '/kalender', label: 'nav.calendar' }
 		].filter(Boolean)
 	);
 
@@ -487,6 +496,26 @@
 									stroke-linejoin="round"
 								/>
 								<path d="M9 1.7V5h3.3" fill="none" stroke="currentColor" stroke-width="1.4" />
+							</svg>
+						{:else if item.key === 'calendar'}
+							<svg class="mark" viewBox="0 0 16 16" aria-hidden="true">
+								<rect
+									x="2.2"
+									y="3.2"
+									width="11.6"
+									height="10.6"
+									rx="1.4"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.4"
+								/>
+								<path
+									d="M2.2 6.4h11.6M5.6 2.2v2M10.4 2.2v2"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.4"
+									stroke-linecap="round"
+								/>
 							</svg>
 						{:else}
 							<span class="dot" class:today={item.key === 'today'} aria-hidden="true"></span>

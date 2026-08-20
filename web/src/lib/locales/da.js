@@ -80,6 +80,7 @@ export const da = {
 	'nav.upcoming': 'Kommende',
 	'nav.delegated': 'Venter på andre',
 	'nav.inbox': 'Indbakke',
+	'nav.calendar': 'Kalender',
 	'nav.settings': 'Indstillinger',
 	'nav.signOut': 'Log ud',
 	'nav.main': 'Hovedmenu',
@@ -593,7 +594,7 @@ export const da = {
 		'Klienten er sat i miljøet (VERDANDE_GMAIL_CLIENT_ID), så den kan ikke ændres her. Det er med vilje: en værdi i runens manifest er en beslutning, der bliver anvendt igen ved hver genstart, og en formular, der kunne overskrive den, ville gøre manifestet til en løgn.',
 	'int.oauthClient': 'OAuth-klient hos Google',
 	'int.registerHint':
-		'Registrér en klient i Google Cloud Console → APIs & Services → Credentials → OAuth client ID → Web application, slå Gmail API til, og indsæt de to værdier her. Din egen konto skal stå som testbruger, så længe appen ikke er verificeret hos Google.',
+		'Registrér en klient i Google Cloud Console → APIs & Services → Credentials → OAuth client ID → Web application, og indsæt de to værdier her. Den samme klient bruges til både Gmail og Google Kalender: slå det API til, du skal bruge, og tilføj begge redirect-URI\'er — den nedenfor og kalenderens, som står i panelet Google Kalender. Din egen konto skal stå som testbruger, så længe appen ikke er verificeret hos Google.',
 	'int.redirectURI': 'Godkendt redirect-URI',
 	'int.clientID': 'Klient-id',
 	'int.clientSecret': 'Klienthemmelighed',
@@ -633,6 +634,32 @@ export const da = {
 	'int.server': 'Server',
 	'int.caldavAuth':
 		'Brugernavn er din e-mail. Adgangskoden er en API-token — ikke din rigtige adgangskode.',
+	'int.calendar': 'Google Kalender',
+	'int.calendarHint':
+		'Læses, aldrig skrives. Begivenhederne vises i Kalender ved siden af dine egne opgaver med forfaldsdato — de kan ikke flyttes eller lukkes herfra, for de hører til i Google.',
+	'int.connectCalendar': 'Forbind Google Kalender',
+	'int.calendarConnectedAs': 'Forbundet som',
+	'int.calendarSameClient':
+		'Bruger den samme OAuth-klient som Gmail ovenfor. Google Calendar API skal være slået til, og denne adresse skal stå som godkendt redirect-URI.',
+	'int.whichCalendars': 'Hvilke kalendere vises',
+	'int.noCalendars': 'Kontoen har ingen kalendere at vise.',
+	'int.calendarLastSync': 'Sidst hentet {when}.',
+	'int.calendarNeverSynced': 'Ikke hentet endnu.',
+	'int.calendarFetchedOne': '{n} begivenhed hentet.',
+	'int.calendarFetchedMany': '{n} begivenheder hentet.',
+	'int.calendarNothingNew': 'Ingen begivenheder i vinduet.',
+	'int.calendarConnected': 'Google Kalender er forbundet.',
+	'int.calendarState':
+		'Svaret fra Google passede ikke til det forsøg, der blev startet her. Prøv igen.',
+	'int.calendarExpired': 'Forsøget udløb undervejs. Prøv igen.',
+	'int.calendarInvalid': 'Svaret fra Google kunne ikke læses. Prøv igen.',
+	'int.calendarFailed': 'Google afviste ombytningen af koden.',
+	'int.calendarNoRefresh':
+		'Google sendte ingen refresh-token. Fjern verdande under din Google-konto og forbind igen.',
+	'int.calendarDenied': 'Adgangen blev afvist hos Google.',
+	'int.calendarOrgInternal':
+		'Google-appen er registreret som Internal og tager kun imod konti i organisationen. En privat konto kan ikke godkende den, uanset hvad der står på skærmen.',
+	'int.calendarOther': 'Google svarede: {what}',
 	'int.gmailFetchedOne': '{n} opgave hentet.',
 	'int.gmailFetchedMany': '{n} opgaver hentet.',
 	'int.gmailNothingNew': 'Ingen nye beskeder.',
@@ -646,6 +673,18 @@ export const da = {
 		'Google sendte ingen refresh-token. Fjern verdande under din Google-konto og forbind igen.',
 	'int.gmailDenied': 'Adgangen blev afvist hos Google.',
 	'int.gmailOther': 'Gmail svarede: {what}',
+
+	// --- kalenderen, med Googles begivenheder lagt over ---------------------------------
+	'cal.title': 'Kalender',
+	'cal.notConnected':
+		'Ingen kalender er forbundet endnu. Det gøres under Indstillinger → Integrationer.',
+	'cal.settings': 'Indstillinger',
+	'cal.noneChosen': 'Ingen af kontoens kalendere er valgt endnu.',
+	'cal.allDay': 'Hele dagen',
+	'cal.openInGoogle': 'Åbn i Google Kalender',
+	'cal.beyondWindow':
+		'Begivenheder gemmes fra {from} til {to}. Uden for det viser gitteret kun dine egne opgaver.',
+	'cal.eventCannotMove': '{name} — en begivenhed i {calendar}. Den kan ikke flyttes herfra.',
 
 	// --- a project ----------------------------------------------------------------------
 	'project.name': 'Projektets navn',
@@ -789,6 +828,10 @@ export const da = {
 		'Denne instans kan ikke genstarte sig selv: {missing} er ikke sat. En container kan ikke udskifte sit eget image — panelet gør arbejdet, og det her er kun måden at bede om det.',
 
 	'error.gmailSaid': 'Gmail svarede: {what}',
+	'error.calendarRefused': 'Google afviste kaldet. Prøv at forbinde kalenderen igen.',
+	'error.calendarSaid': 'Google svarede: {what}',
+	'int.disconnectCalendarQuestion':
+		'Afbryd forbindelsen til Google Kalender? Tokens bliver glemt, og den hentede kopi af begivenhederne bliver slettet. Dine egne opgaver rører den ikke.',
 
 	'error.mailboxRefused': 'Postkassen kunne ikke læses.',
 	'error.mailboxSaid': 'Postkassen svarede: {what}',

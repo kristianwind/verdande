@@ -836,6 +836,43 @@ function read() {
 export const upcomingView = new UpcomingView();
 
 /**
+ * Month or week on Kalender.
+ *
+ * Its own key rather than Kommende's, even though the two switchers look alike.
+ * They are not the same choice: Kommende opens on a list of the next seven days
+ * and offers a grid, and Kalender is the grid — sharing the value would mean
+ * choosing a week on one and finding the other had changed, and one of them would
+ * have to answer for the `list` mode the other does not have.
+ *
+ * In localStorage rather than on the account, and for the same reason as the
+ * sidebar's width: a grid of seven columns needs room, and the answer on a phone
+ * is not the answer on a wide monitor.
+ */
+const CALENDAR_MODES = ['week', 'month'];
+
+class CalendarViewMode {
+	mode = $state(readCalendarMode());
+
+	set(next) {
+		if (!CALENDAR_MODES.includes(next)) return;
+		this.mode = next;
+		try {
+			localStorage.setItem('verdande:calendar', next);
+		} catch {
+			// Private browsing; the choice simply will not persist.
+		}
+	}
+}
+
+function readCalendarMode() {
+	if (typeof localStorage === 'undefined') return 'month';
+	const stored = localStorage.getItem('verdande:calendar');
+	return CALENDAR_MODES.includes(stored) ? stored : 'month';
+}
+
+export const calendarView = new CalendarViewMode();
+
+/**
  * Whether the lists show what has already been finished.
  *
  * In localStorage rather than on the account, like the sidebar's width and unlike

@@ -16,7 +16,7 @@ administrator who can read yours.
 **Settings → Integrations → Gmail → Connect.**
 
 Gmail needs an OAuth client, which is the instance's registration with Google
-rather than anybody's account — see [Configuration](configuration.md#gmail).
+rather than anybody's account — see [Configuration](configuration.md#google).
 Once it is set up, each person connects their own mailbox through it.
 
 Choose what makes a task:

@@ -2654,6 +2654,126 @@ paths:
                   created: { type: integer }
         "502": { $ref: "#/components/responses/Upstream" }
 
+  /api/v1/calendar:
+    get:
+      tags: [integrations]
+      summary: The Google Calendar connection and the calendars in it.
+      description: |
+        Read-only. verdande shows a Google calendar beside its own dated tasks and
+        never writes one back — writing needs the `calendar.events` scope and an
+        answer to what happens when both sides moved the same meeting, which is a
+        synchronisation model rather than a scope.
+
+        The list of calendars is fetched from Google when it is empty, so an
+        account that connected during a hiccup corrects itself on the next look
+        rather than showing an empty panel for ever.
+      responses:
+        "200": { $ref: "#/components/responses/Calendar" }
+    delete:
+      tags: [integrations]
+      summary: Disconnect the calendar and forget its tokens.
+      description: >
+        The cached events go too. Unlike the tasks a mailbox made, none of this is
+        the person's own work — it is a copy of somebody else's calendar, and it
+        means nothing without the account.
+      responses:
+        "204": { description: Disconnected. }
+
+  /api/v1/calendar/calendars:
+    put:
+      tags: [integrations]
+      summary: Choose which calendars are drawn.
+      description: >
+        The whole set in one write rather than one flip at a time, for the reason
+        the projects' order is written the same way: the question is "these ones",
+        and a list built out of several requests can land half applied. A calendar
+        turned off has its cached events removed; they come back if it is turned
+        on again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                shown:
+                  type: array
+                  items: { type: string }
+      responses:
+        "204": { description: Saved. }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/calendar/authorize:
+    post:
+      tags: [integrations]
+      summary: Begin the OAuth flow for a calendar.
+      description: |
+        The same registration Gmail signs in through, asking for
+        `calendar.readonly` and coming back to `/oauth/calendar/callback`. Google
+        issues a refresh token per authorisation, so connecting a calendar does not
+        disturb a working Gmail connection.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/calendar/sync:
+    post:
+      tags: [integrations]
+      summary: Refresh the chosen calendars now.
+      description: >
+        Refreshes the list of calendars and replaces the cached window of events
+        for the ones that are shown. `partial` means the budget ran out before the
+        last calendar; what was read is kept, and the rest arrive on the next run.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events: { type: integer }
+                  partial: { type: boolean }
+        "502": { $ref: "#/components/responses/Upstream" }
+
+  /api/v1/calendar/events:
+    get:
+      tags: [integrations]
+      summary: The events of the chosen calendars, between two days.
+      description: |
+        Both ends inclusive, and an event that merely overlaps the range comes
+        back — a grid asks which cells an event covers, not where it begins.
+
+        `from` and `to` in the answer are the window verdande holds a copy of,
+        which is not the window that was asked for. A grid paged past it gets no
+        events, and an empty answer with no explanation is a calendar quietly
+        claiming a day is clear.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/CalendarEvent" }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        "422": { $ref: "#/components/responses/Validation" }
+
   /api/v1/export/notes.zip:
     get:
       tags: [notes]
@@ -3297,6 +3417,26 @@ paths:
       responses:
         "302": { description: "Back into the app, with the outcome as a query parameter." }
 
+  /oauth/calendar/callback:
+    get:
+      tags: [integrations]
+      summary: Where Google sends the browser after consent to a calendar.
+      description: |
+        A URI of its own rather than a reuse of Gmail's. One callback deciding from
+        stored state which of the two flows had come back would put the choice of
+        which token store to write behind a lookup — and when that goes wrong it
+        goes wrong by overwriting a working Gmail connection with calendar tokens.
+
+        Answers with a redirect to `/indstillinger/integrationer`, not with JSON.
+        An `org_internal` error here means the OAuth app is registered as Internal
+        and the account is outside the organisation.
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        "302": { description: "Back into the app, with the outcome as a query parameter." }
+
   /mcp:
     post:
       tags: [integrations]
@@ -3479,6 +3619,40 @@ components:
               email: { type: string }
               trigger: { type: string, enum: ["", starred, label, both] }
               label: { type: string }
+    Calendar:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              connected: { type: boolean }
+              account:
+                type: string
+                description: >
+                  The address of the connected account, taken from the id of its
+                  primary calendar — which is where Google puts it, so no profile
+                  scope has to be asked for to learn it.
+              read_only:
+                type: boolean
+                description: >
+                  Always true today. Stated rather than assumed: an interface that
+                  quietly looks editable is one somebody will try to edit.
+              has_client:
+                type: boolean
+                description: >
+                  Whether an OAuth client is registered on this instance at all, so
+                  the page can explain rather than offer a button that answers 409.
+              redirect_uri:
+                type: string
+                description: >
+                  What has to be registered with Google, spelled out. Derived from
+                  VERDANDE_BASE_URL and matched exactly — the single most likely
+                  thing to be wrong, and the error Google gives names neither value.
+              last_sync_at: { type: string, format: date-time }
+              calendars:
+                type: array
+                items: { $ref: "#/components/schemas/Calendar" }
     ImportResult:
       description: Created
       content:
@@ -3496,6 +3670,62 @@ components:
                 items: { type: string }
 
   schemas:
+    Calendar:
+      type: object
+      description: >
+        One calendar inside a connected account. Kept whether or not it is shown,
+        so turning one off and on again gives back the same row.
+      properties:
+        id: { type: string }
+        remote_id: { type: string, description: "The id Google knows it by; an address for the primary calendar." }
+        name: { type: string }
+        colour:
+          type: string
+          description: >
+            Google's own hex value, not one of verdande's ten named colours. Those
+            are names so the interface can restyle them per theme and they are
+            verdande's palette; a Google calendar is told apart by the colour the
+            person already knows it by.
+        time_zone: { type: string }
+        primary: { type: boolean }
+        writable:
+          type: boolean
+          description: >
+            Whether the connected account could write to it. Nothing does — the
+            scope is read-only — and it is stored so the day something can, the
+            interface knows which calendars could even be offered.
+        shown: { type: boolean }
+
+    CalendarEvent:
+      type: object
+      description: >
+        One occurrence, in the shape a grid asks about. A recurrence is expanded by
+        Google into its occurrences, so what arrives here is a day, not a rule.
+      properties:
+        id: { type: string }
+        calendar_id: { type: string }
+        summary: { type: string }
+        starts_at:
+          type: string
+          description: >
+            RFC 3339 as Google wrote it, offset and all. Empty for an all-day
+            event, which has a day rather than a moment — inventing midnight for it
+            is how an event moves a day when a container moves time zone.
+        ends_at: { type: string }
+        start_day: { type: string, format: date }
+        end_day:
+          type: string
+          format: date
+          description: >
+            The last day the event covers, inclusive. Google's all-day end date is
+            exclusive and is corrected on the way in, once, rather than by every
+            reader.
+        all_day: { type: boolean }
+        location: { type: string }
+        url: { type: string, description: "Opens the event in Google's own interface." }
+        calendar_name: { type: string }
+        colour: { type: string }
+
     Note:
       type: object
       description: A page of Markdown. The body is the stored form and the exported form.

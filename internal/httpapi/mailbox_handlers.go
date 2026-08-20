@@ -143,7 +143,7 @@ func (s *Server) SyncMailbox(ctx context.Context, user *store.User, m *store.Mai
 	// One reader of this mailbox at a time. Held for the whole run, marker and all:
 	// releasing before the marker is written would leave exactly the gap this is
 	// here to close.
-	unlock := s.lockMailbox(m.ID)
+	unlock := s.lockSync(m.ID)
 	defer unlock()
 
 	// Re-read under the lock. The row that came in may have been fetched before the
@@ -250,8 +250,14 @@ func (s *Server) SyncMailbox(ctx context.Context, user *store.User, m *store.Mai
 	return created, nil
 }
 
-// lockMailbox serialises one mailbox against itself and returns the release.
-func (s *Server) lockMailbox(id string) func() {
+// lockSync serialises one thing that polls against itself and returns the release.
+//
+// A mailbox to begin with; a calendar connection now takes the same lock under a
+// key of its own. Two runs at once — somebody pressing "fetch now" while the sweep
+// is in the middle of the same thing — both start from the state as it was, and
+// the loser writes last. For a mailbox that made forty copies of one mail in a
+// second; for a calendar it would be a window deleted after it was refilled.
+func (s *Server) lockSync(id string) func() {
 	value, _ := s.syncing.LoadOrStore(id, &sync.Mutex{})
 	mu := value.(*sync.Mutex)
 	mu.Lock()

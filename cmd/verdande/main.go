@@ -75,6 +75,7 @@ func run() error {
 	runner := jobs.New(cfg, db, log, api.Mail(), api.Hub())
 	runner.SyncGmail = api.SyncGmail
 	runner.SyncMailbox = api.SyncMailbox
+	runner.SyncCalendars = api.SyncCalendars
 	runner.Push = api.PushToUser
 	runner.SendBeacon = api.SendBeacon
 	runner.Start(jobCtx)
