@@ -66,3 +66,6 @@ node_modules.nosync/
 # Kept on disk because it is how a session hands over to the next one.
 HANDOFF.md
 NOTES-PLAN.md
+
+# Agenternes arbejdstræer. Et git-repo inde i et git-repo, som ikke hører til her.
+.claude/worktrees/
