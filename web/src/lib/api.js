@@ -203,7 +203,7 @@ export const api = {
 	changePassword: (current_password, new_password) =>
 		post('/auth/password/change', { current_password, new_password }),
 
-	totpSetup: () => post('/auth/totp/setup'),
+	totpSetup: (password) => post('/auth/totp/setup', { password }),
 	totpConfirm: (code) => post('/auth/totp/confirm', { code }),
 	totpDisable: (password) => post('/auth/totp/disable', { password }),
 	listSessions: () => get('/auth/sessions'),

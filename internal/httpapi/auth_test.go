@@ -301,7 +301,11 @@ func TestTOTPEnrolmentAndTwoStepLogin(t *testing.T) {
 
 	// Begin: a secret exists, but 2FA is not on yet — closing the tab here must
 	// not lock the account.
-	resp, body := ts.do(t, "POST", "/api/v1/auth/totp/setup", nil)
+	// Med adgangskoden: at slå andenfaktoren til er mindst lige så indgribende som
+	// at slå den fra, og den har altid spurgt.
+	resp, body := ts.do(t, "POST", "/api/v1/auth/totp/setup", map[string]string{
+		"password": "et langt kodeord",
+	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("totp setup: %d %v", resp.StatusCode, body)
 	}
@@ -368,7 +372,9 @@ func TestRecoveryCodeCompletesLoginOnce(t *testing.T) {
 	ts := newTestServer(t)
 	ts.bootstrap(t)
 
-	_, body := ts.do(t, "POST", "/api/v1/auth/totp/setup", nil)
+	_, body := ts.do(t, "POST", "/api/v1/auth/totp/setup", map[string]string{
+		"password": "et langt kodeord",
+	})
 	secret := body["secret"].(string)
 	_, body = ts.do(t, "POST", "/api/v1/auth/totp/confirm", map[string]string{
 		"code": codeFor(t, secret),
@@ -895,5 +901,67 @@ func TestUserAgentsAreSummarisedForAPerson(t *testing.T) {
 		if got := describeUserAgent(c.ua); got != c.want {
 			t.Errorf("describeUserAgent(%q) = %q, want %q", c.ua, got, c.want)
 		}
+	}
+}
+
+// Andenfaktoren kan ikke slås til uden adgangskoden.
+//
+// Døren åbnede før med et token og lukkede kun med et kodeord: `disable` har
+// altid spurgt, `setup` spurgte om ingenting. Et stjålet token kunne derfor hente
+// hemmeligheden, lægge den i sin egen godkender, bekræfte den og beholde den
+// eneste kopi af gendannelseskoderne — hvorefter ejerens næste login stoppede ved
+// en kode, de ikke havde, og de ikke kunne slå den fra uden at logge ind først.
+func TestTOTPCannotBeSwitchedOnWithoutThePassword(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, _ := ts.do(t, "POST", "/api/v1/auth/totp/setup", map[string]string{
+		"password": "det forkerte kodeord",
+	})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, ventede at en forkert adgangskode blev afvist", resp.StatusCode)
+	}
+
+	resp, _ = ts.do(t, "POST", "/api/v1/auth/totp/setup", map[string]string{})
+	if resp.StatusCode == http.StatusOK {
+		t.Fatal("en tom adgangskode blev accepteret")
+	}
+}
+
+// Ratebegrænseren må ikke nulstilles af adgangskoden alene.
+//
+// Den blev det, og det gav én, der havde kodeordet, ubegrænsede portioner på ti
+// gæt: log ind, få en frisk spand og en frisk ventende session, brug ti gæt på
+// koden, log ind igen. Andenfaktoren findes præcis til det tilfælde, hvor
+// kodeordet allerede er tabt, så den portion skal betales for hver gang.
+func TestAPasswordAloneDoesNotRefillTheCodeAttempts(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, body := ts.do(t, "POST", "/api/v1/auth/totp/setup", map[string]string{
+		"password": "et langt kodeord",
+	})
+	secret := body["secret"].(string)
+	ts.do(t, "POST", "/api/v1/auth/totp/confirm", map[string]string{"code": codeFor(t, secret)})
+	ts.do(t, "POST", "/api/v1/auth/logout", nil)
+
+	// Kodeordet er rigtigt hver gang; kun koden er forkert. Uden loftet ville det
+	// her kunne blive ved i det uendelige.
+	refused := 0
+	for i := 0; i < 14; i++ {
+		resp, _ := ts.do(t, "POST", "/api/v1/auth/login", map[string]string{
+			"email": "kristian@example.dk", "password": "et langt kodeord",
+		})
+		if resp.StatusCode == http.StatusTooManyRequests {
+			refused++
+			continue
+		}
+		resp, _ = ts.do(t, "POST", "/api/v1/auth/login/totp", map[string]string{"code": "000000"})
+		if resp.StatusCode == http.StatusTooManyRequests {
+			refused++
+		}
+	}
+	if refused == 0 {
+		t.Fatal("fjorten runder med forkerte koder blev aldrig afvist; spanden fyldes stadig af adgangskoden")
 	}
 }

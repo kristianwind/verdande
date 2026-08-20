@@ -154,7 +154,21 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.loginLimiter.reset(clientIP(r))
+	// The bucket is cleared only when the login is *finished*.
+	//
+	// It used to be cleared here, on the strength of the password alone — before
+	// the second factor had been asked for at all. That handed somebody who
+	// already had the password an unlimited supply of ten-guess batches: log in,
+	// get a fresh bucket and a fresh pending session, spend ten guesses on the
+	// code, log in again. At three valid codes in any moment and twenty requests a
+	// second, that is even odds inside an afternoon — against the one control that
+	// exists precisely for when the password is already gone.
+	//
+	// So an account with a second factor clears nothing yet. handleLoginTOTP does
+	// it, once the code is right.
+	if !user.TOTPEnabled {
+		s.loginLimiter.reset(clientIP(r))
+	}
 
 	// A session that still needs a code gets a short life of its own: long enough
 	// to fetch a phone, not long enough to be worth stealing.
@@ -191,6 +205,19 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r.Context())
 	session := sessionFrom(r.Context())
 
+	// Counted per account as well as per address.
+	//
+	// The address bucket alone is defeated by anybody with more than one, which is
+	// the ordinary case — a phone and a laptop is already two. A code is six
+	// digits: the only thing that makes it safe is that guesses are scarce, and
+	// scarcity has to be counted against the thing being attacked.
+	if ok, retry := s.totpLimiter.allow(user.ID); !ok {
+		w.Header().Set("Retry-After", retryAfterSeconds(retry))
+		writeError(w, http.StatusTooManyRequests, CodeRateLimited,
+			"too many verification codes; wait a moment and try again")
+		return
+	}
+
 	err := auth.VerifyTOTP(user.TOTPSecret, req.Code, time.Now())
 	if err != nil {
 		// A recovery code is accepted in the same field. Making somebody find a
@@ -198,12 +225,26 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 		// introduce a second concept.
 		used, rerr := s.db.UseRecoveryCode(r.Context(), user.ID, req.Code)
 		if rerr != nil || !used {
+			// The pending session is left alive on purpose.
+			//
+			// Ending it on the first wrong digit was considered and rejected: it
+			// would make somebody who mistyped one number type their password again,
+			// and it buys almost nothing. What makes a six-digit code safe is that
+			// guesses are scarce, and the per-account bucket above is what makes
+			// them scarce — ten an hour, however many times the password is
+			// re-entered. The attack this closes was never "one session, many
+			// guesses"; it was "a fresh bucket for every password check".
 			writeError(w, http.StatusUnauthorized, CodeUnauthorized,
 				"that verification code is not valid")
 			return
 		}
 		s.log.Info("recovery code used", "user", user.ID)
 	}
+
+	// Finished. Now the buckets may be cleared — both of them, so somebody who
+	// fumbled the code twice is not still waiting once they get it right.
+	s.loginLimiter.reset(clientIP(r))
+	s.totpLimiter.reset(user.ID)
 
 	if err := s.db.PromoteSession(r.Context(), session.ID, s.cfg.SessionTTL); err != nil {
 		s.internal(w, r, "promote session", err)

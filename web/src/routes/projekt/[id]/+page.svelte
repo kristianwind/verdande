@@ -134,6 +134,27 @@
 		}
 	}
 
+	/**
+	 * En ny note, der allerede hører til dette projekt.
+	 *
+	 * Noten oprettes med `project_id` sat, hvilket er præcis det, deling betyder
+	 * her: en note i et projekt kan læses af alle, der kan læse projektet. Så det
+	 * er én handling og ikke to — man skulle før oprette noten under Noter og
+	 * bagefter finde projektet frem i "Del i".
+	 *
+	 * Tom, og så videre til den. Der er ikke noget at spørge om: titlen er notens
+	 * første linje, så et navnefelt ville være et felt, der lover noget, programmet
+	 * ikke holder.
+	 */
+	async function createNote() {
+		try {
+			const note = await api.createNote({ body: '', project_id: id });
+			goto(`/noter?note=${note.id}`);
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
 	let canEdit = $derived(project?.role === 'owner' || project?.role === 'editor');
 	let isOwner = $derived(project?.role === 'owner');
 
@@ -826,9 +847,22 @@
 		<!-- What has been written about this project, which is the payoff for a #tag
 		     in a note being the same tag a task carries: nobody files anything here,
 		     it turns up because somebody mentioned the project while writing. -->
-		{#if notes.length}
+		{#if notes.length || canEdit}
 			<section class="notes">
-				<h2>{t('notes.title')}</h2>
+				<div class="noteshead">
+					<h2>{t('notes.title')}</h2>
+					{#if canEdit}
+						<!-- En note skrevet herfra hører til projektet med det samme.
+						     At ligge i et projekt *er* måden en note deles på, så det er
+						     den samme handling som at oprette den og dele den — og det er
+						     her, man står, når man opdager at der skal skrives noget ned
+						     om netop dette projekt. -->
+						<button class="newnote" onclick={createNote}>{t('notes.newHere')}</button>
+					{/if}
+				</div>
+				{#if !notes.length}
+					<p class="hint">{t('notes.noneInProject')}</p>
+				{/if}
 				<ul>
 					{#each notes as note (note.id)}
 						<li>
@@ -861,6 +895,25 @@
 		margin-top: var(--s4);
 		padding-top: var(--s3);
 		border-top: 1px solid var(--line);
+	}
+
+	.noteshead {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--s2);
+	}
+
+	.newnote {
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+		padding: 2px var(--s2);
+		border-radius: var(--radius-sm);
+	}
+
+	.newnote:hover {
+		background: var(--surface);
+		color: var(--ink);
 	}
 
 	.notes h2 {

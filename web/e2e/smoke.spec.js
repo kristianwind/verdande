@@ -2704,3 +2704,39 @@ test('et billede kan indsættes og trækkes ind i en note', async ({ page }) => 
 
 	expect(trouble).toEqual([]);
 });
+
+test('en note kan oprettes inde fra et projekt og hører til det med det samme', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByLabel('Nyt projekt').click();
+	await sidebar.getByLabel('Projektnavn').fill('Tagprojekt');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await sidebar.getByRole('link', { name: 'Tagprojekt' }).click();
+	await expect(page.getByRole('heading', { name: 'Tagprojekt' })).toBeVisible();
+
+	// Ruden findes, også før der er en eneste note — ellers er der ingen knap at
+	// trykke på det sted, hvor man opdager at der skal skrives noget ned.
+	await page.getByRole('button', { name: 'Ny note' }).click();
+
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(ed).toBeVisible();
+	await ed.click();
+	await page.keyboard.type('Tagsten og lægter');
+	await page.waitForTimeout(1200);
+
+	// Den hører til projektet med det samme: "Del i" står på projektet, uden at
+	// nogen har valgt det bagefter.
+	await expect(page.getByLabel('Del i')).toHaveValue(/.+/);
+	const shared = await page.getByLabel('Del i').evaluate((el) => el.selectedOptions[0].textContent);
+	expect(shared).toContain('Tagprojekt');
+
+	// Og den står på projektets egen side.
+	await sidebar.getByRole('link', { name: 'Tagprojekt' }).click();
+	// Titlen, ikke uddraget: begge indeholder de samme ord, fordi titlen *er*
+	// notens første linje.
+	await expect(page.locator('.notes strong', { hasText: 'Tagsten og lægter' })).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});

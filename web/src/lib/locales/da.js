@@ -44,6 +44,8 @@ export const da = {
 	'beacon.byVersion': 'Efter version (30 dage):',
 	'beacon.publish': 'Offentliggør tallet på /api/v1/beacon/count',
 	'beacon.publishHint': 'Uden login, mellemlagret et minut. Viser installationer set de seneste 30 dage — ikke et løbende total, som kun ville stige.',
+	'notes.newHere': 'Ny note',
+	'notes.noneInProject': 'Ingen noter endnu. En note, der nævner #projektet, dukker også op her.',
 	'notes.strike': 'Gennemstreget',
 	'notes.showSource': 'Vis som kode',
 	'notes.source': 'Notens kildetekst',

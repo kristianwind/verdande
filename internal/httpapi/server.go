@@ -64,6 +64,11 @@ type Server struct {
 	// than the rest of the API.
 	loginLimiter *limiter
 	resetLimiter *limiter
+	// Second factors are counted against the *account*, not the address. An
+	// address bucket is defeated by anybody with more than one address, which is
+	// the ordinary case — and a six-digit code is only safe while guesses are
+	// scarce, so the scarcity has to be counted against the thing being attacked.
+	totpLimiter *limiter
 
 	// Computed once from the built index.html; see csp.go.
 	csp string
@@ -81,6 +86,10 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 		hub:          realtime.NewHub(log),
 		loginLimiter: newLimiter(10, 15*time.Minute),
 		resetLimiter: newLimiter(5, time.Hour),
+		// Tighter than the password bucket, and for a whole hour. Somebody typing
+		// their own code gets it right on the first or second try; ten in an hour is
+		// generous for a person and hopeless for a search through a million.
+		totpLimiter: newLimiter(10, time.Hour),
 	}
 	s.csp = contentSecurityPolicy(scriptHashes(web))
 	if w, err := auth.NewWebAuthn(cfg.BaseURL, "verdande"); err == nil {
@@ -200,11 +209,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Put("/nav-order", s.handleSetNavOrder)
 				r.Post("/logout", s.handleLogout)
 				r.Post("/password/change", s.handleChangePassword)
-				r.Post("/totp/setup", s.handleTOTPSetup)
-				r.Post("/totp/confirm", s.handleTOTPConfirm)
-				r.Post("/totp/disable", s.handleTOTPDisable)
 				r.Get("/recovery-codes", s.handleRecoveryCodesCount)
-				r.Post("/recovery-codes", s.handleRecoveryCodesRegenerate)
 
 				// Behind requireSession, like the API tokens and for the same
 				// reason: a leaked token must not be able to end the sessions of
@@ -213,6 +218,23 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 					r.Use(s.requireSession)
 					r.Get("/sessions", s.handleListSessions)
 					r.Delete("/sessions/{sessionID}", s.handleDeleteSession)
+
+					// Turning the second factor on, and the codes that get you back
+					// in. Sessions only, and setup asks for the password.
+					//
+					// These sat outside this group, which meant the door opened with
+					// a token and closed only with a password: `disable` has always
+					// asked for the password, `setup` asked for nothing. A stolen
+					// token could therefore fetch the secret, load it into its own
+					// authenticator, confirm it, and keep the only copy of the
+					// recovery codes. The owner's next login would stop at a code
+					// they do not have, and they could not turn it off without
+					// logging in first. A theft becomes a tenancy — the same
+					// sentence written next door about passkeys, and the same rule.
+					r.Post("/totp/setup", s.handleTOTPSetup)
+					r.Post("/totp/confirm", s.handleTOTPConfirm)
+					r.Post("/totp/disable", s.handleTOTPDisable)
+					r.Post("/recovery-codes", s.handleRecoveryCodesRegenerate)
 
 					// Registering a key, and the list of them. Sessions only, for
 					// the same reason: a leaked token must not be able to add its

@@ -20,7 +20,24 @@ type totpSetupResponse struct {
 }
 
 func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
+	// The password, the same as disable has always asked for.
+	//
+	// Symmetry is the point. Turning the second factor on is at least as
+	// consequential as turning it off — it decides which device gets to say yes
+	// from now on — and a door that opens more easily than it closes is not a
+	// door. Together with the move behind requireSession, this is what stops a
+	// stolen credential from enrolling its own authenticator and keeping the only
+	// copy of the recovery codes.
+	var req totpDisableRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
 	user := userFrom(r.Context())
+	if err := auth.VerifyPassword(user.PasswordHash, req.Password); err != nil {
+		writeFieldErrors(w, map[string]string{"password": "not correct"})
+		return
+	}
+
 	if user.TOTPEnabled {
 		writeError(w, http.StatusConflict, CodeConflict,
 			"two-factor authentication is already switched on")

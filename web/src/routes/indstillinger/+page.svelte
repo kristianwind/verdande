@@ -143,6 +143,7 @@
 	let recoveryCodes = $state([]);
 	let remaining = $state(null);
 	let disablePassword = $state('');
+	let enablePassword = $state('');
 
 	$effect(() => {
 		if (app.user?.totp_enabled) {
@@ -150,13 +151,21 @@
 		}
 	});
 
-	async function beginTOTP() {
+	async function beginTOTP(event) {
+		event?.preventDefault?.();
+		totpErrors = {};
 		try {
-			const r = await api.totpSetup();
+			// Adgangskoden, ligesom når man slår den fra. At slå den til er mindst
+			// lige så indgribende som at slå den fra — det afgør, hvilken enhed der
+			// fra nu af må sige ja — og en dør, der åbnes lettere end den lukkes, er
+			// ikke en dør.
+			const r = await api.totpSetup(enablePassword);
+			enablePassword = '';
 			totpSecret = r.secret;
 			totpURI = r.uri;
 		} catch (e) {
-			app.toast(humanMessage(e));
+			totpErrors = e.fields ?? {};
+			if (!Object.keys(totpErrors).length) app.toast(humanMessage(e));
 		}
 	}
 
@@ -475,9 +484,21 @@
 			</div>
 		</form>
 	{:else}
-		<div class="row">
-			<button class="primary" onclick={beginTOTP}>{t('account.totpOn')}</button>
-		</div>
+		<form onsubmit={beginTOTP}>
+			<div class="field">
+				<label for="enable-pw">{t('account.password')}</label>
+				<input
+					id="enable-pw"
+					type="password"
+					autocomplete="current-password"
+					bind:value={enablePassword}
+				/>
+				{#if totpErrors.password}<p class="error">{totpErrors.password}</p>{/if}
+			</div>
+			<div class="row">
+				<button class="primary" type="submit">{t('account.totpOn')}</button>
+			</div>
+		</form>
 	{/if}
 </section>
 
