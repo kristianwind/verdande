@@ -1396,6 +1396,45 @@ paths:
                     description: The environment variables that are not set.
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /api/v1/notes/{noteID}/attachments:
+    post:
+      tags: [notes]
+      summary: Put a file into a note.
+      description: |
+        A picture pasted or dropped into a note. Until this existed the import
+        could bring files in and nothing else could, so the most ordinary act in
+        a notes app — paste a screenshot — did nothing at all.
+
+        Editor rights on the note. The same answer for "no such note" and "not
+        yours", so an id cannot be probed.
+
+        The response carries the attachment's URL; the editor writes that into the
+        note's text as a Markdown image. The file is never inlined as a data URL —
+        a photograph as base64 would make the note itself megabytes of text.
+      parameters:
+        - name: noteID
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Stored, and hung on the note.
+        "404":
+          description: No such note, or not yours to write in.
+        "413":
+          description: Larger than 25 MB.
+
   /api/v1/beacon:
     post:
       tags: [auth]

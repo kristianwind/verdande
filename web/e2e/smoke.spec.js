@@ -2434,3 +2434,68 @@ test('en note kan ikke smugle et script ind gennem et billedes alt-tekst', async
 	// andet skal stadig være stille.
 	expect(trouble.filter((t) => !t.includes('/api/v1/attachments/'))).toEqual([]);
 });
+
+test('et billede kan indsættes og trækkes ind i en note', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	const id = await page.evaluate(async () => {
+		const r = await fetch('/api/v1/notes', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+			body: JSON.stringify({ body: '# Med billeder\n\nEn linje.\n' })
+		});
+		return (await r.json()).id;
+	});
+	await page.goto('/noter?note=' + id);
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(ed).toBeVisible();
+
+	// Et rigtigt lille PNG, bygget i browseren, så prøven ikke har brug for en fil
+	// på disken — og lagt i både en paste og et drop, som er de to veje ind.
+	const png =
+		'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+	for (const kind of ['paste', 'drop']) {
+		await ed.click();
+		await page.evaluate(
+			async ({ kind, png }) => {
+				const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+				const file = new File([bytes], `${kind}.png`, { type: 'image/png' });
+				const dt = new DataTransfer();
+				dt.items.add(file);
+				const ed = document.querySelector('.page[contenteditable]');
+				ed.focus();
+				ed.dispatchEvent(
+					kind === 'paste'
+						? new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+						: new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })
+				);
+			},
+			{ kind, png }
+		);
+		await page.waitForTimeout(1200);
+	}
+
+	// To billeder, begge hentet og tegnet — ikke to stykker tekst med ![]( i.
+	await expect(ed.locator('img')).toHaveCount(2);
+	const loaded = await ed.locator('img').evaluateAll((els) =>
+		els.filter((e) => e.complete && e.naturalWidth > 0).length
+	);
+	expect(loaded).toBe(2);
+
+	// Og de overlever turen til Markdown: filen skal pege på et bilag, ikke på en
+	// data-URL, som ville lægge fotografiet i noteteksten.
+	const body = await page.evaluate(async (noteId) => {
+		const r = await fetch('/api/v1/notes/' + noteId, {
+			credentials: 'include',
+			headers: { 'Sec-Fetch-Site': 'same-origin' }
+		});
+		return (await r.json()).body;
+	}, id);
+	expect(body.match(/!\[\]\(\/api\/v1\/attachments\/[0-9a-f-]+\)/g)).toHaveLength(2);
+	expect(body).not.toContain('data:image');
+
+	expect(trouble).toEqual([]);
+});

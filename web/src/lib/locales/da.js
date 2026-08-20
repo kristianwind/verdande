@@ -30,7 +30,7 @@ export const da = {
 	'notes.sortCreated': 'Oprettet',
 	'notes.sortTitle': 'Navn',
 	'beacon.title': 'Tælling af installationer',
-	'beacon.hint': 'Én gang i døgnet melder denne installation, at den findes, så projektet kan se hvor mange der bruger det. Der sendes **kun** de to værdier herunder — et tilfældigt id og versionen — og intet andet: ingen IP bliver gemt, ingen navne, ingen adresser, intet om hvad du bruger det til. Slået til som udgangspunkt, og du kan slå den fra her.',
+	'beacon.hint': 'Én gang i døgnet melder denne installation, at den findes, så projektet kan se hvor mange der bruger det. Der sendes kun de to værdier herunder — et tilfældigt id og versionen — og intet andet: ingen IP bliver gemt, ingen navne, ingen adresser, intet om hvad du bruger det til. Slået til som udgangspunkt, og du kan slå den fra her.',
 	'beacon.send': 'Send en anonym daglig melding',
 	'beacon.exactly': 'Præcis det her — ikke mere:',
 	'beacon.lastPing': 'Sidst sendt: {when}',

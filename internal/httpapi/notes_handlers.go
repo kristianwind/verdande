@@ -6,7 +6,9 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -578,4 +580,69 @@ func mimeOf(name string) string {
 		return t
 	}
 	return "application/octet-stream"
+}
+
+// handleUploadNoteAttachment takes a file into a note.
+//
+// The import could already do this, and nothing else could: a note brought in
+// from Apple Notes arrived with its pictures, and a note written here could not
+// be given one. Pasting a screenshot into a note is the most ordinary thing there
+// is, and it did nothing at all.
+//
+// Editor rights on the note, checked the same way every other write to it is. The
+// answer for "no such note" and "not yours" is the same, so an id cannot be
+// probed by watching which one comes back.
+func (s *Server) handleUploadNoteAttachment(w http.ResponseWriter, r *http.Request) {
+	n, err := s.db.Note(r.Context(), chi.URLParam(r, "noteID"))
+	if err != nil {
+		s.internal(w, r, "get note", err)
+		return
+	}
+	if n == nil || !s.mayTouchNote(r, n, store.RoleEditor) {
+		writeError(w, http.StatusNotFound, CodeNotFound, "no such note")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes+(1<<20))
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, CodePayloadTooLarge,
+			"that file is too large (25 MB maximum)")
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeFieldErrors(w, map[string]string{"file": "required"})
+		return
+	}
+	defer file.Close()
+
+	if header.Size > maxUploadBytes {
+		writeError(w, http.StatusRequestEntityTooLarge, CodePayloadTooLarge,
+			"that file is too large (25 MB maximum)")
+		return
+	}
+
+	stored, size, err := s.storeUpload(file)
+	if err != nil {
+		s.internal(w, r, "store upload", err)
+		return
+	}
+
+	user := userFrom(r.Context())
+	a := &store.Attachment{
+		NoteID:     n.ID,
+		Filename:   safeFilename(header.Filename),
+		MimeType:   detectMime(header.Filename, header.Header.Get("Content-Type")),
+		Size:       size,
+		Path:       stored,
+		UploadedBy: user.ID,
+	}
+	if err := s.db.CreateAttachment(r.Context(), a); err != nil {
+		os.Remove(filepath.Join(s.cfg.FilesDir(), stored))
+		s.internal(w, r, "record attachment", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toAttachmentJSON(*a))
 }

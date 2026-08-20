@@ -26,7 +26,7 @@ export const en = {
 	'notes.sortCreated': 'Created',
 	'notes.sortTitle': 'Name',
 	'beacon.title': 'Counting installations',
-	'beacon.hint': 'Once a day this installation reports that it exists, so the project can see how many people run it. It sends **only** the two values below — a random id and the version — and nothing else: no IP is stored, no names, no addresses, nothing about what you use it for. On by default, and you can turn it off here.',
+	'beacon.hint': 'Once a day this installation reports that it exists, so the project can see how many people run it. It sends only the two values below — a random id and the version — and nothing else: no IP is stored, no names, no addresses, nothing about what you use it for. On by default, and you can turn it off here.',
 	'beacon.send': 'Send an anonymous daily report',
 	'beacon.exactly': 'Exactly this — nothing more:',
 	'beacon.lastPing': 'Last sent: {when}',

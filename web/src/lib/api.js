@@ -337,6 +337,7 @@ export const api = {
 	deleteComment: (id) => del(`/comments/${id}`),
 
 	uploadAttachment: (taskId, file) => upload(`/tasks/${taskId}/attachments`, file),
+	uploadNoteFile: (noteId, file) => upload(`/notes/${noteId}/attachments`, file),
 	deleteAttachment: (id) => del(`/attachments/${id}`),
 	attachmentURL: (id) => `/api/v1/attachments/${id}`,
 

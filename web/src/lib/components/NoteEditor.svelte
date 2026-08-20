@@ -17,6 +17,7 @@
 	import { highlight, guessLanguage } from '$lib/highlight.js';
 	import { t } from '$lib/i18n.svelte.js';
 	import { app } from '$lib/stores.svelte.js';
+	import { api, humanMessage } from '$lib/api.js';
 	import { colorVar } from '$lib/colors.js';
 
 	let { note, onchange, onsave } = $props();
@@ -399,12 +400,92 @@
 
 	// Pasted text arrives as whatever the source was — a web page brings its fonts,
 	// its colours and its layout with it. Only the words are wanted.
+	/**
+	 * Filer ind i noten — indsat eller trukket.
+	 *
+	 * Importen kunne tage billeder med, og intet andet kunne. At indsætte et
+	 * skærmbillede i en note er det mest almindelige, der findes i et noteprogram,
+	 * og det gjorde ingenting overhovedet: indsætningen tog kun `text/plain` og
+	 * smed resten væk, og der var slet ingen håndtering af et træk.
+	 *
+	 * Filen lægges op og skrives ind som `![](…)`. Ikke som en data-URL: en note
+	 * er Markdown i en database, og et fotografi fra en telefon som base64 midt i
+	 * teksten ville gøre noten til fire megabyte tekst, som skal læses hver gang
+	 * listen tegnes.
+	 *
+	 * En note, der ikke er gemt endnu, kan ikke bære en fil — den har intet id at
+	 * hænge den på. Derfor gemmes den først, og det siges ikke til nogen, fordi
+	 * det er en teknisk detalje og ikke noget, brugeren har bedt om at vide.
+	 */
+	async function insertFiles(files) {
+		const list = [...files].filter((f) => f && f.size > 0);
+		if (!list.length || !note?.id) return false;
+
+		uploading = true;
+		try {
+			for (const file of list) {
+				const saved = await api.uploadNoteFile(note.id, file);
+				// execCommand frem for at bygge noden selv: det er det, der lægger
+				// handlingen i browserens egen fortryd-historik, så ⌘Z tager billedet
+				// ud igen ligesom det tager et ord ud.
+				editor?.focus();
+				document.execCommand('insertHTML', false,
+					`<img src="${saved.url}" alt="">`);
+			}
+			changed();
+			onsave?.();
+			return true;
+		} catch (e) {
+			app.toast(humanMessage(e));
+			return false;
+		} finally {
+			uploading = false;
+		}
+	}
+
+	let uploading = $state(false);
+
 	function onpaste(event) {
+		// Filer først. Et skærmbillede i udklipsholderen kommer med som en fil og
+		// som ingenting andet, så hvis der er en, er det den, der skal ind.
+		const files = event.clipboardData?.files ?? [];
+		if (files.length) {
+			event.preventDefault();
+			insertFiles(files);
+			return;
+		}
+
 		event.preventDefault();
 		const text = event.clipboardData?.getData('text/plain') ?? '';
 		document.execCommand('insertText', false, text);
 		changed();
 	}
+
+	/**
+	 * Trukket ind udefra.
+	 *
+	 * `preventDefault` på begge: uden den på dragover kommer der ingen drop, og
+	 * uden den på drop åbner browseren filen i stedet — man mister det, man var i
+	 * gang med at skrive, til en fane med et billede i.
+	 *
+	 * Kun filer. Et træk inde fra appen selv — en opgave, en note — bærer vores
+	 * egen nyttelast og skal falde igennem til den, der lyttede efter den.
+	 */
+	function ondragover(event) {
+		if (!event.dataTransfer?.types?.includes('Files')) return;
+		event.preventDefault();
+		dropping = true;
+	}
+
+	function ondrop(event) {
+		const files = event.dataTransfer?.files ?? [];
+		dropping = false;
+		if (!files.length) return;
+		event.preventDefault();
+		insertFiles(files);
+	}
+
+	let dropping = $state(false);
 </script>
 
 <div class="wrap" bind:this={wrap}>
@@ -508,6 +589,10 @@
 		onmouseup={readState}
 		{onkeydown}
 		{onpaste}
+		{ondragover}
+		{ondrop}
+		ondragleave={() => (dropping = false)}
+		class:dropping
 	></div>
 
 	{#if suggestions.length}
@@ -735,6 +820,14 @@
 
 	.hidden {
 		display: none;
+	}
+
+	/* Mens en fil holdes over noten. En ramme frem for en farvet flade: teksten
+	   under skal stadig kunne læses, så man kan se hvor billedet lander. */
+	.page.dropping {
+		outline: 2px dashed var(--accent);
+		outline-offset: 4px;
+		border-radius: var(--radius-sm);
 	}
 
 	/* Kildeteksten. Monospace, fordi det er en fil — og fordi indrykningen i en
