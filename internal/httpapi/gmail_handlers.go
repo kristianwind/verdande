@@ -25,18 +25,16 @@ const defaultGmailSyncBudget = 25 * time.Second
 // to redeploy a container to paste a client id.
 // gmailClient is the API client, pointed wherever the config says Google is.
 func (s *Server) gmailClient(accessToken string) *gmail.Client {
-	return gmail.NewClient(accessToken).At(gmail.Endpoints{
-		Token: s.cfg.GmailTokenURL, API: s.cfg.GmailAPIURL,
-	})
+	return gmail.NewClient(accessToken).At(s.cfg.GmailAPIURL)
 }
 
 func (s *Server) gmailConfig(ctx context.Context) gmail.Config {
-	endpoints := gmail.Endpoints{Token: s.cfg.GmailTokenURL, API: s.cfg.GmailAPIURL}
 	cfg := gmail.Config{
 		ClientID:     s.cfg.GmailClientID,
 		ClientSecret: s.cfg.GmailClientSecret,
 		RedirectURL:  s.cfg.GmailRedirectURL(),
-		Endpoints:    endpoints,
+		Scope:        gmail.Scope,
+		TokenURL:     s.cfg.GmailTokenURL,
 	}
 	if cfg.ClientID != "" && cfg.ClientSecret != "" {
 		return cfg
