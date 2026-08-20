@@ -50,10 +50,12 @@ nav:
   - Using it:
       - Signing in: signing-in.md
       - Quick add: quick-add.md
+      - Notes: notes.md
       - Filters: filters.md
       - Importing from Todoist: import.md
   - Connecting things:
-      - Calendar and CalDAV: caldav.md
+      - Calendar: calendar.md
+      - Feeds and CalDAV: caldav.md
       - Mail to task: mail.md
       - Mailboxes: mailboxes.md
       - Claude (MCP): mcp.md

@@ -1,9 +1,10 @@
 # Calendar and CalDAV
 
-Two ways to get your tasks into a calendar, one way to get a calendar into
-verdande, and none of the three is the same thing.
+Two ways to get your tasks into a calendar. Getting somebody else's calendar
+*into* verdande is the other direction and has its own page — see
+[Calendar](calendar.md).
 
-| | [Feed](#subscribing-to-a-feed) | [CalDAV](#connecting-a-caldav-client) | [Google Calendar](#showing-a-google-calendar-in-verdande) |
+| | [Feed](#subscribing-to-a-feed) | [CalDAV](#connecting-a-caldav-client) | [Calendars in](calendar.md) |
 |---|---|---|---|
 | Direction | Tasks out, read only | Tasks out, two-way | Events **in**, read only |
 | Works with | Anything that subscribes to a URL | Apple Reminders, Thunderbird, DAVx⁵ | A Google account |
@@ -42,39 +43,10 @@ most people actually keep.
 
 ## Showing a Google calendar in verdande
 
-The two sections above send your tasks *out*. This is the other direction: your
-Google calendar drawn underneath them, so one screen answers "what does this day
-already have in it".
+Moved. Connecting a Google account, subscribing to an address, and what the grid
+does with either now live on their own page — see [Calendar](calendar.md).
 
-**Settings → Integrations → Google Calendar → Connect**, then tick the calendars
-you want and press Save. They appear in **Calendar** in the sidebar, in Google's
-own colour for each one, beside your own tasks with due dates.
-
-It needs the same OAuth client Gmail uses, with the Calendar API enabled and the
-second redirect URI registered — see [Configuration](configuration.md#google).
-
-!!! warning "Read only"
-    verdande never writes to your Google calendar. An event cannot be dragged,
-    edited or ticked off here; clicking one opens it in Google, which is where it
-    can be changed. Your own tasks in the same grid still drag to another day as
-    they always have.
-
-    Writing would need the `calendar.events` scope and an answer to what should
-    happen when both sides moved the same meeting — which is a synchronisation
-    model rather than a scope, and it is deliberately not built yet.
-
-!!! note "The Internal client applies here too"
-    An OAuth client registered as *Internal* in a Google Workspace can only be
-    used by accounts in that workspace, calendars included. A personal
-    `@gmail.com` address is refused with `org_internal`. For one personal account
-    the shorter road is the calendar's own secret address: in Google Calendar,
-    **Settings → the calendar → Integrate calendar → Secret address in iCal
-    format**. Nothing in verdande subscribes to one yet — it is the next piece of
-    this feature.
-
-Events are kept for ninety days back and a year forward, refreshed every fifteen
-minutes and whenever you press **Fetch now**. Paging the grid past that window
-says so rather than showing an empty month.
+This page is the other direction: verdande's own tasks, read by something else.
 
 ## Connecting a CalDAV client
 
