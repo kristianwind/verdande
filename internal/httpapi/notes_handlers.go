@@ -294,6 +294,14 @@ func noteFilename(title string) string {
 // a few megabytes — and small enough that a wrong file is refused rather than read.
 const maxNoteImportBytes = 64 << 20
 
+// What the archive may become once it is unpacked, and how many entries it may
+// hold. See handleImportNotes: the upload cap bounds what arrives, and says
+// nothing at all about what it expands to.
+const (
+	maxNoteImportUnpacked = 2 << 30
+	maxNoteImportFiles    = 20_000
+)
+
 // handleImportNotes reads a zip of Markdown files and makes a note of each.
 //
 // The mirror of the export, and deliberately the same shape: whatever comes out of
@@ -332,24 +340,57 @@ func (s *Server) handleImportNotes(w http.ResponseWriter, r *http.Request) {
 	// note is read its pictures already have addresses to be rewritten to — a note
 	// and its images arrive in whatever order the archive happens to hold them, and
 	// one pass would leave half the links pointing at nothing.
+	// The archive as a whole, not just the upload.
+	//
+	// The 64 MB cap is on what arrives; deflate reaches about 1032:1, so those 64
+	// MB can become sixty-six gigabytes on the way out — written into the same
+	// volume the database lives on. The upload limit says nothing about that, and
+	// nothing else did either.
+	//
+	// Two ceilings: one per file, and one across the archive. A single enormous
+	// photograph and ten thousand small ones are different attacks with the same
+	// ending.
+	if len(zr.File) > maxNoteImportFiles {
+		writeError(w, http.StatusRequestEntityTooLarge, CodePayloadTooLarge,
+			"that archive holds too many files")
+		return
+	}
+	budget := int64(maxNoteImportUnpacked)
+
 	stored := map[string]string{}
 	for _, f := range zr.File {
 		name := f.Name
 		if f.FileInfo().IsDir() || skipFile(name) || strings.EqualFold(path.Ext(name), ".md") {
 			continue
 		}
+		// The header's own claim first, which costs nothing to check and rejects
+		// the obvious case before a byte is written. It is only a claim, so the
+		// reader below is limited as well.
+		if f.UncompressedSize64 > maxUploadBytes {
+			s.log.Warn("import: a file in the archive is too large", "file", name)
+			skipped++
+			continue
+		}
 		rc, err := f.Open()
 		if err != nil {
 			continue
 		}
-		hashed, size, err := s.storeUpload(rc)
+		hashed, size, err := s.storeUpload(io.LimitReader(rc, min(budget, maxUploadBytes)+1))
 		rc.Close()
 		if err != nil {
 			s.log.Warn("import note file", "err", err, "file", name)
 			continue
 		}
+		if size > maxUploadBytes || size > budget {
+			// Over the line once it was actually read: remove what was written
+			// rather than keeping a truncated file that would open as nothing.
+			os.Remove(filepath.Join(s.cfg.FilesDir(), hashed))
+			s.log.Warn("import: archive is larger unpacked than allowed", "file", name)
+			skipped++
+			continue
+		}
+		budget -= size
 		stored[name] = hashed
-		_ = size
 		files++
 	}
 

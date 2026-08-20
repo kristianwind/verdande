@@ -225,17 +225,32 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request) 
 
 	a := &store.Attachment{
 		TaskID:     taskID,
-		CommentID:  r.FormValue("comment_id"),
 		Filename:   safeFilename(header.Filename),
 		MimeType:   detectMime(header.Filename, header.Header.Get("Content-Type")),
 		Size:       size,
 		Path:       stored,
 		UploadedBy: user.ID,
 	}
+
 	// An attachment hangs on a task or on a comment, never both — the schema says
 	// so, and the form may have supplied a comment id.
-	if a.CommentID != "" {
-		a.TaskID = ""
+	//
+	// The comment is resolved and checked against the task in the URL. It was
+	// taken on trust, which meant the permission check above guarded the *task
+	// somebody named* while the file landed on *whatever comment they asked for*.
+	// A viewer on a shared project can list its comments, so she could read an id
+	// there and then post to a task in her own project with that id attached: the
+	// file appears under somebody else's comment, in a project she may only read,
+	// and is served to everyone in it from this origin under a name she chose.
+	// Somebody removed from a project could do the same with ids they kept.
+	if id := r.FormValue("comment_id"); id != "" {
+		owner, err := s.db.CommentTask(r.Context(), id)
+		if err != nil || owner != taskID {
+			os.Remove(filepath.Join(s.cfg.FilesDir(), stored))
+			writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+			return
+		}
+		a.CommentID, a.TaskID = id, ""
 	}
 
 	if err := s.db.CreateAttachment(r.Context(), a); err != nil {

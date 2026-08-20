@@ -60,6 +60,20 @@ func Parse(query string, ctx Context) (Compiled, error) {
 	if len(p.tokens) == 0 {
 		return Compiled{}, fmt.Errorf("filteret er tomt")
 	}
+	// Refused before it is parsed, not while.
+	//
+	// `combine` rebuilds the whole accumulated SQL string and re-copies the
+	// argument slice per operator, so the cost is quadratic in the number of
+	// terms: fifty thousand of them — three hundred kilobytes, which fits in a
+	// query string — took seven seconds of CPU and forty-six gigabytes of
+	// allocation in one request. The preview endpoint runs this on whatever is
+	// typed, and there is no write timeout on the server to cut it off.
+	//
+	// Two hundred terms is a filter nobody has ever written and far below where it
+	// costs anything.
+	if len(p.tokens) > maxTokens {
+		return Compiled{}, fmt.Errorf("filteret er for langt")
+	}
 
 	node, err := p.parseExpression()
 	if err != nil {
@@ -140,10 +154,19 @@ func isOperator(r rune) bool {
 
 // --- parser -------------------------------------------------------------------
 
+// The ceilings on one filter. See Parse for why.
+const (
+	maxTokens = 200
+	maxDepth  = 32
+)
+
 type parser struct {
 	tokens []token
 	pos    int
 	ctx    Context
+	// depth guards against a filter that is only parentheses. Each level is a
+	// stack frame, and nothing else stops somebody sending a megabyte of them.
+	depth int
 }
 
 func (p *parser) done() bool  { return p.pos >= len(p.tokens) }
@@ -186,6 +209,13 @@ func (p *parser) parseAnd() (Compiled, error) {
 func (p *parser) parseTerm() (Compiled, error) {
 	if p.done() {
 		return Compiled{}, fmt.Errorf("filteret slutter midt i et udtryk")
+	}
+	// Nesting is stack depth. A filter made of half a million opening parentheses
+	// is a megabyte of text and a stack frame for each.
+	p.depth++
+	defer func() { p.depth-- }()
+	if p.depth > maxDepth {
+		return Compiled{}, fmt.Errorf("filteret har for mange niveauer")
 	}
 
 	switch t := p.peek(); t.kind {

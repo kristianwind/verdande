@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/kristianwind/verdande/internal/push"
+	"github.com/kristianwind/verdande/internal/safedial"
 	"github.com/kristianwind/verdande/internal/store"
 )
 
@@ -170,6 +172,23 @@ func (s *Server) handleSubscribePush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The endpoint is an address this server will POST to, on a schedule the
+	// caller chooses — set a reminder a minute out and the push job fetches it,
+	// again every minute. Unchecked, that is a way to make the instance reach
+	// anything it can route to, on demand.
+	//
+	// https only: a push service is on the public internet and speaks TLS. Nothing
+	// legitimate needs http here, and allowing it is the difference between a
+	// blind request and a readable one.
+	if !strings.HasPrefix(req.Endpoint, "https://") {
+		writeFieldErrors(w, map[string]string{"endpoint": "must be an https address"})
+		return
+	}
+	if reason := safedial.CheckURL(req.Endpoint); reason != "" {
+		writeFieldErrors(w, map[string]string{"endpoint": reason})
+		return
+	}
+
 	err := s.db.SavePushSubscription(r.Context(), &store.PushSubscription{
 		UserID:    userFrom(r.Context()).ID,
 		Endpoint:  req.Endpoint,
@@ -189,7 +208,10 @@ func (s *Server) handleUnsubscribePush(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(w, r, &req); err != nil {
 		return
 	}
-	if err := s.db.DeletePushSubscription(r.Context(), req.Endpoint); err != nil {
+	// Scoped to the caller. It was not, so anybody who learned somebody else's
+	// endpoint could unsubscribe their device — a small thing to do to somebody
+	// and no reason at all to be able to.
+	if err := s.db.DeletePushSubscription(r.Context(), userFrom(r.Context()).ID, req.Endpoint); err != nil {
 		s.internal(w, r, "delete push subscription", err)
 		return
 	}

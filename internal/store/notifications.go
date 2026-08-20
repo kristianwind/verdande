@@ -140,11 +140,17 @@ func (db *DB) SavePushSubscription(ctx context.Context, sub *PushSubscription) e
 	if sub.ID == "" {
 		sub.ID = NewID()
 	}
+	// The upsert no longer moves the row between accounts.
+	//
+	// `user_id = excluded.user_id` was in the DO UPDATE, so anybody who learned
+	// another person's endpoint could claim it by subscribing with it: the
+	// victim's device would then receive the claimant's notifications and none of
+	// its own. A re-subscribe from the same person still refreshes the keys, which
+	// is what the upsert is actually for.
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, user_agent, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (endpoint) DO UPDATE SET
-		     user_id = excluded.user_id,
 		     p256dh = excluded.p256dh,
 		     auth = excluded.auth,
 		     user_agent = excluded.user_agent,
@@ -175,7 +181,21 @@ func (db *DB) ListPushSubscriptions(ctx context.Context, userID string) ([]PushS
 	return out, rows.Err()
 }
 
-func (db *DB) DeletePushSubscription(ctx context.Context, endpoint string) error {
+// DeletePushSubscription removes one of this person's devices.
+//
+// Scoped by user as well as by endpoint. It was endpoint alone, which meant
+// anybody who learned somebody else's endpoint could silently unsubscribe their
+// phone — and the endpoint is the only thing about a subscription that ever
+// leaves the browser.
+func (db *DB) DeletePushSubscription(ctx context.Context, userID, endpoint string) error {
+	_, err := db.ExecContext(ctx,
+		`DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?`, endpoint, userID)
+	return err
+}
+
+// dropPushEndpoint removes a subscription the push service has declared dead.
+// Unexported so the only *request* path to a delete stays the scoped one.
+func (db *DB) dropPushEndpoint(ctx context.Context, endpoint string) error {
 	_, err := db.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE endpoint = ?`, endpoint)
 	return err
 }
@@ -186,7 +206,10 @@ func (db *DB) DeletePushSubscription(ctx context.Context, endpoint string) error
 // silently unsubscribing somebody's phone.
 func (db *DB) RecordPushFailure(ctx context.Context, endpoint string, permanent bool) error {
 	if permanent {
-		return db.DeletePushSubscription(ctx, endpoint)
+		// Not scoped by user, and that is right here: this is the push service
+		// saying the endpoint is gone, not a person asking for something. There is
+		// no caller to check against — the caller is the delivery job.
+		return db.dropPushEndpoint(ctx, endpoint)
 	}
 	_, err := db.ExecContext(ctx,
 		`UPDATE push_subscriptions SET failures = failures + 1 WHERE endpoint = ?`, endpoint)
@@ -289,6 +312,11 @@ var secretFields = map[string]bool{
 	"access_token":  true,
 	"password":      true,
 	"client_secret": true,
+	// The AI provider's key. Missed when this list was written, and it is exactly
+	// the same kind of thing as the rest: a live credential, in a settings blob,
+	// in a database anybody with a backup file can read. Existing rows convert
+	// themselves the next time the settings are saved.
+	"api_key": true,
 }
 
 // seal returns a copy of values with the secret fields sealed. Without a key it

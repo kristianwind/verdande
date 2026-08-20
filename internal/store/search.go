@@ -20,6 +20,13 @@ func FoldDanish(s string) string {
 	return r.Replace(s)
 }
 
+// The ceilings on a search. See MatchExprOver for why they exist; both are far
+// above anything a person types and far below anything that costs.
+const (
+	maxSearchInput = 512
+	maxSearchTerms = 16
+)
+
 // MatchExpr turns what someone typed into the search box into an FTS5 MATCH
 // expression.
 //
@@ -51,6 +58,23 @@ func MatchExprOver(query string, columns ...string) string {
 		return ""
 	}
 
+	// Capped, because the expression is built from the input and then run inside
+	// SQLite on one of a handful of pooled connections.
+	//
+	// Every term becomes roughly fifty bytes of FTS5, and every one of them is a
+	// prefix query — which is what makes ⌘K feel like it searches as you type, and
+	// also what makes each one expensive. A quarter of a megabyte pasted into the
+	// box became a two-megabyte MATCH expression and half a minute inside SQLite,
+	// holding a connection the whole time. A few of those at once and the database
+	// is unavailable to everybody on the instance, logins included.
+	//
+	// Sixteen terms is far past anything a person types into a search box and
+	// nowhere near enough to hurt. Silently, because a message about a limit
+	// nobody has reached on purpose is noise.
+	if len(terms) > maxSearchTerms {
+		terms = terms[:maxSearchTerms]
+	}
+
 	var b strings.Builder
 	for i, term := range terms {
 		if i > 0 {
@@ -70,6 +94,11 @@ func MatchExprOver(query string, columns ...string) string {
 // punctuation rather than whitespace alone means "q3/2026" searches for "q3" and
 // "2026" instead of for a term FTS5's own tokenizer would never have indexed.
 func tokenize(query string) []string {
+	// Trimmed before it is split, so a megabyte of text is not walked rune by rune
+	// only to have all but sixteen of the results thrown away.
+	if len(query) > maxSearchInput {
+		query = query[:maxSearchInput]
+	}
 	fields := strings.FieldsFunc(query, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	})

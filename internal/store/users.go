@@ -129,7 +129,14 @@ func (db *DB) scanUser(ctx context.Context, query string, args ...any) (*User, e
 		return nil, err
 	}
 
-	u.TOTPSecret = secret.String
+	// Opened on the way out. A row written before the key existed is returned as
+	// itself — see secret.Unseal — so this does not need a migration; a secret
+	// converts the next time it is written.
+	if plain, err := db.unsealValue(secret.String); err == nil {
+		u.TOTPSecret = plain
+	} else {
+		u.TOTPSecret = secret.String
+	}
 	u.TOTPEnabled = totpEnabled == 1
 	u.IsAdmin = isAdmin == 1
 	// A malformed value is read as "nothing folded" rather than as an error: the
@@ -433,9 +440,20 @@ func (db *DB) UpdateProfile(ctx context.Context, userID, name, timezone, locale 
 }
 
 func (db *DB) SetTOTPSecret(ctx context.Context, userID, secret string, enabled bool) error {
+	// Sealed, like a mailbox password and for the same reason: the copies, not the
+	// server. A TOTP secret in a downloadable backup lets whoever holds the copy
+	// generate valid codes for every account on the instance — which turns the
+	// second factor from a defence into a file somebody can take home.
+	//
+	// It was missed when internal/secret was written, along with three other
+	// values; see SECURITY.md.
 	var value any
 	if secret != "" {
-		value = secret
+		sealed, err := db.sealValue(secret)
+		if err != nil {
+			return err
+		}
+		value = sealed
 	}
 	_, err := db.ExecContext(ctx,
 		`UPDATE users SET totp_secret = ?, totp_enabled = ?, updated_at = ? WHERE id = ?`,

@@ -11,6 +11,7 @@ import (
 	"github.com/kristianwind/verdande/internal/ai"
 	"github.com/kristianwind/verdande/internal/auth"
 	"github.com/kristianwind/verdande/internal/quickadd"
+	"github.com/kristianwind/verdande/internal/safedial"
 	"github.com/kristianwind/verdande/internal/store"
 )
 
@@ -212,6 +213,24 @@ func (s *Server) handleSetAISettings(w http.ResponseWriter, r *http.Request) {
 			"provider": "must be anthropic, openai, google or compatible",
 		})
 		return
+	}
+
+	// The address is checked where it is typed, as well as when it is dialled.
+	//
+	// safedial refuses a private destination at connect time and is the actual
+	// wall; this is so the person entering it hears about it now rather than
+	// discovering it later as a failed summary. A scheme other than http or https
+	// is refused outright — file:// and gopher:// are not providers.
+	if url := strings.TrimSpace(req.BaseURL); url != "" {
+		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			writeFieldErrors(w, map[string]string{"base_url": "must start with http:// or https://"})
+			return
+		}
+		if reason := safedial.CheckURL(url); reason != "" {
+			writeFieldErrors(w, map[string]string{"base_url": reason})
+			return
+		}
+		req.BaseURL = url
 	}
 
 	existing, err := s.aiConfig(r, user.ID)

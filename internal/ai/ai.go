@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/kristianwind/verdande/internal/safedial"
 	"strings"
 	"time"
 )
@@ -76,7 +78,16 @@ func New(cfg Config) *Client {
 		// Generous: a local model on modest hardware can take a while to produce
 		// its first token, and the alternative is a timeout that only ever fires
 		// for the people running their own.
-		http: &http.Client{Timeout: 120 * time.Second},
+		// safedial, not a plain client. `base_url` is typed into a field in the
+		// interface, so it is a user-supplied address — and a server that fetches a
+		// user-supplied address is a way to ask it to reach things the caller
+		// cannot: the panel next door, a database on the same bridge, the cloud
+		// metadata endpoint. On a homelab that is most of what is worth reaching.
+		//
+		// The check is on the resolved address rather than on the URL, because a
+		// name answers whatever its owner says — and can answer differently the
+		// second time, after a parse-time check has passed.
+		http: safedial.Client(120 * time.Second),
 	}
 }
 
@@ -268,9 +279,33 @@ func (c *Client) do(req *http.Request, out any) error {
 		// The provider's own message is included: for a local model it is usually
 		// the actual problem ("model not found"), and hiding it would leave the
 		// operator with nothing to go on.
-		return fmt.Errorf("ai: %s said %s: %s", req.URL.Host, resp.Status, truncate(string(raw), 300))
+		// The provider's body is no longer passed back to the caller.
+		//
+		// It was, and combined with a free-text base URL that made a working
+		// internal scanner: point it at a host, read the first three hundred bytes
+		// of whatever answered. The operator still needs the message — for a local
+		// model it is usually the actual problem — so it goes to the log, where it
+		// is available to the person running the instance and to nobody else.
+		return &upstreamError{Host: req.URL.Host, Status: resp.Status, Body: truncate(string(raw), 300)}
 	}
 	return json.Unmarshal(raw, out)
+}
+
+// upstreamError keeps the provider's own words for the log and away from the
+// response. Error() is what reaches a caller; Detail() is what is written down.
+type upstreamError struct {
+	Host   string
+	Status string
+	Body   string
+}
+
+func (e *upstreamError) Error() string {
+	return fmt.Sprintf("ai: %s said %s", e.Host, e.Status)
+}
+
+// Detail is the whole of it, for the instance's own error log.
+func (e *upstreamError) Detail() string {
+	return fmt.Sprintf("ai: %s said %s: %s", e.Host, e.Status, e.Body)
 }
 
 func truncate(s string, max int) string {

@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"syscall"
 	"time"
 )
@@ -103,4 +104,33 @@ func Client(timeout time.Duration) *http.Client {
 // that using it is a decision somebody wrote down.
 func AllowPrivate(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout}
+}
+
+// CheckURL reports why an address must not be fetched, or "" if it may be.
+//
+// A convenience for saying no at the moment somebody types an address, rather
+// than later when a request quietly fails. It is NOT the protection — a name can
+// resolve one way now and another way when it is dialled, which is why Control
+// exists and runs every time. Anything this rejects is certainly wrong; anything
+// it accepts is merely not obviously wrong.
+func CheckURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "that is not a URL"
+	}
+	host := u.Hostname()
+	if ip := net.ParseIP(host); ip != nil && Blocked(ip) {
+		return "that address is on this machine or its private network"
+	}
+	// A bare name is looked up once so an obvious "localhost" is caught here. A
+	// failure to resolve is not an error: the host may simply not exist yet, and
+	// refusing to save an address because DNS was slow would be its own bug.
+	if ips, err := net.LookupIP(host); err == nil {
+		for _, ip := range ips {
+			if Blocked(ip) {
+				return "that address is on this machine or its private network"
+			}
+		}
+	}
+	return ""
 }
