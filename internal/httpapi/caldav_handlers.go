@@ -231,6 +231,33 @@ func (s *Server) handleCalDAVPut(w http.ResponseWriter, r *http.Request) {
 
 	existing, getErr := s.db.GetTask(r.Context(), taskID, user.ID)
 	if getErr == nil {
+		// The task decides, not the URL.
+		//
+		// The check above is about the project the *client named*, and a client
+		// names both halves of this address. Asking the project for permission and
+		// then taking the task id from the same string ties nothing together: a
+		// viewer on a shared project could name a project of their own — the Inbox,
+		// which everybody owns and may edit — and put the shared task's id in the
+		// filename. The project check passed on the Inbox and the write landed on a
+		// task they may only read.
+		//
+		// GetTask does not close it either: it answers "may this person see it",
+		// and a viewer may. `CanEdit` is the question, and it is the same one
+		// handleUpdateTask asks — the API door has always asked it.
+		role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
+		if err != nil || !role.CanEdit() {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		// And it has to live where the address says it does. Without this an editor
+		// on two projects can reach either through the other's URL — nothing is
+		// escalated by that on its own, but a URL allowed to lie about where a
+		// resource lives is how the case above got in.
+		if existing.ProjectID != projectID {
+			http.NotFound(w, r)
+			return
+		}
+
 		// An update. Only the fields a task client can express are touched;
 		// everything else the task carries stays as it is.
 		content := parsed.Summary

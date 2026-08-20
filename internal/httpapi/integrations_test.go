@@ -250,6 +250,116 @@ func (ts *testServer) apiToken(t *testing.T, userID string) string {
 	return token
 }
 
+// The promise of sharing has to hold at every door, not just the API's.
+//
+// TestViewerCannotMutateThroughTheAPI asserts a viewer cannot write, and it
+// asserts it against /api/v1. CalDAV is a second door into the same tasks, and it
+// authorised differently: it checked the caller's standing in the project *named
+// in the URL* and then took the task id from the URL as well. Nothing tied the
+// two together.
+//
+// So a viewer on somebody else's project could name a project of their own —
+// their Inbox, which everybody owns and everybody may edit — and put the other
+// project's task id in the filename. The project check passed on the Inbox, and
+// the write landed on a task in a project they may only read.
+func TestAViewerCannotWriteThroughCalDAV(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ts.newUser(t, "viewer@example.dk", "Viewer")
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Delt"})
+	projectID := project["id"].(string)
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "en opgave", "project_id": projectID,
+	})
+	taskID := task["id"].(string)
+
+	if resp, body := ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites", map[string]any{
+		"email": "viewer@example.dk", "role": "viewer",
+	}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("invite: %d %v", resp.StatusCode, body)
+	}
+
+	them, err := ts.db.UserByEmail(t.Context(), "viewer@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := ts.apiToken(t, them.ID)
+
+	// Their own Inbox: a project they own and may edit, and the one every account
+	// has. It is what makes the URL check pass.
+	projects, err := ts.db.ListProjects(t.Context(), them.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inbox string
+	for _, p := range projects {
+		if p.IsInbox {
+			inbox = p.ID
+		}
+	}
+	if inbox == "" {
+		t.Fatal("the viewer has no inbox")
+	}
+
+	vtodo := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:" + taskID +
+		"\r\nSUMMARY:kapret\r\nSTATUS:COMPLETED\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"
+
+	resp := ts.dav(t, "PUT", "/caldav/"+them.ID+"/"+inbox+"/"+taskID+".ics",
+		token, them.Email, vtodo)
+	if resp.StatusCode < 400 {
+		t.Errorf("a viewer wrote through CalDAV: status %d", resp.StatusCode)
+	}
+
+	// And the task is as its owner left it. The status alone is not the assertion:
+	// the question is whether anything moved.
+	_, after := ts.do(t, "GET", "/api/v1/tasks/"+taskID, nil)
+	if after["content"] != "en opgave" {
+		t.Errorf("the task was renamed by a viewer: %v", after["content"])
+	}
+	if after["completed"] != false {
+		t.Error("the task was completed by a viewer")
+	}
+}
+
+// A task may only be addressed under the project it is actually in.
+//
+// The same hole seen from the other side: an editor on two projects could reach a
+// task in one of them through the other's URL. Nothing is escalated by it — they
+// may edit both — but it is the check that was missing, and a URL that lies about
+// where a resource lives is how the viewer case got in.
+func TestCalDAVRefusesATaskFromAnotherProject(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	user, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := ts.apiToken(t, user.ID)
+
+	_, one := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Et"})
+	_, two := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "To"})
+	_, task := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "hører til Et", "project_id": one["id"].(string),
+	})
+	taskID := task["id"].(string)
+
+	vtodo := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:" + taskID +
+		"\r\nSUMMARY:flyttet i smug\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"
+
+	resp := ts.dav(t, "PUT", "/caldav/"+user.ID+"/"+two["id"].(string)+"/"+taskID+".ics",
+		token, user.Email, vtodo)
+	if resp.StatusCode < 400 {
+		t.Errorf("a task was written under the wrong project: status %d", resp.StatusCode)
+	}
+
+	_, after := ts.do(t, "GET", "/api/v1/tasks/"+taskID, nil)
+	if after["content"] != "hører til Et" {
+		t.Errorf("the task changed: %v", after["content"])
+	}
+}
+
 func TestCalDAVRequiresCredentials(t *testing.T) {
 	ts := newTestServer(t)
 	ts.bootstrap(t)

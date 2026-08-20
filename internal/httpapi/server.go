@@ -63,6 +63,7 @@ type Server struct {
 	// the endpoints that check a secret are limited separately and more tightly
 	// than the rest of the API.
 	loginLimiter *limiter
+	mailLimiter  *limiter
 	resetLimiter *limiter
 	// Second factors are counted against the *account*, not the address. An
 	// address bucket is defeated by anybody with more than one address, which is
@@ -85,6 +86,11 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 		mail:         mail.New(cfg.SMTP, cfg.BaseURL, log),
 		hub:          realtime.NewHub(log),
 		loginLimiter: newLimiter(10, 15*time.Minute),
+		// Generous on purpose: the caller is the mail server, one address delivering
+		// everything, and a personal instance gets a handful of forwarded mails a
+		// day. Sixty a minute never touches real delivery and still puts a ceiling
+		// on the one public write path that has none.
+		mailLimiter:  newLimiter(60, time.Minute),
 		resetLimiter: newLimiter(5, time.Hour),
 		// Tighter than the password bucket, and for a whole hour. Somebody typing
 		// their own code gets it right on the first or second try; ten in an hour is
@@ -122,7 +128,15 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 
 	// Inbound mail. Delivered by the mail server rather than by a browser, and
 	// authenticated by the token in the recipient address.
-	r.Post("/inbound/mail", s.handleInboundMail)
+	//
+	// Rate limited for the same reason the beacon is: it is reachable by anybody
+	// who can route to this instance. It is the weaker case of the two — the
+	// beacon writes a row for a stranger, this one writes nothing without a
+	// 256-bit address it has to already know — but an address is shared with mail
+	// servers and printed on a settings page, and once it is known there was no
+	// ceiling at all on what could be made with it.
+	r.Method(http.MethodPost, "/inbound/mail",
+		s.rateLimit(s.mailLimiter, http.HandlerFunc(s.handleInboundMail)))
 
 	// MCP with the token in the query string, for clients that cannot send a
 	// header. Claude's custom-connector dialog takes a URL and nothing else, so

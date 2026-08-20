@@ -32,6 +32,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/kristianwind/verdande/internal/safedial"
 )
 
 type Subscription struct {
@@ -101,7 +103,19 @@ func Send(ctx context.Context, sub Subscription, payload Payload, vapid VAPID) e
 	req.Header.Set("Urgency", "normal")
 	req.Header.Set("Authorization", "vapid t="+token+", k="+vapid.Public)
 
-	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	// safedial, not a plain client. The endpoint comes from the browser's
+	// subscription, which is to say from whoever is signed in, and this server
+	// POSTs to it on a schedule they choose — set a reminder a minute out and the
+	// job goes again every minute.
+	//
+	// The subscribe handler already refuses a private address, and that check is
+	// not enough on its own: it runs on the URL as written, and a name it approves
+	// can answer 127.0.0.1 the next time it is looked up. safedial checks the
+	// *resolved* address at connect time, which is the only moment the address
+	// that will actually be used is known — and it checks every redirect hop the
+	// same way. The parse-time check stays, because it says no while somebody is
+	// looking at the screen.
+	resp, err := safedial.Client(15 * time.Second).Do(req)
 	if err != nil {
 		return err
 	}
