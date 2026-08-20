@@ -551,6 +551,7 @@ export const da = {
 	'detail.p1': 'P1 — haster',
 	'detail.none': 'Ingen',
 	'detail.due': 'Forfalder',
+	'detail.dueTime': 'Klokkeslæt',
 	'detail.labels': 'Etiketter',
 	'detail.labelsPlaceholder': 'adskilt af komma',
 	'detail.project': 'Projekt',

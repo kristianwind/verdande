@@ -372,10 +372,35 @@ class AppState {
 	}
 
 	/** Puts a task on a day — dropping it on one, in Kommende or in a month grid. */
-	async reschedule(id, date) {
+	/**
+	 * Flytter en opgave til en dag — og afgør, hvad der sker med klokkeslættet.
+	 *
+	 * Serveren læser `due_date` og `due_time` sammen: kommer datoen uden en tid,
+	 * *ryddes* tiden. Det er den rigtige regel for et felt, man skriver i, og den
+	 * forkerte for et træk i en kalender — en opgave, der stod klokken 14, mistede
+	 * sit klokkeslæt ved at blive trukket til dagen efter, uden at nogen bad om
+	 * det, og uden at noget sagde det.
+	 *
+	 * Så tiden siges nu højt, tre måder:
+	 *
+	 *   time === undefined  behold den, opgaven har
+	 *   time === ''         ryd den — det er heldagsbåndet
+	 *   time === 'HH:MM'    sæt den — det er et sted på døgnet
+	 *
+	 * `undefined` og `''` er med vilje to forskellige ting her. De ligner hinanden
+	 * i JavaScript, og det er præcis derfor de skal skilles ad ét sted frem for at
+	 * blive forvekslet fire steder.
+	 */
+	async reschedule(id, date, time) {
 		const previous = this.get(id);
-		if (!previous || previous.due_date === date) return;
-		await this.update(id, { due_date: date });
+		if (!previous) return;
+
+		const clock =
+			time === undefined ? (previous.due_datetime ? clockOf(previous.due_datetime) : '') : time;
+		if (previous.due_date === date && (previous.due_datetime ? clockOf(previous.due_datetime) : '') === clock) {
+			return;
+		}
+		await this.update(id, { due_date: date, due_time: clock });
 	}
 
 	async remove(id) {
@@ -729,6 +754,20 @@ class AppState {
  * Only while it still carries a name the server gave it. Rename it and that is your
  * name for it, in every language — the same rule as any other project.
  */
+/**
+ * Klokkeslættet på en opgave, som "HH:MM" i den maskine, der ser på det.
+ *
+ * `Date` og ikke en strengudskæring: `due_datetime` kommer som UTC med et Z på,
+ * og de fjorten på et stempel er ikke klokken fjorten for den, der læser det.
+ * TaskRow viser tiden på nøjagtig samme måde, og de to steder skal vise det
+ * samme tal.
+ */
+export function clockOf(stamp) {
+	const at = new Date(stamp);
+	if (Number.isNaN(at.getTime())) return '';
+	return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+}
+
 const SYSTEM_INBOX_NAMES = new Set(['indbakke', 'inbox']);
 
 export function projectName(project) {

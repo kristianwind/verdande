@@ -11,7 +11,7 @@
 	 * necessarily the last one sent.
 	 */
 	import { api, humanMessage } from '$lib/api.js';
-	import { app, projectName } from '$lib/stores.svelte.js';
+	import { app, projectName, clockOf } from '$lib/stores.svelte.js';
 	import { focusOnMount } from '$lib/focus.js';
 	import { t } from '$lib/i18n.svelte.js';
 	import { REPEATS } from '$lib/when.js';
@@ -22,6 +22,7 @@
 	let description = $state('');
 	let priority = $state(4);
 	let dueDate = $state('');
+	let dueTime = $state('');
 	let labels = $state('');
 	let projectId = $state('');
 	let recurrence = $state('');
@@ -55,6 +56,7 @@
 		description = task.description ?? '';
 		priority = task.priority;
 		dueDate = task.due_date ?? '';
+		dueTime = task.due_datetime ? clockOf(task.due_datetime) : '';
 		labels = (task.labels ?? []).join(', ');
 		projectId = task.project_id;
 		recurrence = task.recurrence_rule ?? '';
@@ -407,14 +409,34 @@
 				</select>
 			</div>
 
+			<!--
+				Dato og klokkeslæt gemmes sammen, altid.
+
+				Serveren læser de to felter som ét: kommer datoen uden en tid, *ryddes*
+				tiden. Så et gem af datoen alene tog klokkeslættet med sig — man rettede
+				dagen og mistede timen, uden at noget sagde det.
+
+				Tiden er tom, indtil nogen sætter den. En opgave uden klokkeslæt er det
+				almindelige, og et felt, der åbner på 00:00, er et felt, der påstår, at
+				noget skal ske ved midnat.
+			-->
 			<div class="field">
 				<label for="due">{t('detail.due')}</label>
-				<input
-					id="due"
-					type="date"
-					bind:value={dueDate}
-					onchange={() => save({ due_date: dueDate })}
-				/>
+				<div class="due">
+					<input
+						id="due"
+						type="date"
+						bind:value={dueDate}
+						onchange={() => save({ due_date: dueDate, due_time: dueTime })}
+					/>
+					<input
+						type="time"
+						aria-label={t('detail.dueTime')}
+						bind:value={dueTime}
+						disabled={!dueDate}
+						onchange={() => save({ due_date: dueDate, due_time: dueTime })}
+					/>
+				</div>
 			</div>
 		</div>
 
@@ -690,6 +712,27 @@
 		flex-direction: column;
 		gap: var(--s4);
 		padding-bottom: max(var(--s8), env(safe-area-inset-bottom));
+	}
+
+	/* Dato og tid på én linje: de er ét svar på ét spørgsmål, og tiden er den
+	   smalle halvdel af det. */
+	.due {
+		display: flex;
+		gap: var(--s2);
+	}
+
+	.due input[type='date'] {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.due input[type='time'] {
+		flex: none;
+		width: 7.5rem;
+	}
+
+	.due input:disabled {
+		opacity: 0.5;
 	}
 
 	.field {

@@ -272,12 +272,59 @@
 		over = iso(date);
 	}
 
+	/**
+	 * Sluppet på en dag, uden at sige noget om klokkeslættet — så beholder opgaven
+	 * det, den har. Måneden er den her: en rude er en dag, ikke et døgn, og der er
+	 * ingen tid at læse ud af hvor man slap.
+	 *
+	 * Det var ikke sådan før. Trækket sendte kun datoen, og serveren læser en dato
+	 * uden en tid som "ryd tiden" — så en opgave klokken 14 mistede sit
+	 * klokkeslæt ved at blive flyttet til dagen efter, uden at nogen bad om det.
+	 */
 	async function onDrop(event, date) {
 		event.preventDefault();
 		const id = dragged(event, TASK);
 		over = null;
 		if (!id) return;
 		await app.reschedule(id, iso(date));
+	}
+
+	/**
+	 * Sluppet et sted på døgnet: dér, man slap, er klokkeslættet.
+	 *
+	 * Målt mod søjlens egen kasse frem for mod siden, så det bliver rigtigt, uanset
+	 * hvor gitteret sidder, og uanset hvor langt der er rullet.
+	 *
+	 * Rundet til kvarter. Minuttet under markøren er ikke en oplysning, nogen har —
+	 * pegefingeren er bredere end et minut — og 14:07 er et tal, der ser ud som om
+	 * det blev valgt, hvilket er værre end at være omtrentligt.
+	 */
+	async function onDropAt(event, date) {
+		event.preventDefault();
+		const id = dragged(event, TASK);
+		over = null;
+		if (!id) return;
+
+		const box = event.currentTarget.getBoundingClientRect();
+		const share = Math.min(Math.max((event.clientY - box.top) / box.height, 0), 1);
+		const minutes = hours.from * 60 + share * hours.minutes;
+		const snapped = Math.min(Math.round(minutes / 15) * 15, 24 * 60 - 15);
+		await app.reschedule(id, iso(date), clock(snapped));
+	}
+
+	/**
+	 * Sluppet i båndet foroven: opgaven har en dag og ingen tid.
+	 *
+	 * Den tomme streng er ikke det samme som ingenting her — den siger "ryd", hvor
+	 * `undefined` siger "behold". Det er hele grunden til, at de to er skilt ad i
+	 * `reschedule`.
+	 */
+	async function onDropAllDay(event, date) {
+		event.preventDefault();
+		const id = dragged(event, TASK);
+		over = null;
+		if (!id) return;
+		await app.reschedule(id, iso(date), '');
 	}
 
 	// --- ugen som et døgn ---------------------------------------------------------
@@ -525,7 +572,7 @@
 						class:over={over === iso(date)}
 						ondragover={(e) => onDragOver(e, date)}
 						ondragleave={() => (over = null)}
-						ondrop={(e) => onDrop(e, date)}
+						ondrop={(e) => onDropAllDay(e, date)}
 					>
 						{#each untimedOn(date) as item (item.kind + item.ref.id)}
 							{#if item.kind === 'event'}
@@ -556,7 +603,7 @@
 						class:over={over === iso(date)}
 						ondragover={(e) => onDragOver(e, date)}
 						ondragleave={() => (over = null)}
-						ondrop={(e) => onDrop(e, date)}
+						ondrop={(e) => onDropAt(e, date)}
 					>
 						{#each Array(hours.count) as _, i}
 							<div class="hourline" style="top:{(i / hours.count) * 100}%"></div>

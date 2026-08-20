@@ -547,6 +547,7 @@ export const en = {
 	'detail.p1': 'P1 — urgent',
 	'detail.none': 'None',
 	'detail.due': 'Due',
+	'detail.dueTime': 'Time',
 	'detail.labels': 'Labels',
 	'detail.labelsPlaceholder': 'separated by commas',
 	'detail.project': 'Project',

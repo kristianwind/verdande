@@ -983,11 +983,11 @@ test('en opgave kan trækkes hen over et månedsskifte i uge-visningen', async (
 	// slipper der, hvor man kan se, man slipper.
 	await chip.dragTo(page.locator(`[data-date="${to}"]`), { targetPosition: { x: 30, y: 20 } });
 
-	// Sluppet på timesøjlen, landet i heldagsbåndet — og det er det rigtige sted.
-	// Et træk hen på en dag flytter datoen og sætter ikke et klokkeslæt, så opgaven
-	// har ingen tid at stå ved. `data-allday` er den anden halvdel af dagen: siden
-	// ugen blev et døgn, er en dag to kasser, og en prøve skal sige hvilken.
-	await expect(page.locator(`[data-allday="${to}"]`).getByText('skifte dæk')).toBeVisible();
+	// Landet i timesøjlen med et klokkeslæt: hvor på døgnet man slap, *er* tiden.
+	// Sluppet tyve pixels nede i en søjle, der begynder klokken otte, bliver det
+	// tidligt på dagen — hvad det præcist runder til, er ikke det, der prøves her.
+	await expect(page.locator(`[data-date="${to}"] .tevent`).getByText('skifte dæk')).toBeVisible();
+	await expect(page.locator(`[data-date="${from}"]`).getByText('skifte dæk')).toBeHidden();
 	await expect(page.locator(`[data-allday="${from}"]`).getByText('skifte dæk')).toBeHidden();
 
 	expect(trouble).toEqual([]);
@@ -1178,9 +1178,8 @@ test('kalenderen viser Googles begivenheder over egne opgaver, og kun opgaven ka
 	// få prøven til at bestå: det er også sådan et menneske gør det, fordi man
 	// slipper der, hvor man kan se, man slipper.
 	await task.dragTo(page.locator(`[data-date="${next}"]`), { targetPosition: { x: 30, y: 20 } });
-	// Landet i næste dags bånd: et træk hen på en dag flytter datoen og sætter ikke
-	// et klokkeslæt, så opgaven har ingen tid at stå ved.
-	await expect(page.locator(`[data-allday="${next}"]`).getByText('vande blomster')).toBeVisible();
+	// Landet i næste dags timesøjle, med det klokkeslæt der blev sluppet på.
+	await expect(page.locator(`[data-date="${next}"] .tevent`).getByText('vande blomster')).toBeVisible();
 	await expect(band.getByText('vande blomster')).toBeHidden();
 	// The events stayed where they were; a rescheduled task moves nothing else.
 	await expect(cell.locator('.tevent')).toHaveCount(1);
@@ -3207,6 +3206,100 @@ test('ugen viser et døgn, og dagene er lige brede', async ({ page }) => {
 		Math.max(...monthWidths) - Math.min(...monthWidths),
 		'månedens dage er ikke lige brede'
 	).toBeLessThanOrEqual(1);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * Tid på en opgave, sat i ruden og justeret i kalenderen.
+ *
+ * Tre påstande, og den midterste er den, der var gået galt uden at nogen sagde
+ * det: serveren læser `due_date` og `due_time` sammen, så en dato sendt uden en
+ * tid *rydder* tiden. Et gem af datoen alene tog altså klokkeslættet med sig, og
+ * det samme gjorde et træk i kalenderen.
+ */
+test('en opgave kan få et klokkeslæt, og beholder det når den flyttes', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const box = page.getByLabel('Ny opgave');
+	// I dag, så den står på den visning, den skrives i — og i den uge, gitteret
+	// åbner på længere nede.
+	await box.fill('ringe til tandlægen i dag');
+	await box.press('Enter');
+	await expect(page.getByText('ringe til tandlægen')).toBeVisible();
+
+	// Klokkeslættet sættes i ruden. Feltet er tomt til at begynde med: en opgave
+	// uden tid er det almindelige, og 00:00 ville påstå noget om midnat.
+	await page.getByText('ringe til tandlægen').click();
+	const time = page.getByLabel('Klokkeslæt');
+	await expect(time).toHaveValue('');
+	// Tidligt på dagen med vilje: gitteret begynder klokken otte, så opgaven står
+	// lige under båndet og de to kasser er i billedet på én gang. Klokken fjorten
+	// ligger under skærmkanten, og et træk, der først skal rulle, er et træk,
+	// browseren taber.
+	await time.fill('08:30');
+	await time.blur();
+	await page.waitForTimeout(400);
+
+	// Gemt hos serveren, ikke kun i feltet: genindlæst og åbnet igen.
+	await page.reload();
+	await page.getByText('ringe til tandlægen').click();
+	await expect(page.getByLabel('Klokkeslæt'), 'klokkeslættet blev ikke gemt').toHaveValue('08:30');
+
+	// Og datoen kan rettes bagefter uden at tage timen med sig.
+	const date = page.locator('#due');
+	const day = await date.inputValue();
+	await date.fill(day);
+	await date.blur();
+	await page.waitForTimeout(400);
+	await page.reload();
+	await page.getByText('ringe til tandlægen').click();
+	await expect(
+		page.getByLabel('Klokkeslæt'),
+		'et gem af datoen ryddede klokkeslættet'
+	).toHaveValue('08:30');
+
+	await page.keyboard.press('Escape');
+
+	// I ugegitteret står den på sit klokkeslæt frem for i heldagsbåndet.
+	await page.goto('/upcoming');
+	await page.getByRole('button', { name: 'Uge', exact: true }).click();
+	const placed = page.locator('.tevent.task').filter({ hasText: 'ringe til tandlægen' });
+	await expect(placed, 'opgaven står ikke på døgnet').toBeVisible();
+	await expect(placed).toContainText('08:30');
+
+	// Trukket op i båndet over sin egen dag: så har den en dag og ingen tid. Den
+	// tomme streng siger "ryd", hvor ingenting siger "behold" — og de to må ikke
+	// forveksles.
+	//
+	// Et bånd, der er tomt. Prøven handler om at krydse mellem de to kasser, og en
+	// dag, hvis bånd allerede er fyldt af andre prøvers opgaver, gør slippunktet
+	// til en anden opgave frem for til båndet — hvilket er en anden gest end den,
+	// der prøves her.
+	const band = page
+		.locator('.weekgrid > .allday')
+		.filter({ hasNot: page.locator('.chip, .event') })
+		.first();
+	const today = await band.getAttribute('data-allday');
+	// Trukket i skridt frem for i ét spring. `dragTo` flytter musen i to træk, og
+	// over fire hundrede pixels i et travlt gitter giver det browseren for få
+	// mellemstationer til at holde gesten i live. Et menneske bevæger hånden hele
+	// vejen, og det er også det, der skal prøves.
+	const fromBox = await placed.boundingBox();
+	const toBox = await band.boundingBox();
+	await page.mouse.move(fromBox.x + fromBox.width / 2, fromBox.y + 5);
+	await page.mouse.down();
+	await page.mouse.move(toBox.x + toBox.width / 2, toBox.y + toBox.height / 2, { steps: 25 });
+	await page.mouse.up();
+	await expect(
+		page.locator(`[data-allday="${today}"] .chip`).filter({ hasText: 'ringe til tandlægen' }),
+		'opgaven kom ikke op i båndet'
+	).toBeVisible();
+	await expect(
+		page.locator(`[data-date="${today}"] .tevent`).filter({ hasText: 'ringe til tandlægen' }),
+		'opgaven står stadig på et klokkeslæt'
+	).toBeHidden();
 
 	expect(trouble).toEqual([]);
 });
