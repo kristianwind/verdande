@@ -48,7 +48,7 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 			s.internal(w, r, "search notes", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"notes": s.readable(r, found)})
+		writeJSON(w, http.StatusOK, map[string]any{"notes": briefly(s.readable(r, found))})
 		return
 	}
 
@@ -62,7 +62,7 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 			s.internal(w, r, "notes in project", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"notes": found})
+		writeJSON(w, http.StatusOK, map[string]any{"notes": briefly(found)})
 		return
 	}
 
@@ -74,7 +74,41 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, "list notes", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"notes": found})
+	writeJSON(w, http.StatusOK, map[string]any{"notes": briefly(found)})
+}
+
+// briefly replaces each note's body with the first of it.
+//
+// The list shows a title and about ninety characters. It was being sent whole
+// notes to do that: with twelve hundred of them the response was 845 KB, of which
+// ninety-eight per cent was body text nobody would read on that screen — fetched,
+// parsed and held in memory on every visit.
+//
+// Body is emptied rather than shortened, and that is the important half. A field
+// called `body` that holds a *piece* of the body is a trap: the editor would open
+// it, the debounce would save it, and the note would be cut down to its own
+// preview by nothing more than being looked at. Empty is a shape the client can
+// check, and it does — see the notes page, which fetches the whole note when it
+// opens one.
+//
+// Four hundred characters rather than ninety: the client strips Markdown before
+// it shows anything, and a heading marker and a bold word are characters that
+// vanish. Cheap insurance against a preview that ends up shorter than the line it
+// is meant to fill.
+const previewChars = 400
+
+func briefly(notes []store.Note) []store.Note {
+	out := make([]store.Note, 0, len(notes))
+	for _, n := range notes {
+		body := []rune(n.Body)
+		if len(body) > previewChars {
+			body = body[:previewChars]
+		}
+		n.Preview = string(body)
+		n.Body = ""
+		out = append(out, n)
+	}
+	return out
 }
 
 // readable drops what this person may not see.

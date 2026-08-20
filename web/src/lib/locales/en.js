@@ -42,6 +42,8 @@ export const en = {
 	'beacon.publishHint': 'No login, cached for a minute. Reports installations seen in the last 30 days — not a running total, which would only ever climb.',
 	'notes.newHere': 'New note',
 	'notes.noneInProject': 'No notes yet. A note that mentions #theproject turns up here too.',
+	'notes.clearSearch': 'Clear the search',
+	'notes.found': '{count} notes',
 	'notes.strike': 'Strikethrough',
 	'notes.showSource': 'Show as code',
 	'notes.source': 'Note source',

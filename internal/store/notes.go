@@ -20,6 +20,16 @@ type Note struct {
 	UpdatedAt time.Time  `json:"updated_at"`
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 
+	// Preview is the first of the body, for a list that shows one line of it.
+	//
+	// It exists so a list of twelve hundred notes does not have to carry twelve
+	// hundred whole notes: the list rendered 845 KB of JSON to show ninety
+	// characters of each. When it is set, Body is deliberately empty — see
+	// handleListNotes. That is not tidiness but a guard: an editor handed a
+	// truncated body would save the truncation, and the note would be cut down to
+	// its own preview.
+	Preview string `json:"preview,omitempty"`
+
 	// Links is what the body points at, read out of the text on the way in. Never
 	// set by a caller: it is derived, and a caller that set it would be describing
 	// a note whose text says something else.

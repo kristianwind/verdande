@@ -328,12 +328,19 @@ func TestAnImportedNoteKeepsItsPictures(t *testing.T) {
 		t.Fatalf("imported %d notes and %d files, want 2 and 1", out.Created, out.Files)
 	}
 
+	// The list carries a preview, not the whole note — see briefly(). The body is
+	// fetched by id, which is what the interface does when it opens one.
 	_, listed := ts.do(t, "GET", "/api/v1/notes?q=kvittering", nil)
 	notes := listed["notes"].([]any)
 	if len(notes) != 1 {
 		t.Fatalf("found %d notes", len(notes))
 	}
-	body := notes[0].(map[string]any)["body"].(string)
+	noteID := notes[0].(map[string]any)["id"].(string)
+	if got := notes[0].(map[string]any)["body"]; got != nil && got != "" {
+		t.Errorf("the list carried a body: %v — an editor handed that would save the truncation", got)
+	}
+	_, whole := ts.do(t, "GET", "/api/v1/notes/"+noteID, nil)
+	body := whole["body"].(string)
 
 	// The link points at the file where it now lives, not at a path inside an
 	// archive nobody kept.

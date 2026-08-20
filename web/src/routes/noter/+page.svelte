@@ -72,7 +72,33 @@
 			return new Date(b[field]).getTime() - new Date(a[field]).getTime();
 		});
 	let selected = $state(null);
+	// Hvilken række der er valgt. Se open(): editoren venter på hele noten.
+	let selectedId = $state(null);
 	let query = $state('');
+
+	/**
+	 * Det, der står i feltet, og det, der er søgt efter.
+	 *
+	 * To ting, fordi de ikke er den samme: `draftQuery` opdateres ved hvert
+	 * tastetryk,
+	 * så feltet føles som et felt, og `query` halter en kvart sekund bagefter, fordi
+	 * det er den, der koster en forespørgsel. Uden det sendte "kaffe" fem søgninger
+	 * gennem tolv hundrede noter, hvoraf de fire var forældede, inden de kom
+	 * tilbage — og svarene kunne lande i den forkerte rækkefølge.
+	 */
+	let draftQuery = $state('');
+	let typing = $state(false);
+	let searchTimer;
+
+	function search(next) {
+		draftQuery = next;
+		typing = next.trim() !== '' && next !== query;
+		clearTimeout(searchTimer);
+		searchTimer = setTimeout(() => {
+			query = draftQuery;
+			typing = false;
+		}, 250);
+	}
 	let status = $state('loading');
 	let saving = $state(false);
 
@@ -89,7 +115,7 @@
 	// opens it rather than dropping the person on a list to find it again.
 	let asked = $derived($page.url.searchParams.get('note'));
 	$effect(() => {
-		if (!asked || selected?.id === asked) return;
+		if (!asked || selectedId === asked) return;
 		const found = notes.find((n) => n.id === asked);
 		if (found) open(found);
 		else api.note(asked).then(open).catch(() => {});
@@ -99,17 +125,57 @@
 		try {
 			notes = (await api.notes(q ? { q } : {})).notes ?? [];
 			status = 'ready';
-			if (selected && !notes.some((n) => n.id === selected.id)) open(notes[0] ?? null);
+			if (selectedId && !notes.some((n) => n.id === selectedId)) open(notes[0] ?? null);
 		} catch (e) {
 			status = 'failed';
 			app.toast(humanMessage(e));
 		}
 	}
 
-	function open(note) {
+	/**
+	 * Åbner en note — og henter den hel først, hvis listen kun har uddraget.
+	 *
+	 * Listen bærer `preview` og en tom `body`, så en liste på tolv hundrede noter
+	 * ikke er tolv hundrede hele noter. Editoren må aldrig få det uddrag: den ville
+	 * gemme det efter sin pause, og noten ville være skåret ned til sit eget uddrag
+	 * af ingenting andet end at være blevet kigget på.
+	 *
+	 * Derfor hentes den hele her. Rækken vises med det samme, så det ikke føles som
+	 * at vente; teksten kommer, når den er der.
+	 */
+	async function open(note) {
 		clearTimeout(timer);
-		selected = note;
-		draft = note?.body ?? '';
+		if (!note) {
+			selectedId = null;
+			selected = null;
+			draft = '';
+			return;
+		}
+
+		// Rækken fremhæves med det samme; editoren får først noten, når den er hel.
+		//
+		// De to er skilt ad, fordi editoren indlæser sin tekst, når notens *id*
+		// skifter — og hvis den fik uddraget først og hele noten bagefter, ville
+		// id'et være det samme begge gange, så den anden aldrig blev vist. Man ville
+		// sidde med en tom note, der lige havde haft en titel.
+		selectedId = note.id;
+		if (note.body) {
+			selected = note;
+			draft = note.body;
+			return;
+		}
+		selected = null;
+
+		try {
+			const full = await api.note(note.id);
+			// Kun hvis den stadig er den, der er valgt: skifter man note, mens
+			// hentningen er undervejs, må den forrige ikke lande oven i den nye.
+			if (selectedId !== note.id) return;
+			selected = full;
+			draft = full.body ?? '';
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
 	}
 
 	/**
@@ -210,7 +276,10 @@
 		saving = true;
 		try {
 			const saved = await api.updateNote(id, { body });
-			notes = notes.map((n) => (n.id === id ? saved : n));
+			// Svaret er hele noten. Rækken viser `preview`, så den skal med — ellers
+			// står linjen tom, indtil siden hentes igen.
+			const forList = { ...saved, preview: saved.body ?? '' };
+			notes = notes.map((n) => (n.id === id ? forList : n));
 			// Only if it is still the one on screen: switching notes mid-save must not
 			// drag the previous one's title back onto this one.
 			if (selected?.id === id) selected = saved;
@@ -315,13 +384,29 @@
 			</div>
 		</div>
 
-		<input
-			class="search"
-			type="search"
-			bind:value={query}
-			placeholder={t('notes.search')}
-			aria-label={t('notes.search')}
-		/>
+		<!-- Samme form som søgefeltet i toppen: samme flade, samme kant, samme
+		     radius. Det var en pille med et forstørrelsesglas tegnet ind som et
+		     baggrundsbillede med farven skrevet i hånden — så det var det ene sted i
+		     programmet, der ikke fulgte temaet, og det kunne ses. -->
+		<div class="searchbox" class:busy={typing}>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2" />
+				<path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+			</svg>
+			<input
+				type="search"
+				value={draftQuery}
+				oninput={(e) => search(e.currentTarget.value)}
+				placeholder={t('notes.search')}
+				aria-label={t('notes.search')}
+			/>
+			{#if draftQuery}
+				<button class="clear" onclick={() => search('')} aria-label={t('notes.clearSearch')}>×</button>
+			{/if}
+		</div>
+		{#if query && status === 'ready'}
+			<p class="found">{t('notes.found', { count: notes.length })}</p>
+		{/if}
 
 		{#if status === 'loading'}
 			<p class="hint">{t('history.loading')}</p>
@@ -334,7 +419,7 @@
 						<div class="rowline">
 							<button
 								class="row"
-								class:on={selected?.id === note.id}
+								class:on={selectedId === note.id}
 								onclick={() => open(note)}
 								draggable="true"
 								ondragstart={(e) => onDragStart(e, note)}
@@ -351,7 +436,7 @@
 									     stod som "i går", og den dato, man sorterede efter, var
 									     ingen steder at se. -->
 									<span class="when" title={stamp(note)}>{when(shownDate(note))}</span>
-									<span class="preview">{plain(note.body)}</span>
+									<span class="preview">{plain(note.preview ?? note.body)}</span>
 								</span>
 								{#if note.project_id}
 									<span class="filed">{projectName(note.project_id)}</span>
@@ -495,21 +580,74 @@
 	   — og skifter til det almindelige, så snart feltet får fokus: ikonet forsvandt
 	   og formen blev firkantet midt i et klik. Med appearance: none er der kun én
 	   udgave, og den ser ens ud hele tiden. */
-	.search {
-		width: 100%;
-		appearance: none;
-		-webkit-appearance: none;
-		padding-left: 30px;
-		border-radius: 999px;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b918d' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E");
-		background-repeat: no-repeat;
-		background-position: 9px center;
-		background-size: 15px 15px;
+	/* Formet som søgefeltet i toppen — samme flade, kant og radius — så de to
+	   søgefelter på skærmen ligner hinanden i stedet for at være to beslutninger.
+	   Ikonet er en rigtig SVG med `currentColor`, ikke et baggrundsbillede med en
+	   farve skrevet ind: den gamle var #8b918d uanset tema. */
+	.searchbox {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		padding: var(--s2) var(--s3);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink-faint);
+		transition: border-color var(--fast) var(--ease);
 	}
 
-	/* Safaris egen ryd-knap ville sidde oven i vores egen form. */
-	.search::-webkit-search-decoration,
-	.search::-webkit-search-cancel-button {
+	.searchbox:focus-within {
+		border-color: var(--line-strong);
+	}
+
+	/* Mens det tastede endnu ikke er søgt efter. Et hint om at der kommer noget,
+	   frem for en liste, der ser forkert ud i en kvart sekund. */
+	.searchbox.busy {
+		border-color: var(--accent);
+	}
+
+	.searchbox svg {
+		width: 15px;
+		height: 15px;
+		flex: none;
+	}
+
+	.searchbox input {
+		flex: 1;
+		min-width: 0;
+		appearance: none;
+		-webkit-appearance: none;
+		border: 0;
+		background: none;
+		color: var(--ink);
+		font-size: var(--text-sm);
+		outline: none;
+	}
+
+	.clear {
+		flex: none;
+		width: 18px;
+		height: 18px;
+		border-radius: var(--radius-full);
+		color: var(--ink-faint);
+		font-size: 15px;
+		line-height: 1;
+	}
+
+	.clear:hover {
+		background: var(--surface-sunken);
+		color: var(--ink);
+	}
+
+	.found {
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+		padding: 0 var(--s1);
+	}
+
+	/* Safaris egen ryd-knap ville sidde oven i vores egen. */
+	.searchbox input::-webkit-search-decoration,
+	.searchbox input::-webkit-search-cancel-button {
 		-webkit-appearance: none;
 	}
 
@@ -519,6 +657,25 @@
 		padding: 0;
 		overflow-y: auto;
 		min-height: 0;
+	}
+
+	/* Rækker uden for skærmen koster ingenting.
+	 *
+	 * Listen tegner alle noterne. Med ti var det ligegyldigt; med tolv hundrede tog
+	 * første tegning to sekunder, og browseren gik i knæ — for hver eneste række
+	 * blev der lavet layout og malet, også de tusind, ingen kan se.
+	 *
+	 * `content-visibility: auto` lader browseren springe netop det over for det,
+	 * der er uden for billedet, og tage det, når man ruller derhen. Ingen JavaScript,
+	 * ingen rullematematik, ingen liste, der kan komme ud af trit med sig selv —
+	 * hvilket er hele grunden til at prøve det her før en vinduesvisning.
+	 *
+	 * `contain-intrinsic-size` er gættet på, hvor høj en uset række er. Uden det
+	 * ville rullebjælken tro, at listen er tom, og hoppe, mens man ruller. Tallet er
+	 * målt på en rigtig række: titel plus én linje uddrag. */
+	li {
+		content-visibility: auto;
+		contain-intrinsic-size: auto 54px;
 	}
 
 	.rowline {

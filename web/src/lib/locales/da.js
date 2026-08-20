@@ -46,6 +46,8 @@ export const da = {
 	'beacon.publishHint': 'Uden login, mellemlagret et minut. Viser installationer set de seneste 30 dage — ikke et løbende total, som kun ville stige.',
 	'notes.newHere': 'Ny note',
 	'notes.noneInProject': 'Ingen noter endnu. En note, der nævner #projektet, dukker også op her.',
+	'notes.clearSearch': 'Ryd søgningen',
+	'notes.found': '{count} noter',
 	'notes.strike': 'Gennemstreget',
 	'notes.showSource': 'Vis som kode',
 	'notes.source': 'Notens kildetekst',

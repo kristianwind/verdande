@@ -868,7 +868,9 @@
 						<li>
 							<a href="/noter?note={note.id}">
 								<strong>{note.title || t('notes.untitled')}</strong>
-								<span>{note.body.slice(0, 90)}</span>
+								<!-- `preview` når listen bærer det, `body` når noten kom
+								     fra et sted, der sender den hel. -->
+								<span>{(note.preview ?? note.body ?? '').slice(0, 90)}</span>
 							</a>
 						</li>
 					{/each}
