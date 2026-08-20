@@ -874,7 +874,17 @@
 		 *
 		 * Kun teksten, ikke arket: værktøjslinjen og foden hører til ruden og skal
 		 * blive i den. */
-		max-width: 46rem;
+		/* Bredden vokser med ruden, men ikke i det uendelige.
+		 *
+		 * 46rem var for stramt: på en skærm, der er halvanden gang så bred, stod
+		 * teksten i en smal søjle med en håndflade tom plads ved siden af — og
+		 * kodeblokke og billeder, som er de to ting i en note, der *vil* have
+		 * bredde, blev klemt sammen uden grund.
+		 *
+		 * clamp frem for et tal: en smal rude får det hele, en bred får en
+		 * linjelængde, øjet kan finde tilbage i. Øvre grænse omkring 68rem, hvor en
+		 * linje er lang nok til at rumme en kommando og kort nok til at læse. */
+		max-width: clamp(38rem, 92%, 68rem);
 		width: 100%;
 	}
 
