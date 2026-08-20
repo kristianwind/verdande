@@ -380,9 +380,12 @@
 		// The same target takes both. A note dropped on a project is filed there,
 		// which is also how it gets shared — one gesture, one meaning, and the
 		// sidebar already reads as "put this here".
-		const noteID = dragged(event, NOTE);
-		if (noteID) {
-			await app.moveNoteToProject(noteID, project.id);
+		// Nyttelasten er ét eller flere id'er adskilt af mellemrum. Markerer man
+		// halvtreds noter og trækker dem herhen, hører de alle sammen til det ene
+		// sted, man slap dem — det er én handling, uanset hvor mange den flytter.
+		const noteIDs = (dragged(event, NOTE) ?? '').split(' ').filter(Boolean);
+		if (noteIDs.length) {
+			for (const id of noteIDs) await app.moveNoteToProject(id, project.id);
 			return;
 		}
 

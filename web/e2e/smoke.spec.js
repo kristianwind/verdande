@@ -2794,3 +2794,103 @@ test('en note kan trækkes hen på et projekt i sidebjælken', async ({ page }) 
 
 	expect(trouble).toEqual([]);
 });
+
+test('kodeblokken har en kopiér-knap, og knappen havner ikke i filen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+	await page.goto('/noter');
+
+	const id = await page.evaluate(async () => {
+		const r = await fetch('/api/v1/notes', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+			body: JSON.stringify({ body: '# Kommandoen\n\n```bash\ndocker pull verdande\n```\n' })
+		});
+		return (await r.json()).id;
+	});
+	await page.goto('/noter?note=' + id);
+
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	const copy = ed.locator('pre .copy');
+	await expect(copy).toBeVisible();
+	await copy.click();
+	await expect(copy).toHaveText('Kopieret');
+
+	// Det, der ligger i udklipsholderen, er koden — ikke knappens eget ord.
+	const clip = await page.evaluate(() => navigator.clipboard.readText());
+	expect(clip).toBe('docker pull verdande');
+
+	// Og noten selv må ikke få "Kopiér" skrevet ind i sig, når den gemmes. Knappen
+	// ligger inde i <pre> for at kunne stå i hjørnet af den, så det er præcis den
+	// fælde, den her prøve findes for.
+	await ed.click();
+	await page.keyboard.press('End');
+	await page.keyboard.type(' ');
+	await page.waitForTimeout(1200);
+
+	const body = await page.evaluate(async (noteId) => {
+		const r = await fetch('/api/v1/notes/' + noteId, {
+			credentials: 'include',
+			headers: { 'Sec-Fetch-Site': 'same-origin' }
+		});
+		return (await r.json()).body;
+	}, id);
+	expect(body).toContain('docker pull verdande');
+	expect(body).not.toContain('Kopiér');
+	expect(body).not.toContain('Kopieret');
+
+	expect(trouble).toEqual([]);
+});
+
+test('flere noter kan markeres, arkiveres og hentes frem igen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	for (const title of ['Alfa', 'Bravo', 'Charlie']) {
+		await page.evaluate(async (t) => {
+			await fetch('/api/v1/notes', {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+				body: JSON.stringify({ body: `# ${t}\n\nEn note.\n` })
+			});
+		}, title);
+	}
+	await page.reload();
+	const rows = page.locator('.notes button.row');
+	await expect(rows.filter({ hasText: 'Alfa' })).toBeVisible();
+
+	// To af tre: et almindeligt klik, og et ⌘-klik oven i. Den, der lige er åbnet,
+	// hører med i markeringen — ellers ville det andet klik markere én og glemme
+	// den, man stod på.
+	await rows.filter({ hasText: 'Alfa' }).click();
+	await rows.filter({ hasText: 'Bravo' }).click({ modifiers: ['Meta'] });
+	await expect(page.getByText('2 markeret')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Arkivér', exact: true }).click();
+	await page.waitForTimeout(900);
+
+	// Væk fra listen, og ikke i papirkurven: arkivering er ikke sletning.
+	await expect(rows.filter({ hasText: 'Alfa' })).toHaveCount(0);
+	await expect(rows.filter({ hasText: 'Charlie' })).toBeVisible();
+
+	await page.getByLabel('Vis arkivet').click();
+	await page.waitForTimeout(900);
+	await expect(rows.filter({ hasText: 'Alfa' })).toBeVisible();
+	await expect(rows.filter({ hasText: 'Bravo' })).toBeVisible();
+	await expect(rows.filter({ hasText: 'Charlie' })).toHaveCount(0);
+
+	// Og tilbage igen — med rækkens egen knap, som er vejen for den ene. Et
+	// almindeligt klik rydder markeringen med vilje, så bjælken er til flere.
+	await rows.filter({ hasText: 'Alfa' }).hover();
+	await page.locator('.rowline', { hasText: 'Alfa' }).getByLabel('Tag frem igen').click();
+	await page.waitForTimeout(900);
+	await expect(rows.filter({ hasText: 'Alfa' })).toHaveCount(0);
+
+	await page.getByLabel('Vis arkivet').click();
+	await page.waitForTimeout(900);
+	await expect(rows.filter({ hasText: 'Alfa' })).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});

@@ -339,7 +339,15 @@ export function htmlToMarkdown(root) {
 					// else and an indent does not.
 					const lang = child.getAttribute('data-lang') ?? '';
 					emit('```' + lang);
-					for (const l of (child.textContent ?? '').replace(/\n$/, '').split('\n')) {
+					// Knapper og andet, editoren har lagt oven på blokken, hører ikke til
+					// i filen. Kopiér-knappen ligger inde i <pre> for at kunne placeres i
+					// hjørnet af den, og `textContent` ville ellers skrive ordet "Kopiér"
+					// ind i hver eneste kodeblok, hver gang noten blev gemt.
+					const code = [...child.childNodes]
+						.filter((n) => n.nodeType !== Node.ELEMENT_NODE || !n.classList?.contains('copy'))
+						.map((n) => n.textContent ?? '')
+						.join('');
+					for (const l of code.replace(/\n$/, '').split('\n')) {
 						emit(l);
 					}
 					emit('```');

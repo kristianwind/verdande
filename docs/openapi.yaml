@@ -1396,6 +1396,57 @@ paths:
                     description: The environment variables that are not set.
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /api/v1/notes/bulk:
+    post:
+      tags: [notes]
+      summary: Archive, unarchive or delete a set of notes in one call.
+      description: |
+        One call rather than one per note, because the thing being asked is one
+        thing: "put these away". Fifty separate requests would be fifty round
+        trips, fifty chances for half of them to fail, and a list that redraws
+        fifty times — and after an import of twelve hundred notes, selecting fifty
+        is the ordinary case rather than the extreme one.
+
+        Each note is still checked on its own. A set is a convenience for the
+        caller and never a way to touch something they could not have touched one
+        at a time; anything they may not write to is counted in `skipped` rather
+        than failing the whole call, so one note somebody else just deleted does
+        not stop the other forty-nine.
+
+        Archiving is not deleting. The trash says "this was a mistake, and in
+        thirty days it is gone"; the archive says "this is finished, and I want to
+        keep it".
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items: { type: string }
+                  description: At most 500.
+                archived:
+                  type: boolean
+                  description: Put away, or bring back out.
+                delete:
+                  type: boolean
+                  description: Into the trash instead. Wins over `archived`.
+      responses:
+        "200":
+          description: How many were changed, and how many were passed over.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  done: { type: integer }
+                  skipped: { type: integer }
+        "422":
+          description: No ids, too many, or neither archived nor delete was asked for.
+
   /api/v1/notes/{noteID}/attachments:
     post:
       tags: [notes]

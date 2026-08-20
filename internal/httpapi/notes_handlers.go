@@ -66,6 +66,19 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The archive is the same list asked the other way round, so it is the same
+	// endpoint with a flag rather than a second one that would have to be kept in
+	// step with this.
+	if r.URL.Query().Get("archived") != "" {
+		found, err := s.db.ArchivedNotes(r.Context(), user.ID)
+		if err != nil {
+			s.internal(w, r, "list archived notes", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"notes": briefly(found)})
+		return
+	}
+
 	// Everything they can see, not only the loose ones. Filing a note in a project
 	// is how it gets shared, and a list that dropped it at that moment made sharing
 	// look like deleting.
@@ -720,4 +733,75 @@ func (s *Server) handleUploadNoteAttachment(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusCreated, toAttachmentJSON(*a))
+}
+
+// --- putting notes away, one or many ---------------------------------------------
+
+type noteBulkRequest struct {
+	IDs      []string `json:"ids"`
+	Archived *bool    `json:"archived"`
+	Delete   bool     `json:"delete"`
+}
+
+// maxNoteBulk bounds one call. Enough to select a screenful several times over,
+// and few enough that the loop below cannot become somebody's afternoon.
+const maxNoteBulk = 500
+
+// handleNoteBulk archives, unarchives or deletes a set of notes in one request.
+//
+// One call rather than one per note, because the thing being asked is one thing:
+// "put these away". Fifty separate requests would be fifty round trips, fifty
+// chances for half of them to fail, and a list that redraws fifty times — and
+// after an import of twelve hundred notes, selecting fifty is the ordinary case,
+// not the extreme one.
+//
+// Each note is still checked on its own. A set is a convenience for the caller
+// and must never become a way to touch something they could not have touched one
+// at a time.
+func (s *Server) handleNoteBulk(w http.ResponseWriter, r *http.Request) {
+	var req noteBulkRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	if len(req.IDs) == 0 {
+		writeFieldErrors(w, map[string]string{"ids": "required"})
+		return
+	}
+	if len(req.IDs) > maxNoteBulk {
+		writeFieldErrors(w, map[string]string{"ids": "too many at once"})
+		return
+	}
+
+	done, skipped := 0, 0
+	for _, id := range req.IDs {
+		n, err := s.db.Note(r.Context(), id)
+		if err != nil {
+			s.internal(w, r, "get note", err)
+			return
+		}
+		// Not an error, and not a 404 for the whole call: a set can contain a note
+		// somebody else deleted a second ago, and the other forty-nine should still
+		// be put away. Counted so the answer is honest about it.
+		if n == nil || !s.mayTouchNote(r, n, store.RoleEditor) {
+			skipped++
+			continue
+		}
+
+		switch {
+		case req.Delete:
+			err = s.db.DeleteNote(r.Context(), id)
+		case req.Archived != nil:
+			err = s.db.SetNoteArchived(r.Context(), id, *req.Archived)
+		default:
+			writeFieldErrors(w, map[string]string{"archived": "say archived or delete"})
+			return
+		}
+		if err != nil {
+			s.internal(w, r, "note bulk", err)
+			return
+		}
+		done++
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"done": done, "skipped": skipped})
 }

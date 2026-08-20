@@ -121,12 +121,71 @@
 	 * monospace hele tiden; farverne kommer, når man forlader den, hvilket er når
 	 * man læser den.
 	 */
+	/**
+	 * En kopiér-knap på hver kodeblok.
+	 *
+	 * Lagt oven på blokken frem for skrevet ind i den: alt inde i `.page` er tekst,
+	 * der bliver til Markdown, når noten gemmes, så en knap derinde ville ende i
+	 * filen. Den her er `contenteditable="false"` og hænger uden for tekstflowet —
+	 * den findes for øjet og musen, ikke for dokumentet.
+	 *
+	 * `navigator.clipboard` fejler, når siden ikke er sikker eller ikke har fokus,
+	 * og en knap, der siger "Kopieret" uden at have gjort det, er værre end ingen
+	 * knap. Derfor siges det kun, når skrivningen faktisk lykkedes.
+	 */
+	function addCopyButtons() {
+		if (!editor) return;
+		for (const pre of editor.querySelectorAll('pre')) {
+			if (pre.querySelector('.copy')) continue;
+			const btn = document.createElement('button');
+			btn.className = 'copy';
+			btn.type = 'button';
+			btn.contentEditable = 'false';
+			btn.textContent = t('notes.copyCode');
+			btn.addEventListener('mousedown', (e) => e.preventDefault());
+			btn.addEventListener('click', async (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				const text = codeTextOf(pre);
+				try {
+					await navigator.clipboard.writeText(text.replace(/\n$/, ''));
+					btn.textContent = t('notes.copied');
+					setTimeout(() => (btn.textContent = t('notes.copyCode')), 1200);
+				} catch {
+					app.toast(t('notes.copyFailed'));
+				}
+			});
+			pre.appendChild(btn);
+		}
+	}
+
+	/**
+	 * Teksten i en kodeblok, uden knapper og andet, editoren har lagt oven på den.
+	 *
+	 * Ét sted, fordi to steder skal bruge det samme svar: farvelægningen, som
+	 * skriver resultatet tilbage i blokken, og oversættelsen til Markdown, som
+	 * skriver det i filen. Var de to uenige, ville forskellen ende i noten.
+	 */
+	function codeTextOf(pre) {
+		const from = pre.querySelector('code') ?? pre;
+		return [...from.childNodes]
+			.filter((n) => n.nodeType !== Node.ELEMENT_NODE || !n.classList?.contains('copy'))
+			.map((n) => n.textContent ?? '')
+			.join('');
+	}
+
 	function colourCode() {
 		if (!editor) return;
 		const inside = currentBlock();
 		for (const pre of editor.querySelectorAll('pre')) {
 			if (pre === inside || pre.contains(inside)) continue;
-			const code = pre.textContent ?? '';
+			// Blokkens tekst uden det, vi selv har lagt oven på den.
+			//
+			// `pre.textContent` tog kopiér-knappens eget ord med, og linjen under
+			// maler resultatet tilbage ind i blokken — så et klik på "Kopiér" skrev
+			// "Kopieret" ind i koden, og den næste gemning lagde det i filen. Knappen
+			// spiste den kode, den var sat der for at kopiere.
+			const code = codeTextOf(pre);
 			const lang = pre.getAttribute('data-lang') || guessLanguage(code);
 			if (lang) pre.setAttribute('data-lang', lang);
 			const painted = highlight(code, lang);
@@ -135,6 +194,7 @@
 			const target = pre.querySelector('code') ?? pre;
 			if (target.innerHTML !== painted) target.innerHTML = painted;
 		}
+		addCopyButtons();
 	}
 
 	function changed() {
@@ -913,6 +973,40 @@
 		padding-left: var(--s3);
 		border-left: 2px solid var(--line-strong);
 		color: var(--ink-muted);
+	}
+
+	/* Kopiér-knappen, øverst til højre i blokken.
+	 *
+	 * Synlig hele tiden, ikke kun ved hover. En knap, der først findes, når musen
+	 * er det rigtige sted, er en knap, folk ikke ved er der — og på en berøringsskærm
+	 * findes den slet ikke. Den er i stedet dæmpet nok til ikke at tage
+	 * opmærksomhed fra koden.
+	 *
+	 * `z-index` sagt højt: uden det lå den bag blokkens eget indhold i
+	 * stakrækkefølgen, og et klik ramte <pre> i stedet for knappen. */
+	.page :global(pre) {
+		position: relative;
+	}
+
+	.page :global(pre .copy) {
+		position: absolute;
+		z-index: 1;
+		top: 6px;
+		right: 6px;
+		font-family: var(--font);
+		font-size: var(--text-xs);
+		padding: 2px var(--s2);
+		border-radius: var(--radius-sm);
+		background: rgb(255 255 255 / 0.08);
+		color: rgb(255 255 255 / 0.55);
+		transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+	}
+
+	.page :global(pre:hover .copy),
+	.page :global(pre .copy:hover),
+	.page :global(pre .copy:focus-visible) {
+		background: rgb(255 255 255 / 0.2);
+		color: #fff;
 	}
 
 	/* En kodeblok ser ud som en terminal, fordi det er hvad den er.

@@ -345,6 +345,7 @@ export const api = {
 
 	uploadAttachment: (taskId, file) => upload(`/tasks/${taskId}/attachments`, file),
 	uploadNoteFile: (noteId, file) => upload(`/notes/${noteId}/attachments`, file),
+	noteBulk: (body) => post('/notes/bulk', body),
 	deleteAttachment: (id) => del(`/attachments/${id}`),
 	attachmentURL: (id) => `/api/v1/attachments/${id}`,
 

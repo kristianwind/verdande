@@ -10,15 +10,16 @@ import (
 
 // Note is a page of Markdown belonging to a project, or to nobody.
 type Note struct {
-	ID        string     `json:"id"`
-	ProjectID string     `json:"project_id,omitempty"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	CreatedBy string     `json:"created_by,omitempty"`
-	Pinned    bool       `json:"pinned"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+	ID         string     `json:"id"`
+	ProjectID  string     `json:"project_id,omitempty"`
+	Title      string     `json:"title"`
+	Body       string     `json:"body"`
+	CreatedBy  string     `json:"created_by,omitempty"`
+	Pinned     bool       `json:"pinned"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	DeletedAt  *time.Time `json:"deleted_at,omitempty"`
+	ArchivedAt *time.Time `json:"archived_at,omitempty"`
 
 	// Preview is the first of the body, for a list that shows one line of it.
 	//
@@ -43,7 +44,7 @@ type NoteLink struct {
 }
 
 const noteColumns = `id, project_id, title, body, created_by, pinned,
-	created_at, updated_at, deleted_at`
+	created_at, updated_at, deleted_at, archived_at`
 
 // The same columns, said with the table in front of them.
 //
@@ -51,7 +52,8 @@ const noteColumns = `id, project_id, title, body, created_by, pinned,
 // own `id` and `project_id` (UNINDEXED, so the row can be found from a match).
 // Unqualified, SQLite cannot tell which one is meant and refuses the query.
 const noteColumnsQualified = `notes.id, notes.project_id, notes.title, notes.body,
-	notes.created_by, notes.pinned, notes.created_at, notes.updated_at, notes.deleted_at`
+	notes.created_by, notes.pinned, notes.created_at, notes.updated_at, notes.deleted_at,
+	notes.archived_at`
 
 // Reference syntax, and deliberately the same characters the quick-add parser
 // already uses. A `#Firma` in a note means the same project as a `#Firma` typed
@@ -217,8 +219,23 @@ func (db *DB) LooseNotes(ctx context.Context, userID string) ([]Note, error) {
 // shared, and a list that dropped it at that moment would make sharing look like
 // deleting — which is exactly how it read before this existed.
 func (db *DB) AllNotes(ctx context.Context, userID string) ([]Note, error) {
-	return db.notesWhere(ctx, `
-		WHERE deleted_at IS NULL
+	return db.allNotes(ctx, userID, false)
+}
+
+// ArchivedNotes is the same list, the other way round: what has been put away.
+func (db *DB) ArchivedNotes(ctx context.Context, userID string) ([]Note, error) {
+	return db.allNotes(ctx, userID, true)
+}
+
+func (db *DB) allNotes(ctx context.Context, userID string, archived bool) ([]Note, error) {
+	// Archived notes are left out of the ordinary list rather than mixed in and
+	// greyed: the point of putting something away is not seeing it.
+	state := "notes.archived_at IS NULL"
+	if archived {
+		state = "notes.archived_at IS NOT NULL"
+	}
+	return db.notesJoin(ctx, noteColumnsQualified, `
+		WHERE `+state+` AND deleted_at IS NULL
 		  AND (
 		    (project_id IS NULL AND created_by = ?)
 		    OR project_id IN (
@@ -311,6 +328,27 @@ func (db *DB) SetNoteTimes(ctx context.Context, id string, created, updated time
 	return err
 }
 
+// SetNoteArchived puts a note away, or takes it back out.
+//
+// Separate from DeleteNote because they mean different things and the difference
+// is the whole feature: the trash says "this was a mistake, and in thirty days it
+// is gone", and the archive says "this is finished, and I want to keep it". A
+// twelve-hundred-note import is mostly the second, and without somewhere to put
+// them the list is the whole archive forever.
+//
+// `updated_at` is deliberately not touched. Archiving is not editing, and a list
+// sorted by when things were last written should not be reordered by somebody
+// tidying up.
+func (db *DB) SetNoteArchived(ctx context.Context, id string, archived bool) error {
+	var at any
+	if archived {
+		at = time.Now().Unix()
+	}
+	_, err := db.ExecContext(ctx,
+		`UPDATE notes SET archived_at = ? WHERE id = ? AND deleted_at IS NULL`, at, id)
+	return err
+}
+
 // DeleteNote puts it in the trash. Nothing here removes a row.
 func (db *DB) DeleteNote(ctx context.Context, id string) error {
 	_, err := db.ExecContext(ctx,
@@ -374,10 +412,10 @@ func scanNote(row scanner) (Note, error) {
 	var n Note
 	var projectID, createdBy sql.NullString
 	var created, updated int64
-	var deleted sql.NullInt64
+	var deleted, archived sql.NullInt64
 
 	if err := row.Scan(&n.ID, &projectID, &n.Title, &n.Body, &createdBy,
-		&n.Pinned, &created, &updated, &deleted); err != nil {
+		&n.Pinned, &created, &updated, &deleted, &archived); err != nil {
 		return n, err
 	}
 	n.ProjectID = projectID.String
@@ -387,6 +425,10 @@ func scanNote(row scanner) (Note, error) {
 	if deleted.Valid {
 		t := time.Unix(deleted.Int64, 0)
 		n.DeletedAt = &t
+	}
+	if archived.Valid {
+		t := time.Unix(archived.Int64, 0)
+		n.ArchivedAt = &t
 	}
 	return n, nil
 }

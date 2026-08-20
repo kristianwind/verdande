@@ -333,6 +333,9 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				// files in and nothing else could, which made the most ordinary act
 				// in a notes app — paste a screenshot — do nothing at all.
 				r.Post("/{noteID}/attachments", s.handleUploadNoteAttachment)
+				// Mange på én gang. Efter en import af tolv hundrede noter er det at
+				// vælge halvtreds det almindelige tilfælde, ikke det yderste.
+				r.Post("/bulk", s.handleNoteBulk)
 			})
 
 			r.Route("/mailboxes", func(r chi.Router) {

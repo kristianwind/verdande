@@ -74,6 +74,77 @@
 	let selected = $state(null);
 	// Hvilken række der er valgt. Se open(): editoren venter på hele noten.
 	let selectedId = $state(null);
+
+	/**
+	 * Flere ad gangen.
+	 *
+	 * Et sæt frem for et flag på noten, fordi markeringen hører til skærmen og ikke
+	 * til noten: den forsvinder, når man går et andet sted hen, og den skal ikke
+	 * gemmes nogen steder.
+	 *
+	 * `anchor` er den, et skift-klik måler fra. Uden den ville et interval skulle
+	 * gættes ud fra "den valgte", og den flytter sig, hver gang man klikker.
+	 */
+	let picked = $state(new Set());
+	let anchor = $state(null);
+	let showArchive = $state(false);
+
+	function rowClick(event, note) {
+		const many = event.metaKey || event.ctrlKey;
+		const range = event.shiftKey;
+
+		if (!many && !range) {
+			picked = new Set();
+			anchor = note.id;
+			open(note);
+			return;
+		}
+
+		const next = new Set(picked);
+		if (range && anchor) {
+			// Fra ankeret til her, i den rækkefølge listen faktisk står i — ikke i
+			// notens egen, som er en anden, når der er sorteret eller søgt.
+			const ids = ordered.map((n) => n.id);
+			const from = ids.indexOf(anchor);
+			const to = ids.indexOf(note.id);
+			if (from !== -1 && to !== -1) {
+				for (const id of ids.slice(Math.min(from, to), Math.max(from, to) + 1)) next.add(id);
+			}
+		} else {
+			// Den, der lige er åbnet, hører med i markeringen: ellers ville et
+			// ⌘-klik nummer to markere to noter og glemme den, man stod på.
+			if (!next.size && selectedId) next.add(selectedId);
+			next.has(note.id) ? next.delete(note.id) : next.add(note.id);
+			anchor = note.id;
+		}
+		picked = next;
+	}
+
+	/** Arkivér, tag frem igen, eller slet — for det, der er markeret. */
+	async function bulk(change) {
+		const ids = [...picked];
+		if (!ids.length) return;
+		if (change.delete && !confirm(t('notes.deleteMany', { count: ids.length }))) return;
+		try {
+			await api.noteBulk({ ids, ...change });
+			picked = new Set();
+			if (ids.includes(selectedId)) open(null);
+			await load(query);
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
+	/** Én note lagt væk, uden at markere den først. */
+	async function archiveOne(note) {
+		try {
+			await api.noteBulk({ ids: [note.id], archived: !note.archived_at });
+			if (selectedId === note.id) open(null);
+			await load(query);
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
 	let query = $state('');
 
 	/**
@@ -108,6 +179,7 @@
 	let timer;
 
 	$effect(() => {
+		showArchive;
 		load(query);
 	});
 
@@ -123,7 +195,8 @@
 
 	async function load(q) {
 		try {
-			notes = (await api.notes(q ? { q } : {})).notes ?? [];
+			const params = q ? { q } : showArchive ? { archived: '1' } : {};
+			notes = (await api.notes(params)).notes ?? [];
 			status = 'ready';
 			if (selectedId && !notes.some((n) => n.id === selectedId)) open(notes[0] ?? null);
 		} catch (e) {
@@ -243,7 +316,11 @@
 
 	function onDragStart(event, note) {
 		dragging = note.id;
-		startDrag(event, NOTE, note.id);
+		// Trækker man en note, der er markeret, følger hele markeringen med. Trækker
+		// man en, der ikke er, er det den ene — ellers ville et træk i en tilfældig
+		// række flytte halvtreds noter, man havde glemt var markeret.
+		const ids = picked.has(note.id) ? [...picked] : [note.id];
+		startDrag(event, NOTE, ids.join(' '));
 	}
 
 	async function create() {
@@ -380,6 +457,18 @@
 						<option value={o.key}>{t(o.label)}</option>
 					{/each}
 				</select>
+				<button
+					class="archive-toggle"
+					class:on={showArchive}
+					onclick={() => { showArchive = !showArchive; picked = new Set(); }}
+					aria-pressed={showArchive}
+					aria-label={t('notes.showArchive')}
+					title={t('notes.showArchive')}
+				>
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M3 7h18v3H3zM5 10v9h14v-9M10 14h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+					</svg>
+				</button>
 				<button class="new" onclick={create} aria-label={t('notes.new')}>+</button>
 			</div>
 		</div>
@@ -404,14 +493,27 @@
 				<button class="clear" onclick={() => search('')} aria-label={t('notes.clearSearch')}>×</button>
 			{/if}
 		</div>
-		{#if query && status === 'ready'}
+		{#if picked.size}
+			<!-- Kun mens der er markeret noget. En bjælke, der altid står der, er en
+			     bjælke, der tager plads fra listen hver dag for at gøre gavn sjældent. -->
+			<div class="picked-bar">
+				<span>{t('notes.picked', { count: picked.size })}</span>
+				<button onclick={() => bulk({ archived: !showArchive })}>
+					{showArchive ? t('notes.unarchive') : t('notes.archive')}
+				</button>
+				<button class="danger" onclick={() => bulk({ delete: true })}>{t('notes.delete')}</button>
+				<button onclick={() => (picked = new Set())}>{t('notes.clearPick')}</button>
+			</div>
+		{:else if query && status === 'ready'}
 			<p class="found">{t('notes.found', { count: notes.length })}</p>
 		{/if}
 
 		{#if status === 'loading'}
 			<p class="hint">{t('history.loading')}</p>
 		{:else if !notes.length}
-			<p class="hint">{query ? t('notes.noneFound') : t('notes.noneYet')}</p>
+			<p class="hint">
+				{query ? t('notes.noneFound') : showArchive ? t('notes.emptyArchive') : t('notes.noneYet')}
+			</p>
 		{:else}
 			<ul>
 				{#each ordered as note (note.id)}
@@ -420,7 +522,8 @@
 							<button
 								class="row"
 								class:on={selectedId === note.id}
-								onclick={() => open(note)}
+								class:picked={picked.has(note.id)}
+								onclick={(e) => rowClick(e, note)}
 								draggable="true"
 								ondragstart={(e) => onDragStart(e, note)}
 								ondragend={() => (dragging = null)}
@@ -441,6 +544,19 @@
 								{#if note.project_id}
 									<span class="filed">{projectName(note.project_id)}</span>
 								{/if}
+							</button>
+							<!-- Én note lagt væk, uden at markere den først. Markeringen er
+							     til flere; det her er til den ene, man står med — og i
+							     arkivet er det vejen tilbage. -->
+							<button
+								class="archive-one"
+								onclick={() => archiveOne(note)}
+								aria-label={note.archived_at ? t('notes.unarchive') : t('notes.archiveOne')}
+								title={note.archived_at ? t('notes.unarchive') : t('notes.archiveOne')}
+							>
+								<svg viewBox="0 0 24 24" aria-hidden="true">
+									<path d="M3 7h18v3H3zM5 10v9h14v-9M10 14h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+								</svg>
 							</button>
 							<button
 								class="star"
@@ -637,6 +753,96 @@
 	.clear:hover {
 		background: var(--surface-sunken);
 		color: var(--ink);
+	}
+
+	/* Bjælken over listen, mens der er markeret noget. Den erstatter antallet af
+	   fundne frem for at lægge sig oven i det: kun ét af de to er relevant ad
+	   gangen. */
+	.picked-bar {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		flex-wrap: wrap;
+		padding: var(--s2) var(--s1);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+	}
+
+	.picked-bar button {
+		font-size: var(--text-xs);
+		color: var(--ink);
+		padding: 2px var(--s2);
+		border-radius: var(--radius-sm);
+		border: 1px solid var(--line);
+	}
+
+	.picked-bar button:hover {
+		background: var(--surface);
+	}
+
+	.picked-bar button.danger {
+		color: var(--danger);
+		border-color: var(--danger-sunken);
+	}
+
+	/* En markeret række.
+	 *
+	 * En kant og en tone, ikke en tone alene: `--accent-sunken` er meget lys i lyst
+	 * tema, og tre markerede rækker var næsten ikke til at skelne fra tre, der ikke
+	 * var — hvilket er en dårlig ting at være i tvivl om, lige inden man trykker
+	 * Slet. Kanten kan ses uanset tema og uanset hvor lys tonen er. */
+	.row.picked {
+		background: var(--accent-sunken);
+		box-shadow: inset 3px 0 0 var(--accent);
+	}
+
+	/* Vises som stjernen: usynlig, indtil rækken er under musen, så listen er
+	   rolig at skanne. */
+	.archive-one {
+		flex: none;
+		width: 22px;
+		height: 22px;
+		color: var(--ink-faint);
+		border-radius: var(--radius-sm);
+		opacity: 0;
+		transition: opacity var(--fast) var(--ease);
+	}
+
+	.archive-one svg {
+		width: 14px;
+		height: 14px;
+	}
+
+	.rowline:hover .archive-one,
+	.archive-one:focus-visible {
+		opacity: 1;
+	}
+
+	.archive-one:hover {
+		color: var(--ink);
+		background: var(--surface);
+	}
+
+	.archive-toggle {
+		width: 24px;
+		height: 24px;
+		color: var(--ink-faint);
+		border-radius: var(--radius-sm);
+	}
+
+	.archive-toggle svg {
+		width: 15px;
+		height: 15px;
+	}
+
+	.archive-toggle:hover {
+		color: var(--ink);
+		background: var(--surface);
+	}
+
+	.archive-toggle.on {
+		color: var(--accent);
+		background: var(--accent-sunken);
 	}
 
 	.found {
