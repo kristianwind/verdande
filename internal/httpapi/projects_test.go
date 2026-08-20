@@ -327,6 +327,71 @@ func TestAProjectCanHaveSeveralSections(t *testing.T) {
 	}
 }
 
+// Sections can be dragged into another order, and the order is the project's.
+//
+// The list is what a project's plan *is* — "Planlægning" before "I gang" is the
+// order the work happens in — and until this endpoint existed the only way to
+// change it was to delete a section and make it again, which moves its tasks to
+// the unsectioned area on the way past.
+func TestSectionsCanBeReordered(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Ombygning"})
+	id := project["id"].(string)
+
+	ids := map[string]string{}
+	names := []string{"Planlægning", "I gang", "Til gennemsyn"}
+	for _, name := range names {
+		_, body := ts.do(t, "POST", "/api/v1/projects/"+id+"/sections", map[string]any{"name": name})
+		ids[name] = body["id"].(string)
+	}
+
+	want := []string{"Til gennemsyn", "Planlægning", "I gang"}
+	order := make([]string, len(want))
+	for i, name := range want {
+		order[i] = ids[name]
+	}
+
+	resp, body := ts.do(t, "POST", "/api/v1/projects/"+id+"/sections/reorder",
+		map[string]any{"ids": order})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("reorder: status %d, body %v", resp.StatusCode, body)
+	}
+
+	_, listed := ts.do(t, "GET", "/api/v1/projects/"+id+"/sections", nil)
+	got, _ := listed["sections"].([]any)
+	if len(got) != len(want) {
+		t.Fatalf("the project has %d sections, want %d", len(got), len(want))
+	}
+	for i, raw := range got {
+		if name := raw.(map[string]any)["name"]; name != want[i] {
+			t.Errorf("section %d is %v, want %q", i, name, want[i])
+		}
+	}
+
+	// A section belonging to somebody else's project is not moved by naming it
+	// here. The ids in the body are not checked one by one — the WHERE clause is
+	// what refuses them — so this is the assertion that it actually does.
+	_, other := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Sommerhus"})
+	otherID := other["id"].(string)
+	_, foreign := ts.do(t, "POST", "/api/v1/projects/"+otherID+"/sections",
+		map[string]any{"name": "Havearbejde"})
+	foreignID := foreign["id"].(string)
+
+	resp, _ = ts.do(t, "POST", "/api/v1/projects/"+id+"/sections/reorder",
+		map[string]any{"ids": []string{foreignID}})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("reorder with a foreign id: status %d", resp.StatusCode)
+	}
+
+	_, stillThere := ts.do(t, "GET", "/api/v1/projects/"+otherID+"/sections", nil)
+	elsewhere, _ := stillThere["sections"].([]any)
+	if len(elsewhere) != 1 || elsewhere[0].(map[string]any)["name"] != "Havearbejde" {
+		t.Errorf("the other project's section did not survive: %v", elsewhere)
+	}
+}
+
 // A project can be created straight into a group.
 //
 // `group_id` was declared on the request type, documented on it, and applied by

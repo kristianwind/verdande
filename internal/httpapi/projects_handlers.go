@@ -356,6 +356,34 @@ func (s *Server) handleCreateSection(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, sectionJSON{sec.ID, sec.ProjectID, sec.Name, sec.SortOrder})
 }
 
+// handleReorderSections sets the order of the sections inside one project.
+//
+// Under /projects/{projectID}/ rather than beside the other section routes, which
+// hang off a section id: the thing being changed here is the project's list, not
+// any one section in it. That also puts it behind the same project permission
+// check as everything else in this subtree, instead of resolving a section to its
+// project one id at a time and hoping they all named the same one.
+func (s *Server) handleReorderSections(w http.ResponseWriter, r *http.Request) {
+	var req reorderProjectsRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	// The same ceiling as the projects list, and a bound on the transaction rather
+	// than an opinion about how many sections a project may have.
+	if len(req.IDs) > 500 {
+		writeFieldErrors(w, map[string]string{"ids": "at most 500 at a time"})
+		return
+	}
+
+	projectID := chi.URLParam(r, "projectID")
+	if err := s.db.ReorderSections(r.Context(), projectID, req.IDs); err != nil {
+		s.internal(w, r, "reorder sections", err)
+		return
+	}
+	s.activity(r, projectID, "", "section.updated", nil)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // sectionAccess resolves a section to its project and checks the caller may edit
 // it. Sections have no permissions of their own — they belong to a project, and
 // that is where access is decided.

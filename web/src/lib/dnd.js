@@ -18,6 +18,7 @@ export const TASK = 'application/x-verdande-task';
 export const PROJECT = 'application/x-verdande-project';
 export const GROUP = 'application/x-verdande-group';
 export const NOTE = 'application/x-verdande-note';
+export const SECTION = 'application/x-verdande-section';
 
 /** Starts a drag carrying one id of the given kind. */
 export function startDrag(event, type, id) {

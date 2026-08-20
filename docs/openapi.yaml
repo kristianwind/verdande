@@ -2049,6 +2049,36 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Validation" }
 
+  /api/v1/projects/{projectID}/sections/reorder:
+    parameters:
+      - { name: projectID, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [projects]
+      summary: Set the order the project's sections appear in. Editors and owners.
+      description: |
+        The whole list at once, for the same reasons as `/projects/reorder`: a
+        project has a handful of sections, so sending the order you want is
+        simpler than midpoints and cannot land half-applied.
+
+        Ids belonging to another project are skipped rather than refused.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  maxItems: 500
+                  items: { type: string }
+                  description: Section ids, top to bottom.
+      responses:
+        "204": { description: Reordered. }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Validation" }
+
   /api/v1/sections/{sectionID}:
     parameters:
       - { name: sectionID, in: path, required: true, schema: { type: string } }

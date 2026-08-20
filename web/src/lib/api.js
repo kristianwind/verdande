@@ -283,6 +283,10 @@ export const api = {
 	createSection: (projectId, name) => post(`/projects/${projectId}/sections`, { name }),
 	updateSection: (id, data) => patch(`/sections/${id}`, data),
 	deleteSection: (id) => del(`/sections/${id}`),
+	// The whole list, the same as projects and groups: a project has a handful of
+	// sections, and an order that cannot land half-applied is worth more than the
+	// bytes a single move would save.
+	reorderSections: (projectId, ids) => post(`/projects/${projectId}/sections/reorder`, { ids }),
 
 	listMembers: (projectId) => get(`/projects/${projectId}/members`),
 	invite: (projectId, email, role) => post(`/projects/${projectId}/invites`, { email, role }),

@@ -426,6 +426,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 					r.Group(func(r chi.Router) {
 						r.Use(s.requireProject(store.RoleEditor))
 						r.Post("/sections", s.handleCreateSection)
+						r.Post("/sections/reorder", s.handleReorderSections)
 					})
 
 					r.Group(func(r chi.Router) {

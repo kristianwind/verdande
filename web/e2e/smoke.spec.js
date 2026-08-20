@@ -1974,6 +1974,76 @@ test('et projekt kan have flere sektioner @forms', async ({ page }) => {
 });
 
 /**
+ * Sektioner kan trækkes op og ned.
+ *
+ * Rækkefølgen af sektioner *er* planen — "Planlægning" står før "I gang", fordi
+ * det er den vej arbejdet går — og indtil nu kunne den kun laves om ved at slette
+ * en sektion og lave den igen, hvilket smider dens opgaver ud i det usektionerede
+ * område på vejen.
+ *
+ * Målt på rækkefølgen af overskrifterne på siden og bagefter på, hvad serveren
+ * svarer efter en genindlæsning: den første halvdel kan bestå af, at fladen
+ * flyttede et element, den anden kan kun bestå, hvis skrivningen gik igennem.
+ */
+test('sektioner kan trækkes i en anden rækkefølge, og den overlever en genindlæsning', async ({
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Havehus');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Havehus' })).toBeVisible();
+
+	for (const name of ['Fundament', 'Rejsning', 'Tag']) {
+		await page.getByRole('button', { name: '+ Tilføj sektion' }).click();
+		const field = page.getByLabel('Ny sektion');
+		await field.fill(name);
+		await field.press('Enter');
+		await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+	}
+
+	const order = () =>
+		page.locator('.section-head h2').evaluateAll((els) => els.map((e) => e.textContent.trim()));
+
+	expect(await order()).toEqual(['Fundament', 'Rejsning', 'Tag']);
+
+	// Tag trækkes helt op. Sluppet i den øverste halvdel af "Fundament", som er
+	// gaben over den — hvilken halvdel man rammer, er hele forskellen på over og
+	// under, så positionen er skrevet ud og ikke overladt til midten.
+	await page
+		.locator('.section-head')
+		.filter({ hasText: 'Tag' })
+		.dragTo(page.locator('.section-head').filter({ hasText: 'Fundament' }), {
+			targetPosition: { x: 40, y: 3 }
+		});
+
+	await expect.poll(order).toEqual(['Tag', 'Fundament', 'Rejsning']);
+
+	await page.reload();
+	await expect(page.getByRole('heading', { name: 'Tag', exact: true })).toBeVisible();
+	expect(await order(), 'serveren tog ikke rækkefølgen').toEqual([
+		'Tag',
+		'Fundament',
+		'Rejsning'
+	]);
+
+	// Og den anden vej: sluppet i den nederste halvdel lander den under.
+	await page
+		.locator('.section-head')
+		.filter({ hasText: 'Tag' })
+		.dragTo(page.locator('.section-head').filter({ hasText: 'Rejsning' }), {
+			targetPosition: { x: 40, y: 28 }
+		});
+
+	await expect.poll(order).toEqual(['Fundament', 'Rejsning', 'Tag']);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * Form fields on a touch device are at least 16px.
  *
  * Not a matter of taste. Below 16px, iOS Safari zooms the page in when a field

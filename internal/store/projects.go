@@ -646,6 +646,35 @@ func (db *DB) ReorderProjects(ctx context.Context, userID string, ids []string) 
 	})
 }
 
+// ReorderSections writes the order of one project's sections, top to bottom.
+//
+// The whole list at once, the same as ReorderProjects and for the same reasons: a
+// project has a handful of sections, so writing 0, 1, 2 … is one small
+// transaction that cannot run out of precision, and a list is impossible to get
+// into the half-ordered state a sequence of individual moves leaves behind when
+// one of them fails.
+//
+// Scoped to the project rather than to a user. A section has no owner of its own —
+// it belongs to a project, and whether the caller may rearrange it is a question
+// about that project, which the handler has already asked. Ids belonging to some
+// other project are skipped by the WHERE clause rather than refused, so a stale
+// list from a client that has just moved a section elsewhere cannot rearrange a
+// project the caller was never looking at.
+func (db *DB) ReorderSections(ctx context.Context, projectID string, ids []string) error {
+	return db.Tx(ctx, func(tx *sql.Tx) error {
+		now := time.Now().Unix()
+		for i, id := range ids {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE sections SET sort_order = ?, updated_at = ?
+				 WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
+				float64(i), now, id, projectID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // SectionByName resolves a "/name" from quick add within one project.
 //
 // Case-insensitive, and scoped to the project the task is landing in — a section

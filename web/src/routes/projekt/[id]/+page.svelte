@@ -6,7 +6,7 @@
 	import { app, completedView, projectName } from '$lib/stores.svelte.js';
 	import { COLORS, colorVar } from '$lib/colors.js';
 	import { eventName, eventDetail } from '$lib/events.js';
-	import { TASK, carries, dragged, accept } from '$lib/dnd.js';
+	import { TASK, SECTION, startDrag, carries, dragged, accept } from '$lib/dnd.js';
 	import TaskList from '$lib/components/TaskList.svelte';
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
@@ -386,6 +386,80 @@
 		}
 	}
 
+	// --- moving a section ---------------------------------------------------------
+	//
+	// The order of the sections is the order of the plan — "Planlægning" stands
+	// before "I gang" because that is when the work happens — and until this it
+	// could only be changed by deleting a section and making it again, which drops
+	// its tasks into the unsectioned area on the way past.
+	//
+	// The whole heading is the handle, not a grip beside it. A section heading
+	// holds nothing that is itself dragged, so there is no gesture to steal — which
+	// is the reason the sidebar's rows needed one, and the reason these do not.
+
+	let draggingSection = $state(null);
+	/** The heading whose gap is lit up, and which side of it. */
+	let overSectionEdge = $state(null);
+	let overSectionBelow = $state(false);
+
+	function clearSectionDrag() {
+		draggingSection = null;
+		overSectionEdge = null;
+	}
+
+	function onSectionDragStart(event, section) {
+		draggingSection = section.id;
+		startDrag(event, SECTION, section.id);
+	}
+
+	function onHeadDragOver(event, section) {
+		if (!canEdit || !carries(event, SECTION) || draggingSection === section.id) return;
+		accept(event);
+		const box = event.currentTarget.getBoundingClientRect();
+		overSectionEdge = section.id;
+		overSectionBelow = event.clientY > box.top + box.height / 2;
+	}
+
+	/**
+	 * Optimistic, and the whole list at once.
+	 *
+	 * The array is what the page renders from, so moving the entry moves the
+	 * section; `sort_order` is set alongside it only so a later read of this list
+	 * agrees with what is on screen. If the write fails the previous array goes
+	 * back — a half-moved section is worse than one that did not move.
+	 */
+	async function onHeadDrop(event, target) {
+		if (!carries(event, SECTION)) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const id = dragged(event, SECTION) || draggingSection;
+		const below = overSectionBelow;
+		clearSectionDrag();
+		if (!id || id === target.id || !canEdit) return;
+
+		const moved = sections.find((s) => s.id === id);
+		if (!moved) return;
+
+		const without = sections.filter((s) => s.id !== id);
+		const at = without.findIndex((s) => s.id === target.id);
+		if (at < 0) return;
+
+		const ordered = [...without];
+		ordered.splice(below ? at + 1 : at, 0, moved);
+
+		const previous = sections;
+		sections = ordered.map((s, i) => ({ ...s, sort_order: i }));
+		try {
+			await api.reorderSections(
+				project.id,
+				ordered.map((s) => s.id)
+			);
+		} catch (e) {
+			sections = previous;
+			app.toast(humanMessage(e));
+		}
+	}
+
 	async function removeSection(section) {
 		const count = open.filter((t) => t.section_id === section.id).length;
 		const warning = count
@@ -739,7 +813,22 @@
 					ondragleave={() => (overSection = null)}
 					ondrop={(e) => onSectionDrop(e, section.id)}
 				>
-					<div class="section-head">
+					<!-- Draggable, except while it is being renamed: a draggable element
+					     will not let the pointer select text in the field it contains.
+					     The sidebar's groups learned this first. -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="section-head"
+						class:dragging={draggingSection === section.id}
+						class:drop-above={overSectionEdge === section.id && !overSectionBelow}
+						class:drop-below={overSectionEdge === section.id && overSectionBelow}
+						draggable={canEdit && renamingSection !== section.id}
+						ondragstart={(e) => onSectionDragStart(e, section)}
+						ondragend={clearSectionDrag}
+						ondragover={(e) => onHeadDragOver(e, section)}
+						ondragleave={() => (overSectionEdge = null)}
+						ondrop={(e) => onHeadDrop(e, section)}
+					>
 						{#if renamingSection === section.id}
 							<form onsubmit={(e) => renameSection(e, section)}>
 								<input
@@ -1441,12 +1530,61 @@
 		gap: var(--s3);
 		background: var(--surface);
 		border-radius: var(--radius);
-		padding: var(--s2) var(--s3);
 		margin-bottom: var(--s1);
-		/* Pulled out to the padding of the rows below, so the band lines up with the
-		   text it heads rather than with the rows' own inset. */
-		margin-left: calc(var(--s2) * -1);
-		margin-right: calc(var(--s2) * -1);
+		/* The same inset as the rows, and the same width.
+		 *
+		 * It used to be pulled out by `--s2` and padded by `--s3`, which is the same
+		 * idea done with two different numbers: the band ended up eight pixels wider
+		 * than the list on each side, and its text four pixels *outside* the column
+		 * the rows keep. On the left that was invisible. On the right it was Omdøb
+		 * and Slet standing four pixels past everything above and below them, which
+		 * is exactly far enough to look like a mistake and not far enough to see why.
+		 *
+		 * A row is `.row` with `padding: var(--s2)` inside a box with none, so the
+		 * column the eye follows starts one `--s2` in. The band matches that by
+		 * having the same padding and no margin at all — no arithmetic, and nothing
+		 * to keep in step if the rows are ever re-inset.
+		 */
+		padding: var(--s2);
+		/* For the drop line, which is drawn inside the band's own box. */
+		position: relative;
+	}
+
+	/* Grabbable, and only where it can actually be grabbed: the rename field is
+	   not draggable, and a heading somebody may only read is not either. */
+	.section-head[draggable='true'] {
+		cursor: grab;
+	}
+
+	.section-head.dragging {
+		opacity: 0.4;
+		cursor: grabbing;
+	}
+
+	/* A line in the gap rather than a box around the heading. The gap is where it
+	   will land, and a lit heading says "into this one" — which is what a task
+	   dragged onto a section means, and this is not that. */
+	.section-head::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		height: 2px;
+		border-radius: 1px;
+		background: var(--accent);
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity var(--fast) var(--ease);
+	}
+
+	.section-head.drop-above::after {
+		top: -1px;
+		opacity: 1;
+	}
+
+	.section-head.drop-below::after {
+		bottom: -1px;
+		opacity: 1;
 	}
 
 	.section-head h2 {
