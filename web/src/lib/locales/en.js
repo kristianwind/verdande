@@ -298,6 +298,9 @@ export const en = {
 	'users.taskOne': 'task',
 	'users.taskMany': 'tasks',
 	'users.never': 'never seen',
+	'users.toProject': 'to {name}',
+	'users.toInstance': 'to the instance',
+	'users.invitedBy': 'invited by {name}',
 
 	// --- settings: history and errors -----------------------------------------------
 	'history.title': 'History',
@@ -313,6 +316,30 @@ export const en = {
 	'history.noMatch': 'Nothing matches the filters.',
 	'history.nothing': 'Nothing has been recorded yet.',
 	'history.deletedAccount': 'A deleted account',
+
+	// What each recorded event is called. The keys are the server's and live in
+	// events.js; these are the words they become.
+	'event.projectCreated': 'created the project',
+	'event.projectUpdated': 'changed the project',
+	'event.projectDeleted': 'deleted the project',
+	'event.projectImported': 'imported the project',
+	'event.sectionCreated': 'created a section',
+	'event.sectionUpdated': 'changed a section',
+	'event.sectionDeleted': 'deleted a section',
+	'event.memberInvited': 'invited',
+	'event.memberAdded': 'added',
+	'event.memberRemoved': 'removed',
+	'event.memberRoleChanged': 'changed the role of',
+	'event.taskCreated': 'created a task',
+	'event.taskUpdated': 'changed a task',
+	'event.taskCompleted': 'closed a task',
+	'event.taskReopened': 'reopened a task',
+	'event.taskMoved': 'moved a task',
+	'event.taskDeleted': 'deleted a task',
+	'event.taskSplit': 'split a task up',
+	'event.commentCreated': 'wrote a comment',
+	'event.attachmentAdded': 'attached a file',
+
 	'errors.title': 'Server errors',
 	'errors.hint':
 		'Every 500 the API has answered, with what the handler was attempting and the error it hit. Written to the database rather than only to the log — a container’s log starts over on every restart, so the explanation is usually gone by the time anybody looks. Kept for 30 days.',
@@ -493,8 +520,13 @@ export const en = {
 	'detail.labelsPlaceholder': 'separated by commas',
 	'detail.project': 'Project',
 	'detail.repeats': 'Repeats',
+	'detail.never': 'Never',
+	'detail.daily': 'Every day',
+	'detail.weekly': 'Every week',
+	'detail.fortnightly': 'Every other week',
 	'detail.monthly': 'Every month',
 	'detail.yearly': 'Every year',
+	'detail.asWritten': 'As written',
 	'detail.assignee': 'Assigned to',
 	'detail.subtasks': 'Sub-tasks',
 	'detail.addSubtask': 'Add a sub-task',
@@ -683,6 +715,7 @@ export const en = {
 	'push.upToDate': 'No newer version found.',
 
 	'view.nothingMoreToday': 'Nothing more today.',
+	'view.overdue': 'Overdue',
 	'project.roleFor': 'Role for {name}',
 
 	'project.more': 'More actions',

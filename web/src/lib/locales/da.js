@@ -303,6 +303,9 @@ export const da = {
 	'users.taskOne': 'opgave',
 	'users.taskMany': 'opgaver',
 	'users.never': 'aldrig set',
+	'users.toProject': 'til {name}',
+	'users.toInstance': 'til instansen',
+	'users.invitedBy': 'inviteret af {name}',
 
 	// --- settings: history and errors -----------------------------------------------
 	'history.title': 'Historik',
@@ -318,6 +321,30 @@ export const da = {
 	'history.noMatch': 'Ingen hændelser matcher de valgte filtre.',
 	'history.nothing': 'Der er ikke registreret noget endnu.',
 	'history.deletedAccount': 'En slettet konto',
+
+	// Hvad hver hændelse i loggen hedder. Nøglerne er serverens og ligger i
+	// events.js; her står de ord, de bliver til.
+	'event.projectCreated': 'oprettede projektet',
+	'event.projectUpdated': 'ændrede projektet',
+	'event.projectDeleted': 'slettede projektet',
+	'event.projectImported': 'importerede projektet',
+	'event.sectionCreated': 'oprettede en sektion',
+	'event.sectionUpdated': 'ændrede en sektion',
+	'event.sectionDeleted': 'slettede en sektion',
+	'event.memberInvited': 'inviterede',
+	'event.memberAdded': 'tilføjede',
+	'event.memberRemoved': 'fjernede',
+	'event.memberRoleChanged': 'ændrede rollen for',
+	'event.taskCreated': 'oprettede en opgave',
+	'event.taskUpdated': 'ændrede en opgave',
+	'event.taskCompleted': 'lukkede en opgave',
+	'event.taskReopened': 'genåbnede en opgave',
+	'event.taskMoved': 'flyttede en opgave',
+	'event.taskDeleted': 'slettede en opgave',
+	'event.taskSplit': 'delte en opgave op',
+	'event.commentCreated': 'skrev en kommentar',
+	'event.attachmentAdded': 'vedhæftede en fil',
+
 	'errors.title': 'Serverfejl',
 	'errors.hint':
 		'Hver 500, API’et har svaret, med hvad handleren var i gang med og fejlen den ramte. Gemt i databasen, ikke kun i loggen — containerens log starter forfra ved hver genstart, så forklaringen er som regel væk, når nogen kigger. Ryddes efter 30 dage.',
@@ -497,8 +524,13 @@ export const da = {
 	'detail.labelsPlaceholder': 'adskilt af komma',
 	'detail.project': 'Projekt',
 	'detail.repeats': 'Gentages',
+	'detail.never': 'Aldrig',
+	'detail.daily': 'Hver dag',
+	'detail.weekly': 'Hver uge',
+	'detail.fortnightly': 'Hver anden uge',
 	'detail.monthly': 'Hver måned',
 	'detail.yearly': 'Hvert år',
+	'detail.asWritten': 'Som skrevet',
 	'detail.assignee': 'Ansvarlig',
 	'detail.subtasks': 'Undertasks',
 	'detail.addSubtask': 'Tilføj en undertask',
@@ -688,6 +720,7 @@ export const da = {
 	'push.upToDate': 'Ingen nyere version fundet.',
 
 	'view.nothingMoreToday': 'Ikke mere i dag.',
+	'view.overdue': 'Forsinket',
 	'project.roleFor': 'Rolle for {name}',
 
 	'project.more': 'Flere handlinger',

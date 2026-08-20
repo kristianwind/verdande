@@ -159,9 +159,12 @@
 							<span class="who" class:gone={!entry.user_name}
 								>{entry.user_name || t('history.deletedAccount')}</span
 							>
+							<!-- The space is written out. Svelte drops the whitespace that
+							     opens a block, so "invited" and the address ran together. -->
 							<span class="event"
-								>{eventName(entry.event)}{#if eventDetail(entry)}
-									<span class="detail">{eventDetail(entry)}</span>{/if}</span
+								>{eventName(entry.event)}{#if eventDetail(entry)}{' '}<span class="detail"
+										>{eventDetail(entry)}</span
+									>{/if}</span
 							>
 						</span>
 						<span class="secondary">{entry.project_name}</span>

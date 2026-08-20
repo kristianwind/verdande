@@ -49,3 +49,32 @@ export function fullDate(iso) {
 		year: 'numeric'
 	});
 }
+
+/**
+ * The repeat rules worth a menu entry, and what to call them.
+ *
+ * Here rather than in the drawer that draws the menu, because the row draws the
+ * same rule as a badge and the two had already disagreed: the menu said "Hver
+ * dag" in both languages, and the badge said whatever the server said.
+ *
+ * The server sends `recurrence_text` with every task and sends it in Danish. It
+ * has to: one payload goes over the WebSocket to everybody in the project at
+ * once, and they do not all read the same language. So the rules that have a name
+ * are named here, on the side that knows whose screen this is, and anything more
+ * specific — "hver anden tirsdag", typed into the title — falls back to what the
+ * server wrote.
+ */
+export const REPEATS = [
+	{ rule: '', label: 'detail.never' },
+	{ rule: 'FREQ=DAILY', label: 'detail.daily' },
+	{ rule: 'FREQ=WEEKLY', label: 'detail.weekly' },
+	{ rule: 'FREQ=WEEKLY;INTERVAL=2', label: 'detail.fortnightly' },
+	{ rule: 'FREQ=MONTHLY', label: 'detail.monthly' },
+	{ rule: 'FREQ=YEARLY', label: 'detail.yearly' }
+];
+
+/** What a repeating task says on its row. */
+export function repeatLabel(rule, fallback = '') {
+	const known = REPEATS.find((option) => option.rule && option.rule === rule);
+	return known ? t(known.label) : fallback;
+}

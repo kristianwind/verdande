@@ -14,6 +14,7 @@
 	import { app, projectName } from '$lib/stores.svelte.js';
 	import { focusOnMount } from '$lib/focus.js';
 	import { t } from '$lib/i18n.svelte.js';
+	import { REPEATS } from '$lib/when.js';
 
 	let { task, onclose } = $props();
 
@@ -28,17 +29,6 @@
 
 	/** Who the task can be given to. Only ever more than one on a shared project. */
 	let members = $state([]);
-
-	// The rules worth a menu entry. Anything more specific is typed into the
-	// title, where the parser understands far more than a list ever could.
-	const REPEATS = [
-		{ rule: '', label: 'Aldrig' },
-		{ rule: 'FREQ=DAILY', label: 'Hver dag' },
-		{ rule: 'FREQ=WEEKLY', label: 'Hver uge' },
-		{ rule: 'FREQ=WEEKLY;INTERVAL=2', label: 'Hver anden uge' },
-		{ rule: 'FREQ=MONTHLY', label: t('detail.monthly') },
-		{ rule: 'FREQ=YEARLY', label: t('detail.yearly') }
-	];
 
 	let subtasks = $state([]);
 	let comments = $state([]);
@@ -452,13 +442,13 @@
 				<label for="repeat">{t('detail.repeats')}</label>
 				<select id="repeat" bind:value={recurrence} onchange={saveRecurrence}>
 					{#each REPEATS as option (option.rule)}
-						<option value={option.rule}>{option.label}</option>
+						<option value={option.rule}>{t(option.label)}</option>
 					{/each}
 					<!-- A rule typed as "hver anden tirsdag" has no entry in the list;
 					     showing it rather than snapping to the nearest preset is the
 					     difference between a menu and a menu that quietly edits. -->
 					{#if recurrence && !REPEATS.some((o) => o.rule === recurrence)}
-						<option value={recurrence}>{task.recurrence_text ?? 'Som skrevet'}</option>
+						<option value={recurrence}>{task.recurrence_text ?? t('detail.asWritten')}</option>
 					{/if}
 				</select>
 			</div>

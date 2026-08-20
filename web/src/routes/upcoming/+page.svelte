@@ -20,7 +20,7 @@
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
 	import CalendarView from '$lib/components/CalendarView.svelte';
-	import { t } from '$lib/i18n.svelte.js';
+	import { t, tag } from '$lib/i18n.svelte.js';
 
 	let days = $state([]);
 
@@ -48,9 +48,9 @@
 		const today = new Date(new Date().toDateString());
 		const diff = Math.round((day - today) / 86400000);
 
-		if (diff === 0) return 'I dag';
-		if (diff === 1) return 'I morgen';
-		return day.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'short' });
+		if (diff === 0) return t('task.today');
+		if (diff === 1) return t('task.tomorrow');
+		return day.toLocaleDateString(tag(), { weekday: 'long', day: 'numeric', month: 'short' });
 	}
 
 	// Reading tasks back out of the store keeps a completed row disappearing
