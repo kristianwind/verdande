@@ -39,12 +39,24 @@ Any Go duration: `720h`, `30m`, `45s`.
     yourself, password resets are written to the log, and reminders arrive in the
     app and as Web Push rather than by email.
 
-## Gmail
+## Google
 
-Only needed if anyone will connect a mailbox. Register an OAuth client in Google
-Cloud (**APIs & Services → Credentials → OAuth client ID → Web application**) with
-the redirect URI `https://your-address/oauth/gmail/callback`, enable the Gmail API,
-and add the `gmail.readonly` scope.
+Only needed if anyone will connect a Gmail mailbox or a Google calendar. One
+registration covers both: register an OAuth client in Google Cloud
+(**APIs & Services → Credentials → OAuth client ID → Web application**) and add
+**both** redirect URIs:
+
+```
+https://your-address/oauth/gmail/callback
+https://your-address/oauth/calendar/callback
+```
+
+Then enable the APIs and scopes for whichever you want:
+
+| For | Enable | Scope |
+|---|---|---|
+| Mailboxes | Gmail API | `gmail.readonly` |
+| Calendar | Google Calendar API | `calendar.readonly` |
 
 | Variable | What it does |
 |---|---|
@@ -52,8 +64,15 @@ and add the `gmail.readonly` scope.
 | `VERDANDE_GMAIL_CLIENT_SECRET` | The client secret. |
 
 One registration serves every user on the instance; each person authorises their
-own mailbox from **Settings → Gmail**. The redirect URI is derived from
-`VERDANDE_BASE_URL`, so it cannot drift out of step with what you registered.
+own mailbox from **Settings → Integrations → Gmail** and their own calendar from
+**Settings → Integrations → Google Calendar**. Both redirect URIs are derived from
+`VERDANDE_BASE_URL`, so they cannot drift out of step with what you registered.
+
+!!! note "Two connections, two grants"
+    Connecting a calendar does not disturb a working Gmail connection, and
+    disconnecting one does not take the other with it. Google issues a refresh
+    token per authorisation and keeps up to a hundred of them live per account,
+    each carrying only the scopes it was granted with.
 
 ## Secrets
 
