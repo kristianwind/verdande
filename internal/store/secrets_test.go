@@ -186,3 +186,94 @@ func TestOnePersonCanHaveSettingsForMoreThanOneThing(t *testing.T) {
 		t.Errorf("the second write did not land: %v", back["provider"])
 	}
 }
+
+// The upgrade path, which is the one nobody runs: an existing database with a row
+// in the old shape, opened by a binary that carries 0025.
+//
+// Every other test here starts empty and runs all the migrations in order, which
+// exercises the migration's SQL but not its *situation*. The situation is a table
+// that already holds somebody's settings, and the question is whether they come
+// through it and whether a second scope can be written afterwards.
+func TestSettingsSurviveTheUpgradeToPerScopeRows(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.db")
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	user := &User{Email: "kristian@example.dk", Name: "Kristian"}
+	if err := db.CreateUser(ctx, user, "Indbakke"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wind the database back to how v0.33.3 left it: user_id as the whole primary
+	// key, and 0025 not yet applied.
+	for _, stmt := range []string{
+		`PRAGMA foreign_keys = OFF`,
+		`CREATE TABLE us_old (
+			user_id     TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+			scope       TEXT NOT NULL DEFAULT 'general',
+			values_json TEXT NOT NULL DEFAULT '{}',
+			updated_at  INTEGER NOT NULL
+		)`,
+		`INSERT INTO us_old (user_id, scope, values_json, updated_at)
+		 SELECT user_id, scope, values_json, updated_at FROM user_settings`,
+		`DROP TABLE user_settings`,
+		`ALTER TABLE us_old RENAME TO user_settings`,
+		`DELETE FROM schema_migrations WHERE name = '0025_user_settings_per_scope.sql'`,
+		`PRAGMA foreign_keys = ON`,
+	} {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("rewind (%s): %v", stmt, err)
+		}
+	}
+
+	// A Gmail connection, written the way the old upsert wrote one.
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO user_settings (user_id, scope, values_json, updated_at)
+		VALUES (?, 'gmail', '{"label":"Verdande"}', 0)`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// And now the new binary opens it.
+	db, err = Open(path)
+	if err != nil {
+		t.Fatalf("the upgrade refused to open the database: %v", err)
+	}
+	defer db.Close()
+
+	gmail, err := db.UserSettings(ctx, user.ID, "gmail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gmail["label"] != "Verdande" {
+		t.Errorf("the Gmail settings did not survive the migration: %v", gmail)
+	}
+
+	// The thing that was reported: set up the AI provider, and have it still be
+	// there afterwards.
+	if err := db.SetUserSettings(ctx, user.ID, "ai", map[string]any{
+		"provider": "anthropic", "model": "claude-sonnet-5",
+	}); err != nil {
+		t.Fatalf("saving the AI provider after the upgrade: %v", err)
+	}
+	ai, err := db.UserSettings(ctx, user.ID, "ai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ai["provider"] != "anthropic" {
+		t.Errorf("the AI provider is %v after the upgrade, want anthropic", ai["provider"])
+	}
+	again, err := db.UserSettings(ctx, user.ID, "gmail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again["label"] != "Verdande" {
+		t.Errorf("saving the AI provider took the Gmail settings: %v", again)
+	}
+}

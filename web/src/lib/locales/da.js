@@ -814,6 +814,8 @@ export const da = {
 	'passkey.hint':
 		'En nøgle på en enhed i stedet for en hemmelighed i et hoved. Den private halvdel forlader aldrig enheden, og signaturen er bundet til adressen — så en overbevisende kopi af login-siden et andet sted får ingenting.',
 	'passkey.unsupported': 'Denne browser understøtter ikke passkeys.',
+	'passkey.notAccepted':
+		'Nøglen blev ikke godtaget. Sker det for en nøgle, der virkede før, er adressen typisk skiftet — en passkey hører til præcis den adresse, den blev lavet på, skema og alt.',
 	'passkey.none': 'Ingen nøgler endnu.',
 	'passkey.name': 'Navn på nøglen',
 	'passkey.namePlaceholder': 'fx min bærbare',

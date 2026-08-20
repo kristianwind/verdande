@@ -59,7 +59,17 @@
 		} catch (e) {
 			// A cancelled prompt is not a failure. Somebody changed their mind, and
 			// an error for that reads as though the key was rejected.
-			if (e?.name !== 'NotAllowedError' && e?.message !== 'cancelled') {
+			if (e?.name === 'NotAllowedError' || e?.message === 'cancelled') {
+				// nothing to say
+			} else if (e?.code === 'unauthorized') {
+				// Not "wrong email or password". There is no email here and no
+				// password — the device signed, and the signature was refused. The
+				// generic 401 text sent somebody looking through their account for a
+				// typo that was never there; what had actually happened was that the
+				// site had moved from http to https, and a passkey is bound to the
+				// origin it was made on, scheme included.
+				error = t('passkey.notAccepted');
+			} else {
 				error = humanMessage(e);
 			}
 		} finally {

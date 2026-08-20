@@ -807,6 +807,8 @@ export const en = {
 	'passkey.hint':
 		'A key on a device instead of a secret in a head. The private half never leaves the device, and the signature is bound to the address that asked for it — so a convincing copy of the sign-in page somewhere else gets nothing.',
 	'passkey.unsupported': 'This browser does not support passkeys.',
+	'passkey.notAccepted':
+		'That key was not accepted. If it worked before, the address has usually changed — a passkey belongs to the exact address it was made on, scheme and all.',
 	'passkey.none': 'No keys yet.',
 	'passkey.name': 'Name for the key',
 	'passkey.namePlaceholder': 'e.g. my laptop',
