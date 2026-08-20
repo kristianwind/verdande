@@ -38,6 +38,81 @@ type DB struct {
 // misplaced key look like a corrupt disk.
 func (db *DB) UseSecrets(box *secret.Box) { db.box = box }
 
+// SealNotes lukker de noter, der stadig ligger åbne.
+//
+// Kaldes én gang ved opstart, efter nøglen er sat. Uden den ville kroppene blive
+// forseglet efterhånden som de bliver *skrevet* — sådan som instansens
+// indstillinger gør det — og for et arkiv på tolv hundrede importerede noter, som
+// ingen redigerer igen, betyder det aldrig. En bagudfyldning er den eneste måde,
+// den her ændring rent faktisk beskytter noget på.
+//
+// Idempotent: en note, der allerede er forseglet, kendes på sit præfiks og røres
+// ikke. Så den kan køre ved hver opstart uden at koste andet end et gennemløb af
+// id'er og en længde.
+//
+// Skriver med SQL frem for gennem SaveNote. SaveNote udleder titlen af kroppen og
+// bygger links om, og begge dele er allerede rigtige her — det, der skal ske, er
+// alene, at de to søjler skal skiftes ud med sig selv, lukket.
+func (db *DB) SealNotes(ctx context.Context) (int, error) {
+	if db.box == nil {
+		return 0, nil
+	}
+
+	rows, err := db.QueryContext(ctx, `SELECT id, title, body FROM notes`)
+	if err != nil {
+		return 0, err
+	}
+	type open struct{ id, title, body string }
+	var pending []open
+	for rows.Next() {
+		var o open
+		if err := rows.Scan(&o.id, &o.title, &o.body); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if secret.IsSealed(o.body) && (o.title == "" || secret.IsSealed(o.title)) {
+			continue
+		}
+		pending = append(pending, o)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(pending) == 0 {
+		return 0, nil
+	}
+
+	// Hele bunken i én transaktion. En halvt forseglet tabel er ikke i stykker —
+	// præfikset gør, at begge slags kan læses — men en afbrudt kørsel, der skal
+	// tages om, er lettere at ræsonnere om, når den enten skete eller ikke gjorde.
+	err = db.Tx(ctx, func(tx *sql.Tx) error {
+		for _, o := range pending {
+			title, err := db.sealValue(o.title)
+			if err != nil {
+				return err
+			}
+			body, err := db.sealValue(o.body)
+			if err != nil {
+				return err
+			}
+			// `updated_at` røres ikke. Det betyder "hvornår skrev dette program noten
+			// sidst", og at lukke en konvolut om den er ikke at skrive den — en
+			// bagudfyldning, der stemplede tolv hundrede noter med i aften, ville
+			// kaste den rækkefølge væk, importen brugte en dag på at hente hjem.
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE notes SET title = ?, body = ? WHERE id = ?`, title, body, o.id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return len(pending), nil
+}
+
 // dsn is the connection string.
 //
 // SQLite is a single file, but it is being driven by an HTTP server with concurrent

@@ -39,13 +39,18 @@ reply within a week.
 - **The CSP** is computed at startup by hashing the inline scripts in the built
   page, rather than allowing `unsafe-inline`.
 
-- **Note bodies, task titles, descriptions and comments are not encrypted.** The
-  sealing above covers credentials — mailbox passwords, OAuth tokens, TOTP secrets,
-  AI keys — and nothing else. A note holding a password is holding it in plain text
-  in every backup that can be downloaded. Encrypting note bodies is on the list and
-  is larger than it sounds: the full-text index and the folded search column are
-  both derived from the body, so both would have to go and search would have to be
-  rewritten to decrypt in application code.
+- **Note titles and bodies are sealed** under the same key, since 0027. Both, not
+  only the body: a note's title *is* its first line, so a readable title beside a
+  sealed body would leave the beginning of every note in the clear.
+
+  The two plaintext copies went with it. `notes_fts` indexed the body and the
+  generated `fold` column held a transliterated copy of it — sealing the body while
+  leaving those would have been theatre, since a stolen file could be read straight
+  out of the index. Search opens the text in Go instead, which costs 33–43 ms
+  across twelve hundred notes and is the wrong shape somewhere around ten thousand.
+- **Task titles, descriptions and comments are still in the clear**, and so is
+  `note_links` — ids derived from a note's body, so a stolen file still shows which
+  projects and tasks a note points at, though not what it says.
 
 ## What it does not do
 

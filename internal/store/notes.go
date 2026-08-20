@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -89,6 +91,24 @@ func (db *DB) SaveNote(ctx context.Context, n *Note) error {
 	// it, and every caller gets the same answer because none of them can set it.
 	n.Title = firstLine(n.Body)
 
+	// Forseglet på vej ned, åbnet på vej op.
+	//
+	// Både titel og krop: titlen *er* første linje, så en forseglet krop ved siden
+	// af en læselig titel ville efterlade begyndelsen af hver eneste note i
+	// klartekst — og det er dér, folk skriver hvad noten handler om.
+	//
+	// `n` selv røres ikke. Kalderen har den note i hånden og læser videre i den
+	// bagefter; at forsegle den på plads ville give en note, hvis krop er
+	// ciffertekst, til den, der lige har gemt den.
+	title, err := db.sealValue(n.Title)
+	if err != nil {
+		return fmt.Errorf("seal note title: %w", err)
+	}
+	body, err := db.sealValue(n.Body)
+	if err != nil {
+		return fmt.Errorf("seal note body: %w", err)
+	}
+
 	return db.Tx(ctx, func(tx *sql.Tx) error {
 		var projectID any
 		if n.ProjectID != "" {
@@ -108,7 +128,7 @@ func (db *DB) SaveNote(ctx context.Context, n *Note) error {
 			    body = excluded.body,
 			    pinned = excluded.pinned,
 			    updated_at = excluded.updated_at`,
-			n.ID, projectID, n.Title, n.Body, createdBy, n.Pinned,
+			n.ID, projectID, title, body, createdBy, n.Pinned,
 			n.CreatedAt.Unix(), n.UpdatedAt.Unix()); err != nil {
 			return err
 		}
@@ -182,7 +202,7 @@ func firstLine(body string) string {
 func (db *DB) Note(ctx context.Context, id string) (*Note, error) {
 	row := db.QueryRowContext(ctx,
 		`SELECT `+noteColumns+` FROM notes WHERE id = ? AND deleted_at IS NULL`, id)
-	n, err := scanNote(row)
+	n, err := db.scanNote(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -263,99 +283,104 @@ func (db *DB) NotesLinking(ctx context.Context, kind, targetID string) ([]Note, 
 
 // SearchNotes matches title and body, in either spelling of a Danish word.
 func (db *DB) SearchNotes(ctx context.Context, query string, limit int) ([]Note, error) {
-	if strings.TrimSpace(query) == "" {
+	terms := SearchTerms(query)
+	if len(terms) == 0 {
 		return nil, nil
 	}
 	if limit <= 0 {
 		limit = 50
 	}
-	expr := MatchExprOver(query, "title", "body")
-	if expr == "" {
-		return nil, nil
+
+	// Hver note læses og åbnes.
+	//
+	// Der er ikke noget indeks at spørge længere, og det er med vilje: `notes_fts`
+	// og den genererede `fold`-søjle var begge klartekstkopier af kroppen, så en
+	// forseglet krop ved siden af dem ville have været teater — en fil ville stadig
+	// røbe hver note. Se 0027.
+	//
+	// Målt frem for gættet: tolv hundrede noter à 3,3 kB koster **33–43 ms** pr.
+	// søgning. Fladen venter 250 ms efter sidste tastetryk, før den spørger, så det
+	// ligger inde i pausen og ses ikke.
+	//
+	// Tiden går ikke med at åbne konvolutterne — fire megabyte AES-GCM er få
+	// millisekunder — men med at folde og småskrive hver krop for hver søgning.
+	// Det er lineært, så regn med omtrent 350 ms ved ti tusind noter, og dér er det
+	// den forkerte form. Svaret er da et *nøglet* indeks: en HMAC pr. ord under
+	// samme nøgle. Bemærk hvad det koster, når det bliver aktuelt — et nøglet
+	// indeks kan slå et helt ord op og ikke andet, så præfiks- og delordssøgningen,
+	// der findes i dag, ville falde bort.
+	//
+	// Papirkurven springes over i SQL frem for i løkken: det er den ene begrænsning,
+	// der kan bruge et indeks, og den fjerner alt hvad der er slettet uden at åbne
+	// det.
+	notes, err := db.notesWhere(ctx, `WHERE deleted_at IS NULL`)
+	if err != nil {
+		return nil, err
 	}
-	// Ordered by how well it matched, not by when it was last touched.
-	//
-	// `ORDER BY updated_at DESC` was invisible while there were ten notes and
-	// useless at twelve hundred: every one of them was imported the same evening,
-	// so `updated_at` says nothing, and the limit then cut the list at fifty
-	// arbitrary rows. Searching "Tesla" answered with a note about nginx first and
-	// the note actually called "Tesla Model Y" second — which reads as a search
-	// that does not work, because from where the person is sitting it is one.
-	//
-	// bm25 with the title weighted ten times the body. A word in the title is what
-	// the note is *about*; the same word once in a long body is a mention. `fold`
-	// carries the same text transliterated, so it must weigh the same as the body
-	// or a Danish match would outrank an exact one.
-	//
-	// Joined rather than `rowid IN (…)`: the rank belongs to the match, and a
-	// subquery throws it away.
-	found, err := db.notesJoin(ctx, noteColumnsQualified, `
-		JOIN notes_fts ON notes_fts.rowid = notes.rowid
-		WHERE notes.deleted_at IS NULL
-		  AND notes_fts MATCH ?
-		ORDER BY bm25(notes_fts, 10.0, 1.0, 1.0)
-		LIMIT ?`, expr, limit)
-	if err != nil || len(found) > 0 {
-		return found, err
+
+	type scored struct {
+		note  Note
+		score int
 	}
-	return db.searchNotesInside(ctx, query, limit)
+	found := make([]scored, 0, limit)
+
+	for _, note := range notes {
+		score := scoreNote(note, terms)
+		if score == 0 {
+			continue
+		}
+		found = append(found, scored{note: note, score: score})
+	}
+
+	// Bedste først, og ved lige stand den senest rørte. Uden det andet led er
+	// rækkefølgen mellem to lige gode svar den, SQLite tilfældigvis gav dem, og den
+	// skifter mellem to søgninger på det samme.
+	sort.SliceStable(found, func(i, j int) bool {
+		if found[i].score != found[j].score {
+			return found[i].score > found[j].score
+		}
+		return found[i].note.UpdatedAt.After(found[j].note.UpdatedAt)
+	})
+
+	out := make([]Note, 0, min(limit, len(found)))
+	for i, f := range found {
+		if i >= limit {
+			break
+		}
+		out = append(out, f.note)
+	}
+	return out, nil
 }
 
-// searchNotesInside finds a word that lives *inside* another word.
+// scoreNote er hvor godt en note svarer på ordene, eller nul for slet ikke.
 //
-// An index is built of tokens, and a token is what a tokenizer decided was a
-// word. `gamerule keepInventory true` is three of them, and the middle one is
-// `keepinventory` — so "keep inventory" asks for two words that are nowhere, and
-// gets nothing. Reported as "søgning har ikke det store held", which from where
-// the person is sitting is exactly what it is: the note is right there, and the
-// search says there is nothing.
+// Erstatter bm25, som forsvandt med indekset. Den er grovere, og det er værd at
+// vide hvor: bm25 vægter et ord efter hvor sjældent det er i hele samlingen, og
+// det kan ikke gøres uden en samling at tælle i. Det, der er beholdt, er den
+// halvdel, der betød mest — **titlen vejer ti gange kroppen**. Et ord i titlen er
+// hvad noten *handler om*; det samme ord én gang i en lang krop er en omtale.
 //
-// A prefix query gets half of it. `keep*` does match `keepinventory`; `inventory*`
-// cannot, because it is not a prefix of anything — and the two are joined with AND,
-// so the half that works is thrown away by the half that cannot.
-//
-// This is not an exotic case in a notes app. A decade of notes is full of
-// commands, identifiers and file names, and every one of them is several words the
-// index thinks is one: `keepInventory`, `VACUUM INTO`, `apple-notes-til-markdown`.
-//
-// So: the index answers first, and when it has nothing, the text is read. Every
-// term has to appear somewhere in the note, anywhere, in any word.
-//
-// # What it costs, and when to stop doing it this way
-//
-// A LIKE with a leading % cannot use an index; this reads every note. At twelve
-// hundred notes that is four megabytes and a millisecond or two, and it only runs
-// when the fast path already came back empty — which is the search that was about
-// to disappoint somebody. At a hundred thousand notes it would be the wrong shape,
-// and the answer then is an FTS5 `trigram` index, not a bigger scan.
-//
-// It does not rank. bm25 needs a match to rank, and there is no match here — that
-// is the whole situation. The rows are the most recently touched first, and the
-// set is small, because the index already said there was nothing in it.
-func (db *DB) searchNotesInside(ctx context.Context, query string, limit int) ([]Note, error) {
-	terms := SearchTerms(query)
-	if len(terms) == 0 {
-		return nil, nil
-	}
+// Alle ord skal findes. Det er den samme regel som før, hvor leddene var bundet
+// med AND.
+func scoreNote(note Note, terms []string) int {
+	title := FoldDanish(strings.ToLower(note.Title))
+	body := FoldDanish(strings.ToLower(note.Body))
 
-	// `fold` is `title || ' ' || body` with the Danish letters transliterated, so
-	// one column covers the title, the body and "gron" for "grøn" at once. LIKE is
-	// case-insensitive for ASCII in SQLite, which is what makes `keepInventory`
-	// answer to "inventory".
-	//
-	// The needle is safe to interpolate into a pattern because `tokenize` splits on
-	// everything that is not a letter or a digit: a term cannot contain % or _, so
-	// there is no wildcard for somebody to smuggle in. It is still a bound
-	// parameter — that is about SQL, and this is about LIKE.
-	where := "WHERE deleted_at IS NULL"
-	args := make([]any, 0, len(terms)+1)
+	score := 0
 	for _, term := range terms {
-		where += " AND fold LIKE ?"
-		args = append(args, "%"+FoldDanish(term)+"%")
+		needle := FoldDanish(strings.ToLower(term))
+		inTitle := strings.Count(title, needle)
+		inBody := strings.Count(body, needle)
+		if inTitle == 0 && inBody == 0 {
+			// Ét ord, der ikke findes, er et nej for hele noten.
+			return 0
+		}
+		// Loft pr. ord, så en note, der nævner ordet fyrre gange, ikke slår en, der
+		// nævner alle ordene én gang. Det er den fejl, en ren optælling laver, og
+		// den er let at lave og svær at få øje på.
+		score += 10*min(inTitle, 3) + min(inBody, 5)
 	}
-	args = append(args, limit)
-
-	return db.notesWhere(ctx, where+" ORDER BY updated_at DESC LIMIT ?", args...)
+	return score
 }
 
 // SetNoteTimes writes the dates a note had somewhere else.
@@ -441,7 +466,7 @@ func (db *DB) notesJoin(ctx context.Context, columns, where string, args ...any)
 
 	var out []Note
 	for rows.Next() {
-		n, err := scanNote(rows)
+		n, err := db.scanNote(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -469,7 +494,11 @@ func (db *DB) linksOf(ctx context.Context, noteID string) ([]NoteLink, error) {
 	return out, rows.Err()
 }
 
-func scanNote(row scanner) (Note, error) {
+// scanNote læser en række og åbner det, der er forseglet.
+//
+// En metode og ikke en funktion, fordi nøglen sidder på `db`. Det er den eneste
+// grund; alt andet i den er den samme aflæsning som før.
+func (db *DB) scanNote(row scanner) (Note, error) {
 	var n Note
 	var projectID, createdBy sql.NullString
 	var created, updated int64
@@ -490,6 +519,19 @@ func scanNote(row scanner) (Note, error) {
 	if archived.Valid {
 		t := time.Unix(archived.Int64, 0)
 		n.ArchivedAt = &t
+	}
+
+	// Åbnet her, ét sted, så ingen kalder kan komme til at læse ciffertekst.
+	//
+	// En værdi skrevet før der var en nøgle kommer tilbage som sig selv — `v1:`
+	// findes netop for at kunne læse en blandet søjle — så en installation, der
+	// endnu ikke har fået sin bagudfyldning, virker imens.
+	for _, field := range []*string{&n.Title, &n.Body} {
+		plain, err := db.unsealValue(*field)
+		if err != nil {
+			return n, fmt.Errorf("open note %s: %w", n.ID, err)
+		}
+		*field = plain
 	}
 	return n, nil
 }

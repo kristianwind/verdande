@@ -64,6 +64,22 @@ func run() error {
 	}
 	db.UseSecrets(box)
 
+	// Noter, der stadig ligger åbne, lukkes nu.
+	//
+	// Ved opstart og ikke efterhånden som de skrives: et arkiv på tolv hundrede
+	// importerede noter, som ingen redigerer igen, ville ellers aldrig blive
+	// forseglet — og det er præcis dét arkiv, der er værd at forsegle. Idempotent,
+	// så den koster et gennemløb af id'er hver anden gang.
+	//
+	// En fejl her stopper opstarten. Halvdelen af noterne lukket er ikke i stykker,
+	// men en instans, der starter og lader som om den beskytter noget, den ikke gør,
+	// er værre end en, der siger fra.
+	if sealed, err := db.SealNotes(context.Background()); err != nil {
+		return fmt.Errorf("seal notes: %w", err)
+	} else if sealed > 0 {
+		log.Info("notes sealed", "count", sealed)
+	}
+
 	httpapi.Version = version
 	api := httpapi.New(cfg, db, log, webAssets(log))
 

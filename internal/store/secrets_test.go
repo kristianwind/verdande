@@ -277,3 +277,119 @@ func TestSettingsSurviveTheUpgradeToPerScopeRows(t *testing.T) {
 		t.Errorf("saving the AI provider took the Gmail settings: %v", again)
 	}
 }
+
+// Det, en note siger, må ikke kunne læses i filen, som en sikkerhedskopi kopierer.
+//
+// Grunden er den samme som for postkassers kodeord: en sikkerhedskopi kan hentes
+// gennem fladen. Noter er dér, folk skriver kodeord og API-nøgler ned — det ved vi,
+// fordi der ligger sådan nogle i den installation, det her blev bygget til.
+func TestANoteIsNotStoredInTheClear(t *testing.T) {
+	db, userID := sealedStore(t)
+	ctx := context.Background()
+
+	const secretLine = "gamerule keepInventory true"
+	n := &Note{CreatedBy: userID, Body: "Minecraft Bedrock\n\n" + secretLine}
+	if err := db.SaveNote(ctx, n); err != nil {
+		t.Fatal(err)
+	}
+
+	var title, body string
+	if err := db.QueryRowContext(ctx,
+		`SELECT title, body FROM notes WHERE id = ?`, n.ID).Scan(&title, &body); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body, secretLine) {
+		t.Errorf("kroppen står i klartekst i rækken: %s", body)
+	}
+	// Og titlen med. Titlen *er* første linje, så en forseglet krop ved siden af en
+	// læselig titel ville efterlade begyndelsen af hver eneste note i klartekst.
+	if strings.Contains(title, "Minecraft") {
+		t.Errorf("titlen står i klartekst i rækken: %s", title)
+	}
+
+	// Kalderens egen note er urørt: den har den i hånden og læser videre i den.
+	if n.Body != "Minecraft Bedrock\n\n"+secretLine {
+		t.Errorf("gemningen ændrede kalderens note: %q", n.Body)
+	}
+
+	// Læst tilbage er den sig selv igen.
+	back, err := db.Note(ctx, n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Body != n.Body || back.Title != "Minecraft Bedrock" {
+		t.Errorf("noten kom anderledes tilbage: %+v", back)
+	}
+
+	// Og søgningen virker stadig — den åbner teksten nu, hvor den før spurgte et
+	// indeks, der var en klartekstkopi af den.
+	found, err := db.SearchNotes(ctx, "keep inventory", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("søgningen fandt %d noter i en forseglet samling", len(found))
+	}
+}
+
+// Noter skrevet før nøglen fandtes skal lukkes, ikke efterlades.
+//
+// Uden en bagudfyldning ville kroppene blive forseglet efterhånden som de bliver
+// *skrevet* — og et arkiv på tolv hundrede importerede noter, som ingen redigerer
+// igen, ville aldrig blive det. Det er præcis dét arkiv, der er værd at forsegle.
+func TestOldNotesAreSealedOnStartup(t *testing.T) {
+	db, userID := sealedStore(t)
+	ctx := context.Background()
+
+	// Skrevet uden om Go-laget, som en note fra før 0027 ligger.
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO notes (id, title, body, created_by, created_at, updated_at)
+		VALUES ('n-gammel', 'Immich DB', 'Immich DB\nkodeord: hemmeligt', ?, 100, 200)`,
+		userID); err != nil {
+		t.Fatal(err)
+	}
+
+	sealed, err := db.SealNotes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sealed != 1 {
+		t.Fatalf("%d noter blev lukket, want 1", sealed)
+	}
+
+	var body string
+	var updated int64
+	if err := db.QueryRowContext(ctx,
+		`SELECT body, updated_at FROM notes WHERE id = 'n-gammel'`).Scan(&body, &updated); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body, "hemmeligt") {
+		t.Errorf("den gamle note ligger stadig åben: %s", body)
+	}
+	// `updated_at` er ikke rørt. Det betyder "hvornår skrev dette program noten
+	// sidst", og at lukke en konvolut om den er ikke at skrive den — en
+	// bagudfyldning, der stemplede tolv hundrede noter med i aften, ville kaste den
+	// rækkefølge væk, importen brugte en dag på at hente hjem.
+	if updated != 200 {
+		t.Errorf("bagudfyldningen flyttede updated_at til %d", updated)
+	}
+
+	// Og den kan læses.
+	back, err := db.Note(ctx, "n-gammel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back == nil || !strings.Contains(back.Body, "hemmeligt") {
+		t.Fatalf("den gamle note kunne ikke læses tilbage: %+v", back)
+	}
+
+	// Kørt igen gør den ingenting: en note, der allerede er lukket, kendes på sit
+	// præfiks.
+	again, err := db.SealNotes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again != 0 {
+		t.Errorf("anden kørsel lukkede %d noter om igen", again)
+	}
+}

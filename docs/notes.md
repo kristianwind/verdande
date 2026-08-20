@@ -144,14 +144,20 @@ Apple Notes is.
 For a large library, `tools/pak-noter-i-portioner.py` splits the export into
 uploadable parts, keeping each note with its own pictures.
 
-## What is not encrypted
+## What is encrypted, and what is not
 
-Note bodies are stored as plain text. **A note holding a password or an API key is
-holding it in plain text in every backup you can download.** The mailbox
-credentials, OAuth tokens and AI keys are sealed; note bodies are not, and neither
-are task titles, descriptions or comments.
+**A note's title and body are sealed** in the database, under a key kept in a file
+beside it rather than inside it. A backup you download does not carry the key, so
+it does not carry your notes.
 
-Encrypting them is on the list and is bigger than it sounds — the full-text index
-and the folded search copy are both derived from the body, so both would have to go
-and search would have to be rewritten. Until then: keep secrets somewhere built for
-them.
+Both halves, not only the body: a note's title is its first line, so a readable
+title beside a sealed body would leave the beginning of every note in the open.
+
+**What is still in the clear:** task titles, descriptions and comments — and the
+list of what a note links to, so a stolen file shows which projects and tasks a
+note points at, though not what it says.
+
+Sealing the notes cost the search its index — a full-text index over a note's body
+is another copy of that body — so search reads the notes themselves now. At twelve
+hundred notes that is about forty milliseconds, and the box waits a quarter of a
+second after you stop typing, so you will not see it.
