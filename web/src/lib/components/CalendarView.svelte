@@ -149,12 +149,25 @@
 				(!projectId || t.project_id === projectId)
 		);
 
-	// Which cells an event covers, rather than where it starts. A trip from Friday
-	// to Monday is in all four, and asking only about the start day would draw it
-	// once and leave three days looking clear.
+	/**
+	 * Which cells an event covers, rather than where it starts. A trip from Friday
+	 * to Monday is in all four, and asking only about the start day would draw it
+	 * once and leave three days looking clear.
+	 *
+	 * Ordered here rather than trusted from the caller. The server does sort, but a
+	 * cell that shows 14:00 above 09:15 does not look like a list in the wrong
+	 * order — it looks like the clock on the chip is wrong, which is a far worse
+	 * thing to have to rule out. All-day first, because an all-day event is a band
+	 * over the whole day rather than something that happens at a point in it.
+	 */
 	const eventsOn = (date) => {
 		const day = iso(date);
-		return events.filter((e) => e.start_day <= day && e.end_day >= day);
+		return events
+			.filter((e) => e.start_day <= day && e.end_day >= day)
+			.toSorted((a, b) => {
+				if (a.all_day !== b.all_day) return a.all_day ? -1 : 1;
+				return (a.starts_at ?? '').localeCompare(b.starts_at ?? '');
+			});
 	};
 
 	/**
