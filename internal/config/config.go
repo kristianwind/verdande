@@ -59,10 +59,19 @@ type Config struct {
 	// without spending the real one on every run.
 	GmailSyncBudget time.Duration
 
-	// GmailEndpoints redirects the Gmail calls at a server the tests control. Empty
-	// in production, where it means Google.
-	GmailTokenURL string
-	GmailAPIURL   string
+	// CalendarSyncBudget is the same bound for one calendar refresh, and exists for
+	// the same reason: a slow Google held the request open past what Cloudflare is
+	// willing to wait, and the browser got Cloudflare's HTML instead of an error
+	// this server could explain.
+	CalendarSyncBudget time.Duration
+
+	// Where Google is. Empty in production; a test points them at a server it
+	// controls, which is the only way to exercise a Google that is slow or refuses.
+	// The token endpoint is shared — Gmail and Calendar sign in through the same
+	// registration — and the two APIs are not.
+	GoogleTokenURL string
+	GmailAPIURL    string
+	CalendarAPIURL string
 
 	PanelURL      string
 	PanelToken    string
@@ -98,14 +107,15 @@ func Load() (*Config, error) {
 		TrashRetention: 30 * 24 * time.Hour,
 		Dev:            envBool("VERDANDE_DEV", false),
 
-		GmailClientID:     env("VERDANDE_GMAIL_CLIENT_ID", ""),
-		GmailSyncBudget:   25 * time.Second,
-		PanelURL:          strings.TrimSuffix(env("VERDANDE_PANEL_URL", ""), "/"),
-		PanelToken:        env("VERDANDE_PANEL_TOKEN", ""),
-		PanelServerID:     env("VERDANDE_PANEL_SERVER_ID", ""),
-		GmailClientSecret: env("VERDANDE_GMAIL_CLIENT_SECRET", ""),
-		SecretKey:         env("VERDANDE_SECRET_KEY", ""),
-		UpdateCheck:       envBool("VERDANDE_UPDATE_CHECK", false),
+		GmailClientID:      env("VERDANDE_GMAIL_CLIENT_ID", ""),
+		GmailSyncBudget:    25 * time.Second,
+		CalendarSyncBudget: 25 * time.Second,
+		PanelURL:           strings.TrimSuffix(env("VERDANDE_PANEL_URL", ""), "/"),
+		PanelToken:         env("VERDANDE_PANEL_TOKEN", ""),
+		PanelServerID:      env("VERDANDE_PANEL_SERVER_ID", ""),
+		GmailClientSecret:  env("VERDANDE_GMAIL_CLIENT_SECRET", ""),
+		SecretKey:          env("VERDANDE_SECRET_KEY", ""),
+		UpdateCheck:        envBool("VERDANDE_UPDATE_CHECK", false),
 	}
 
 	var err error
@@ -151,6 +161,15 @@ func (c *Config) BackupsDir() string { return filepath.Join(c.DataDir, "backups"
 // including the scheme — which is why it is derived from BaseURL rather than
 // configured separately and left to drift out of step with it.
 func (c *Config) GmailRedirectURL() string { return c.BaseURL + "/oauth/gmail/callback" }
+
+// CalendarRedirectURL is a second registered URI rather than a reuse of Gmail's.
+//
+// One callback that decided from server-side state which of the two flows had come
+// back would save the operator one line in Google Cloud, and would put the choice
+// of *which token store to write* behind a lookup. When that goes wrong it goes
+// wrong by overwriting a working Gmail connection with calendar tokens — a failure
+// nobody would think to look for. Two paths cannot do that.
+func (c *Config) CalendarRedirectURL() string { return c.BaseURL + "/oauth/calendar/callback" }
 
 func env(key, def string) string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {

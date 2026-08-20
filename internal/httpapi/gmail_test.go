@@ -29,7 +29,7 @@ func TestAGmailFailureSaysWhatGmailSaidAndIsRecorded(t *testing.T) {
 	ts := newTestServerWith(t, func(cfg *config.Config) {
 		cfg.GmailClientID = "test-client"
 		cfg.GmailClientSecret = "test-secret"
-		cfg.GmailTokenURL = google.URL + "/token"
+		cfg.GoogleTokenURL = google.URL + "/token"
 		cfg.GmailAPIURL = google.URL
 	})
 	ts.bootstrap(t)
@@ -97,7 +97,7 @@ func TestASlowMailboxDoesNotHangTheRequest(t *testing.T) {
 	ts := newTestServerWith(t, func(cfg *config.Config) {
 		cfg.GmailClientID = "test-client"
 		cfg.GmailClientSecret = "test-secret"
-		cfg.GmailTokenURL = google.URL + "/token"
+		cfg.GoogleTokenURL = google.URL + "/token"
 		cfg.GmailAPIURL = google.URL
 		// A second rather than the real twenty-five: what is being tested is that a
 		// budget is applied at all, and spending the production one on every run

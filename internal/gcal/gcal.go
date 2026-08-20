@@ -37,6 +37,17 @@ const Scope = "https://www.googleapis.com/auth/calendar.readonly"
 
 const defaultAPIBase = "https://www.googleapis.com/calendar/v3"
 
+// The OAuth flow, which is Google's rather than the calendar's — the same one
+// Gmail signs in through, asking for the scope above. Aliased so a caller reads
+// one package for one feature.
+type (
+	Config = google.Config
+	PKCE   = google.PKCE
+	Token  = google.Token
+)
+
+var NewPKCE = google.NewPKCE
+
 // ErrUnauthorized means the tokens are no longer good — access was revoked, or the
 // password changed. Re-exported so a caller need not know the flow lives elsewhere.
 var ErrUnauthorized = google.ErrUnauthorized

@@ -61,6 +61,10 @@ const MESSAGES = {
 	// Same shape for a mailbox read over IMAP: quoted when the host said something,
 	// this when it did not.
 	mailbox_failed: 'error.mailboxRefused',
+	// And for a calendar read from Google. Its own code, because the sentence this
+	// is wrapped in names where it came from — and "Gmail said no" about a calendar
+	// sends somebody to the wrong panel.
+	calendar_failed: 'error.calendarRefused',
 	last_admin: 'error.lastAdmin'
 };
 
@@ -83,6 +87,9 @@ export function humanMessage(err) {
 	}
 	if (err.code === 'gmail_failed' && err.message) {
 		return t('error.gmailSaid', { what: err.message });
+	}
+	if (err.code === 'calendar_failed' && err.message) {
+		return t('error.calendarSaid', { what: err.message });
 	}
 
 	const key = MESSAGES[err.code];
@@ -360,6 +367,16 @@ export const api = {
 	disconnectGmail: () => del('/gmail'),
 	authorizeGmail: () => post('/gmail/authorize'),
 	syncGmail: () => post('/gmail/sync'),
+
+	// The Google Calendar connection. Read-only: there is nothing here that writes
+	// an event, only which calendars to look at.
+	getCalendar: () => get('/calendar'),
+	setCalendars: (shown) => put('/calendar/calendars', { shown }),
+	disconnectCalendar: () => del('/calendar'),
+	authorizeCalendar: () => post('/calendar/authorize'),
+	syncCalendar: () => post('/calendar/sync'),
+	calendarEvents: (from, to) =>
+		get(`/calendar/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
 
 	// Notes. Listing and searching are one endpoint because they answer the same
 	// question with different words.

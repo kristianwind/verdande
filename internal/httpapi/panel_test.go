@@ -102,7 +102,7 @@ func TestTwoRunsOfOneMailboxDoNotOverlap(t *testing.T) {
 	// Stands in for a run: takes the lock, notes how many are inside, and holds it
 	// until told to let go.
 	run := func(done chan<- struct{}) {
-		unlock := srv.lockMailbox("box-1")
+		unlock := srv.lockSync("box-1")
 		mu.Lock()
 		inside++
 		if inside > most {
@@ -136,10 +136,10 @@ func TestTwoRunsOfOneMailboxDoNotOverlap(t *testing.T) {
 
 	// And two different mailboxes must not wait for each other: one slow host is
 	// not everybody's problem.
-	a := srv.lockMailbox("box-a")
+	a := srv.lockSync("box-a")
 	done := make(chan struct{})
 	go func() {
-		srv.lockMailbox("box-b")()
+		srv.lockSync("box-b")()
 		close(done)
 	}()
 	select {

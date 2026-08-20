@@ -133,6 +133,12 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireAuth)
 		r.Get("/oauth/gmail/callback", s.handleGmailCallback)
+		// The calendar comes back on a URI of its own rather than sharing Gmail's.
+		// One callback deciding from stored state which of the two flows had
+		// returned would put the choice of *which token store to write* behind a
+		// lookup — and when that goes wrong it goes wrong by overwriting a working
+		// Gmail connection with calendar tokens.
+		r.Get("/oauth/calendar/callback", s.handleCalendarCallback)
 	})
 	r.Route("/caldav", s.caldavRoutes)
 
@@ -314,6 +320,19 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 					r.Get("/client", s.handleGetGmailClient)
 					r.Put("/client", s.handleSetGmailClient)
 				})
+			})
+
+			// A calendar read from somewhere else, laid under verdande's own dated
+			// tasks. Read-only, so there is no write here to gate: the events are a
+			// copy of somebody else's calendar, and the only thing a person decides
+			// is which of them to look at.
+			r.Route("/calendar", func(r chi.Router) {
+				r.Get("/", s.handleGetCalendar)
+				r.Put("/calendars", s.handleSetCalendars)
+				r.Delete("/", s.handleDisconnectCalendar)
+				r.Post("/authorize", s.handleCalendarAuthorize)
+				r.Post("/sync", s.handleCalendarSyncNow)
+				r.Get("/events", s.handleCalendarEvents)
 			})
 
 			r.Route("/import", func(r chi.Router) {

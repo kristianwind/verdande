@@ -63,6 +63,11 @@ const (
 	// diagnosis — a wrong app password, a host that is not listening, a folder that
 	// is not there — and it says it in its own words.
 	CodeMailboxFailed = "mailbox_failed"
+
+	// And for a calendar read from Google. Its own code rather than the Gmail one,
+	// because the sentence the interface wraps it in names where it came from — and
+	// "Gmail said no" about a calendar sends somebody to the wrong panel.
+	CodeCalendarFailed = "calendar_failed"
 )
 
 // errLastAdmin is returned to the caller that already wrote the response, so it

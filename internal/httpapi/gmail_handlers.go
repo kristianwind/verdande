@@ -34,7 +34,7 @@ func (s *Server) gmailConfig(ctx context.Context) gmail.Config {
 		ClientSecret: s.cfg.GmailClientSecret,
 		RedirectURL:  s.cfg.GmailRedirectURL(),
 		Scope:        gmail.Scope,
-		TokenURL:     s.cfg.GmailTokenURL,
+		TokenURL:     s.cfg.GoogleTokenURL,
 	}
 	if cfg.ClientID != "" && cfg.ClientSecret != "" {
 		return cfg
@@ -258,7 +258,7 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 		// The same guard as the mailboxes read over IMAP, for the same reason: a
 		// press of "Fetch now" during the sweep would otherwise make two runs from
 		// one marker.
-		unlock := s.lockMailbox(box.ID)
+		unlock := s.lockSync(box.ID)
 		defer unlock()
 		if fresh, err := s.db.MailboxOfKind(ctx, user.ID, "gmail"); err == nil && fresh != nil {
 			box = fresh
