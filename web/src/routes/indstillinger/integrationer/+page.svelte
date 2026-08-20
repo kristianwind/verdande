@@ -197,8 +197,19 @@
 		calendarsSaved = false;
 		try {
 			await api.setCalendars(shownCalendars);
-			await loadCalendar();
 			calendarsSaved = true;
+			// And fetch, without being asked again.
+			//
+			// Ticking a calendar is somebody saying "show me this one". Saving the
+			// choice and leaving the grid empty until the sweep comes round a quarter
+			// of an hour later is a calendar that says a fortnight is clear — and the
+			// person is on this page, watching, with the button under their hand.
+			// Also what refreshes the panel: syncCalendarNow reloads it when it is done.
+			if (shownCalendars.length) {
+				await syncCalendarNow();
+			} else {
+				await loadCalendar();
+			}
 		} catch (e) {
 			app.toast(humanMessage(e));
 		} finally {

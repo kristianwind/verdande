@@ -623,6 +623,7 @@ export const en = {
 	'cal.title': 'Calendar',
 	'cal.notConnected': 'No calendar is connected yet. That is done under Settings → Integrations.',
 	'cal.settings': 'Settings',
+	'cal.noneChosen': 'None of the account’s calendars are chosen yet.',
 	'cal.allDay': 'All day',
 	'cal.openInGoogle': 'Open in Google Calendar',
 	'cal.beyondWindow':

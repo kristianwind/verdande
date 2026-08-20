@@ -22,13 +22,18 @@
 	/** Null until the first answer, so nothing flashes before it is known. */
 	let window_ = $state(null);
 	let connected = $state(null);
+	/** Whether any calendar in the connected account is ticked. */
+	let anyShown = $state(false);
 	/** The dates the grid is showing, so the notice below can compare against them. */
 	let showing = $state(null);
 
 	$effect(() => {
 		api
 			.getCalendar()
-			.then((status) => (connected = status.connected))
+			.then((status) => {
+				connected = status.connected;
+				anyShown = (status.calendars ?? []).some((c) => c.shown);
+			})
 			.catch(() => {
 				// A calendar that could not be asked about is not a reason to withhold
 				// the grid: the tasks in it are verdande's own and do not depend on
@@ -97,6 +102,16 @@
 		     view was before anything was laid over it. -->
 		<p class="hint">
 			{t('cal.notConnected')}
+			<a href="/indstillinger/integrationer">{t('cal.settings')}</a>
+		</p>
+	{/if}
+
+	<!-- Connected, and nothing ticked. Worth its own sentence rather than an empty
+	     grid: "no calendar is chosen" and "nothing is booked" look identical, and
+	     only one of them is something to do about. -->
+	{#if connected && !anyShown}
+		<p class="hint">
+			{t('cal.noneChosen')}
 			<a href="/indstillinger/integrationer">{t('cal.settings')}</a>
 		</p>
 	{/if}

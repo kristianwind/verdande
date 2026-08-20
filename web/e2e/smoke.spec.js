@@ -1072,7 +1072,9 @@ test('kalenderen viser Googles begivenheder over egne opgaver, og kun opgaven ka
 				read_only: true,
 				has_client: true,
 				redirect_uri: 'http://localhost/oauth/calendar/callback',
-				calendars: []
+				calendars: [
+					{ id: 'c1', remote_id: 'fam', name: 'Arbejde', colour: '#0b8043', shown: true }
+				]
 			}
 		})
 	);
@@ -1108,6 +1110,12 @@ test('kalenderen viser Googles begivenheder over egne opgaver, og kun opgaven ka
 		await forward.click();
 	}
 	await expect(cell, `uge-visningen nåede aldrig frem til ${day}`).toBeVisible();
+
+	// Connected, with a calendar ticked — so neither of the two "there is nothing
+	// here" notices belongs on the screen. They exist so an empty grid is never
+	// unexplained, and an explanation for a state you are not in is noise.
+	await expect(page.getByText('Ingen kalender er forbundet endnu.')).toBeHidden();
+	await expect(page.getByText('Ingen af kontoens kalendere er valgt endnu.')).toBeHidden();
 
 	// Both kinds are in the same cell, which is the whole point of the view.
 	const event = cell.locator('.event').filter({ hasText: 'Bestyrelsesmøde' });

@@ -630,6 +630,7 @@ export const da = {
 	'cal.notConnected':
 		'Ingen kalender er forbundet endnu. Det gøres under Indstillinger → Integrationer.',
 	'cal.settings': 'Indstillinger',
+	'cal.noneChosen': 'Ingen af kontoens kalendere er valgt endnu.',
 	'cal.allDay': 'Hele dagen',
 	'cal.openInGoogle': 'Åbn i Google Kalender',
 	'cal.beyondWindow':
