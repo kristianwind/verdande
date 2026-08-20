@@ -5,7 +5,7 @@
 // cookie. Kept in the repository so the images can be regenerated when the
 // interface changes, rather than being a thing somebody did once by hand.
 //
-//	go run ./tools/shots -url http://localhost:8096 -cookie <session> -out site/screenshots
+//	go run ./tools/shots -url http://localhost:8096 -cookie <session> -out docs/screenshots
 package main
 
 import (
@@ -28,7 +28,9 @@ var chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 func main() {
 	base := flag.String("url", "http://localhost:8096", "the running instance")
 	cookie := flag.String("cookie", "", "session cookie value")
-	out := flag.String("out", "site/screenshots", "where to write the PNGs")
+	// docs/, not site/: site/screenshots holds the WebP the landing page reads, and
+	// PNGs dropped in beside them are files nothing points at.
+	out := flag.String("out", "docs/screenshots", "where to write the PNGs")
 	width := flag.Int("width", 1400, "viewport width")
 	height := flag.Int("height", 900, "viewport height")
 	flag.Parse()
