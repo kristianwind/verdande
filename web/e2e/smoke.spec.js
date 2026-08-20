@@ -358,6 +358,20 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 		'aria-expanded',
 		'false'
 	);
+
+	// En foldet gruppe står med sin chevron fremme permanent, og den lå oven i
+	// prikken med et felt i --surface bag sig — en lys firkant ud for navnet på
+	// den sænkede bjælke, hele tiden. Nu tones prikken ud i stedet, så der er
+	// ingenting at male henover den med.
+	const chevron = await sidebar
+		.locator('.folder-head .chevron-button')
+		.evaluate((el) => ({
+			background: getComputedStyle(el).backgroundColor,
+			dot: getComputedStyle(el.closest('.folder-head').querySelector('.group-dot')).opacity
+		}));
+	expect(chevron.background, 'chevronen har en firkant bag sig').toBe('rgba(0, 0, 0, 0)');
+	expect(chevron.dot, 'prikken ligger stadig under chevronen').toBe('0');
+
 	await sidebar.getByRole('button', { name: /^Fold Arbejde/ }).click();
 
 	// Colour, which is chosen while renaming rather than from the row. Both are
@@ -1814,6 +1828,14 @@ test('sidebjælken kan ikke scrolles vandret', async ({ page }) => {
 	const sideways = await sidebar.evaluate((el) => el.scrollWidth - el.clientWidth);
 	expect(sideways, 'sidebjælken kan scrolles vandret').toBeLessThanOrEqual(1);
 
+	// Og rulleboksen indeni, som er den, der faktisk ruller nu. Bjælken selv er
+	// `overflow: hidden`, så en for bred række ville blive klippet dér og aldrig
+	// nå at tælle med ovenfor — målingen ville stå og bestå af den forkerte grund.
+	const inner = await sidebar
+		.locator('.scroller')
+		.evaluate((el) => el.scrollWidth - el.clientWidth);
+	expect(inner, 'rulleboksen kan scrolles vandret').toBeLessThanOrEqual(1);
+
 	// And the whole page, for the same reason at a different scale.
 	const page_sideways = await page.evaluate(
 		() => document.documentElement.scrollWidth - document.documentElement.clientWidth
@@ -1823,6 +1845,58 @@ test('sidebjælken kan ikke scrolles vandret', async ({ page }) => {
 	// Put the name back, so the tests after this one see the account they expect.
 	await page.getByLabel('Navn', { exact: true }).fill(USER.name);
 	await page.getByRole('button', { name: 'Gem' }).first().click();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * Mærket og de faste visninger bliver stående, når resten ruller.
+ *
+ * Rullebjælken gik før hele vejen op: runen og I dag forsvandt op over kanten, så
+ * snart der var projekter nok — og de er dem, man er på vej hen til oftest.
+ *
+ * Målt i et lavt vindue, for i et højt er der ikke noget at rulle, og en prøve,
+ * der ikke ruller, består uanset hvad man laver om. Bredden holdes over
+ * telefongrænsen, hvor bjælken bliver til en skuffe og er en anden ting.
+ */
+test('sidebjælkens hoved bliver stående, når listen ruller', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	await page.setViewportSize({ width: 1000, height: 420 });
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	const scroller = sidebar.locator('.scroller');
+	await expect(scroller).toBeVisible();
+
+	// Rullebjælken begynder under de faste visninger og ikke bag dem.
+	const geometry = await sidebar.evaluate((el) => {
+		const box = (sel) => el.querySelector(sel).getBoundingClientRect().toJSON();
+		const scroll = el.querySelector('.scroller');
+		return {
+			views: box('.views'),
+			scroller: box('.scroller'),
+			overflows: scroll.scrollHeight - scroll.clientHeight
+		};
+	});
+	expect(geometry.overflows, 'der er ikke noget at rulle — prøven beviser intet').toBeGreaterThan(
+		0
+	);
+	expect(
+		geometry.scroller.top,
+		'rulleboksen begynder oppe i de faste visninger'
+	).toBeGreaterThanOrEqual(geometry.views.bottom - 1);
+
+	// Og hovedet bliver, hvor det er, hele vejen ned.
+	const brand = sidebar.locator('.brand');
+	const before = await brand.boundingBox();
+	await scroller.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+	await expect
+		.poll(async () => scroller.evaluate((el) => el.scrollTop))
+		.toBeGreaterThan(0);
+	const after = await brand.boundingBox();
+	expect(Math.abs(after.y - before.y), 'mærket fulgte med op').toBeLessThanOrEqual(1);
+	await expect(sidebar.getByRole('link', { name: 'I dag' })).toBeInViewport();
 
 	expect(trouble).toEqual([]);
 });

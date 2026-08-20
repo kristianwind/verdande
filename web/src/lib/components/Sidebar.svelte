@@ -639,301 +639,313 @@
 		</h2>
 	{/snippet}
 
-	<div class="group">
-		<!-- The heading is also the drop target for "no group": without it, a project
-		     dragged into a group could only be got out again by emptying the group,
-		     and with every project filed there would be no loose row left to aim at. -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="group-head"
-			class:over={overGroup === ''}
-			ondragover={(e) => {
-				if (!carries(e, PROJECT)) return;
-				accept(e);
-				overGroup = '';
-				overId = null;
-			}}
-			ondragleave={() => (overGroup = null)}
-			ondrop={(e) => onDropInGroup(e, '')}
-		>
-			{@render foldHeading('projects', t('sidebar.projects'))}
-			<button
-				class="icon"
-				onclick={() => {
-					adding = !adding;
-					addingGroup = false;
-				}}
-				aria-label={t('sidebar.newProject')}>+</button
-			>
-			<button
-				class="icon new-group"
-				onclick={() => {
-					addingGroup = !addingGroup;
-					adding = false;
-					newGroupName = '';
-				}}
-				aria-label={t('sidebar.newGroup')}
-				title={t('sidebar.newGroup')}
-			>
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-				</svg>
-			</button>
-		</div>
+	<!-- Alt herunder ruller; mærket og de faste visninger gør ikke.
+	     Hele sidebjælken rullede før, så runen og I dag forsvandt op over kanten,
+	     så snart der var projekter nok — og de er dem, man er på vej hen til
+	     oftest. En rulleboks indeni frem for `position: sticky` udenom, fordi et
+	     klæbende hoved efterlader rullebjælken i fuld højde ved siden af sig: den
+	     skal begynde under hovedet, ikke bag det.
 
-		{#if adding}
-			<form onsubmit={createProject}>
-				<input
-					bind:value={newName}
-					use:focusOnMount
-					placeholder={t('sidebar.projectName')}
-					aria-label={t('sidebar.projectName')}
-					onblur={() => !newName.trim() && (adding = false)}
-					onkeydown={(e) => e.key === 'Escape' && (adding = false)}
-				/>
-			</form>
-		{/if}
-
-		{#if addingGroup}
-			<form onsubmit={createGroup}>
-				<input
-					bind:value={newGroupName}
-					use:focusOnMount
-					placeholder={t('sidebar.groupName')}
-					aria-label={t('sidebar.groupName')}
-					onblur={() => !newGroupName.trim() && (addingGroup = false)}
-					onkeydown={(e) => e.key === 'Escape' && (addingGroup = false)}
-				/>
-			</form>
-		{/if}
-
-		{#if !app.sectionCollapsed('projects')}
-			{#each ungrouped as project (project.id)}
-				{@render projectRow(project, true)}
-			{/each}
-
-			{#if own.length === 0 && !adding}
-				<p class="empty">{t('sidebar.noProjects')}</p>
-			{/if}
-		{/if}
-	</div>
-
-	{#each groups as group (group.id)}
-		{@const inside = inGroup(group.id)}
-		<div class="group folder">
-			<!-- Draggable, except while it is being renamed: a draggable ancestor stops
-			     the pointer from selecting text in the field it contains. -->
+	     Snippet-erklæringerne bliver liggende udenfor. De tegner ikke noget selv,
+	     men de kaldes oppe fra .views, og en snippet erklæret herinde hører kun
+	     til herinde. -->
+	<div class="scroller">
+		<div class="group">
+			<!-- The heading is also the drop target for "no group": without it, a project
+			     dragged into a group could only be got out again by emptying the group,
+			     and with every project filed there would be no loose row left to aim at. -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				class="group-head folder-head"
-				class:over={overGroup === group.id}
-				class:drop-above={overId === group.id && !overBelow}
-				class:drop-below={overId === group.id && overBelow}
-				class:dragging={draggingGroup === group.id}
-				draggable={renamingGroup !== group.id}
-				ondragstart={(e) => onGroupDragStart(e, group)}
-				ondragend={clearDrag}
-				ondragover={(e) => onGroupDragOver(e, group)}
-				ondragleave={() => {
-					overGroup = null;
+				class="group-head"
+				class:over={overGroup === ''}
+				ondragover={(e) => {
+					if (!carries(e, PROJECT)) return;
+					accept(e);
+					overGroup = '';
 					overId = null;
 				}}
-				ondrop={(e) => onGroupDrop(e, group)}
-				ondblclick={() => startRename(group)}
-				onkeydown={(e) => {
-					if (e.key === 'F2') {
-						e.preventDefault();
-						startRename(group);
-					}
-				}}
+				ondragleave={() => (overGroup = null)}
+				ondrop={(e) => onDropInGroup(e, '')}
 			>
-				{#if renamingGroup === group.id}
-					<!-- Renaming is where the colour is chosen too.
-					     The dot used to be a button in the row, which made the heading
-					     carry four controls — dot, name, Omdøb, Slet — on a line narrow
-					     enough that they crowded the name. Both are edits to the same
-					     thing, so both belong in the same moment: you open the group to
-					     change it, and change what you came to change.
-
-					     `focusout` rather than `blur` closes it, and only when focus has
-					     left the form altogether — clicking a swatch is still inside it.
-					     The swatches also refuse focus on mousedown, because Safari and
-					     Firefox do not focus a button on click, so `relatedTarget` would
-					     be null and the form would shut under the pointer. -->
-					<form
-						class="renaming"
-						onsubmit={(e) => renameGroup(e, group)}
-						onfocusout={(e) => {
-							if (!e.currentTarget.contains(e.relatedTarget)) renamingGroup = null;
-						}}
-					>
-						<input
-							bind:value={groupName}
-							use:focusOnMount
-							aria-label={t('sidebar.groupName')}
-							onkeydown={(e) => e.key === 'Escape' && (renamingGroup = null)}
-						/>
-						<div class="swatches" role="group" aria-label={t('group.colorOf', { name: group.name })}>
-							{#each COLORS as color (color.id)}
-								<button
-									type="button"
-									class="swatch"
-									class:chosen={(group.color ?? 'graphite') === color.id}
-									style="background: {colorVar(color.id)}"
-									title={t(color.name)}
-									aria-label={t(color.name)}
-									aria-pressed={(group.color ?? 'graphite') === color.id}
-									onmousedown={(e) => e.preventDefault()}
-									onclick={() => app.setGroupColor(group.id, color.id)}
-								></button>
-							{/each}
-						</div>
-					</form>
-				{:else}
-					<!-- The button sits inside the heading, not around it, the same way a
-					     project's title does: a group *is* a heading in the sidebar, and
-					     wrapping an h2 in a button both invalidates the markup and takes
-					     the heading away from a screen reader. The whole heading folds —
-					     at this size a lone chevron is a target you miss, and the name is
-					     where the eye already is. -->
-					<!-- The chevron folds; the name opens the group's own page. Two
-					     targets in one heading, because they are two different intentions
-					     and the old single one could only ever serve the smaller. -->
-					<button
-						class="chevron-button"
-						onclick={() => app.toggleGroup(group.id)}
-						aria-expanded={!group.collapsed}
-						aria-label={group.collapsed
-							? t('sidebar.unfold', { name: group.name })
-							: t('sidebar.fold', { name: group.name })}
-					>
-						<svg
-							class="chevron"
-							class:collapsed={group.collapsed}
-							viewBox="0 0 24 24"
-							aria-hidden="true"
-						>
-							<path d="M6 9l6 6 6-6" />
-						</svg>
-					</button>
-					<h2 class="fold">
-						<!-- Navigation waits two tenths of a second for a second click. A
-						     link cannot know a double is coming without pausing, and the
-						     alternative was worse than the pause: the first click opened the
-						     page while the rename form was appearing, and the colour swatches
-						     moved out from under the pointer. Two tenths is under the double
-						     click threshold and over the threshold of noticing. -->
-						<a
-							href="/gruppe/{group.id}"
-							onclick={(e) => {
-								e.preventDefault();
-								clearTimeout(navTimer);
-								if (e.detail > 1) return;
-								navTimer = setTimeout(() => {
-									onnavigate();
-									goto(`/gruppe/${group.id}`);
-								}, 200);
-							}}
-						>
-							<span
-								class="dot group-dot"
-								style="background: {colorVar(group.color)}"
-								aria-hidden="true"
-							></span>
-							{group.name}
-						</a>
-					</h2>
-					<span class="count">{inside.length}</span>
-				{/if}
+				{@render foldHeading('projects', t('sidebar.projects'))}
+				<button
+					class="icon"
+					onclick={() => {
+						adding = !adding;
+						addingGroup = false;
+					}}
+					aria-label={t('sidebar.newProject')}>+</button
+				>
+				<button
+					class="icon new-group"
+					onclick={() => {
+						addingGroup = !addingGroup;
+						adding = false;
+						newGroupName = '';
+					}}
+					aria-label={t('sidebar.newGroup')}
+					title={t('sidebar.newGroup')}
+				>
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+					</svg>
+				</button>
 			</div>
 
-			{#if !group.collapsed}
-				{#each inside as project (project.id)}
+			{#if adding}
+				<form onsubmit={createProject}>
+					<input
+						bind:value={newName}
+						use:focusOnMount
+						placeholder={t('sidebar.projectName')}
+						aria-label={t('sidebar.projectName')}
+						onblur={() => !newName.trim() && (adding = false)}
+						onkeydown={(e) => e.key === 'Escape' && (adding = false)}
+					/>
+				</form>
+			{/if}
+
+			{#if addingGroup}
+				<form onsubmit={createGroup}>
+					<input
+						bind:value={newGroupName}
+						use:focusOnMount
+						placeholder={t('sidebar.groupName')}
+						aria-label={t('sidebar.groupName')}
+						onblur={() => !newGroupName.trim() && (addingGroup = false)}
+						onkeydown={(e) => e.key === 'Escape' && (addingGroup = false)}
+					/>
+				</form>
+			{/if}
+
+			{#if !app.sectionCollapsed('projects')}
+				{#each ungrouped as project (project.id)}
 					{@render projectRow(project, true)}
 				{/each}
-				{#if !inside.length}
-					<p class="empty">{t('sidebar.emptyGroup')}</p>
+
+				{#if own.length === 0 && !adding}
+					<p class="empty">{t('sidebar.noProjects')}</p>
 				{/if}
 			{/if}
 		</div>
-	{/each}
 
-	{#if shared.length}
-		<div class="group">
-			<div class="group-head">{@render foldHeading('shared', t('sidebar.shared'))}</div>
-			{#if !app.sectionCollapsed('shared')}
-				{#each shared as project (project.id)}
-					{@render projectRow(project, false)}
-				{/each}
-			{/if}
-		</div>
-	{/if}
+		{#each groups as group (group.id)}
+			{@const inside = inGroup(group.id)}
+			<div class="group folder">
+				<!-- Draggable, except while it is being renamed: a draggable ancestor stops
+				     the pointer from selecting text in the field it contains. -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="group-head folder-head"
+					class:over={overGroup === group.id}
+					class:drop-above={overId === group.id && !overBelow}
+					class:drop-below={overId === group.id && overBelow}
+					class:dragging={draggingGroup === group.id}
+					draggable={renamingGroup !== group.id}
+					ondragstart={(e) => onGroupDragStart(e, group)}
+					ondragend={clearDrag}
+					ondragover={(e) => onGroupDragOver(e, group)}
+					ondragleave={() => {
+						overGroup = null;
+						overId = null;
+					}}
+					ondrop={(e) => onGroupDrop(e, group)}
+					ondblclick={() => startRename(group)}
+					onkeydown={(e) => {
+						if (e.key === 'F2') {
+							e.preventDefault();
+							startRename(group);
+						}
+					}}
+				>
+					{#if renamingGroup === group.id}
+						<!-- Renaming is where the colour is chosen too.
+						     The dot used to be a button in the row, which made the heading
+						     carry four controls — dot, name, Omdøb, Slet — on a line narrow
+						     enough that they crowded the name. Both are edits to the same
+						     thing, so both belong in the same moment: you open the group to
+						     change it, and change what you came to change.
 
-	{#if filters.length}
-		<div class="group">
-			<div class="group-head">{@render foldHeading('filters', t('sidebar.filters'))}</div>
-			{#if !app.sectionCollapsed('filters')}
-				{#each filters as filter (filter.id)}
-					<a
-						href="/filter/{filter.id}"
-						class:active={current === `/filter/${filter.id}`}
-						onclick={onnavigate}
-					>
-						<span class="dot" aria-hidden="true"></span>
-						{filter.name}
-					</a>
-				{/each}
-			{/if}
-		</div>
-	{/if}
+						     `focusout` rather than `blur` closes it, and only when focus has
+						     left the form altogether — clicking a swatch is still inside it.
+						     The swatches also refuse focus on mousedown, because Safari and
+						     Firefox do not focus a button on click, so `relatedTarget` would
+						     be null and the form would shut under the pointer. -->
+						<form
+							class="renaming"
+							onsubmit={(e) => renameGroup(e, group)}
+							onfocusout={(e) => {
+								if (!e.currentTarget.contains(e.relatedTarget)) renamingGroup = null;
+							}}
+						>
+							<input
+								bind:value={groupName}
+								use:focusOnMount
+								aria-label={t('sidebar.groupName')}
+								onkeydown={(e) => e.key === 'Escape' && (renamingGroup = null)}
+							/>
+							<div class="swatches" role="group" aria-label={t('group.colorOf', { name: group.name })}>
+								{#each COLORS as color (color.id)}
+									<button
+										type="button"
+										class="swatch"
+										class:chosen={(group.color ?? 'graphite') === color.id}
+										style="background: {colorVar(color.id)}"
+										title={t(color.name)}
+										aria-label={t(color.name)}
+										aria-pressed={(group.color ?? 'graphite') === color.id}
+										onmousedown={(e) => e.preventDefault()}
+										onclick={() => app.setGroupColor(group.id, color.id)}
+									></button>
+								{/each}
+							</div>
+						</form>
+					{:else}
+						<!-- The button sits inside the heading, not around it, the same way a
+						     project's title does: a group *is* a heading in the sidebar, and
+						     wrapping an h2 in a button both invalidates the markup and takes
+						     the heading away from a screen reader. The whole heading folds —
+						     at this size a lone chevron is a target you miss, and the name is
+						     where the eye already is. -->
+						<!-- The chevron folds; the name opens the group's own page. Two
+						     targets in one heading, because they are two different intentions
+						     and the old single one could only ever serve the smaller. -->
+						<button
+							class="chevron-button"
+							onclick={() => app.toggleGroup(group.id)}
+							aria-expanded={!group.collapsed}
+							aria-label={group.collapsed
+								? t('sidebar.unfold', { name: group.name })
+								: t('sidebar.fold', { name: group.name })}
+						>
+							<svg
+								class="chevron"
+								class:collapsed={group.collapsed}
+								viewBox="0 0 24 24"
+								aria-hidden="true"
+							>
+								<path d="M6 9l6 6 6-6" />
+							</svg>
+						</button>
+						<h2 class="fold">
+							<!-- Navigation waits two tenths of a second for a second click. A
+							     link cannot know a double is coming without pausing, and the
+							     alternative was worse than the pause: the first click opened the
+							     page while the rename form was appearing, and the colour swatches
+							     moved out from under the pointer. Two tenths is under the double
+							     click threshold and over the threshold of noticing. -->
+							<a
+								href="/gruppe/{group.id}"
+								onclick={(e) => {
+									e.preventDefault();
+									clearTimeout(navTimer);
+									if (e.detail > 1) return;
+									navTimer = setTimeout(() => {
+										onnavigate();
+										goto(`/gruppe/${group.id}`);
+									}, 200);
+								}}
+							>
+								<span
+									class="dot group-dot"
+									style="background: {colorVar(group.color)}"
+									aria-hidden="true"
+								></span>
+								{group.name}
+							</a>
+						</h2>
+						<span class="count">{inside.length}</span>
+					{/if}
+				</div>
 
-	{#if labels.length}
-		<div class="group">
-			<div class="group-head">{@render foldHeading('labels', t('sidebar.labels'))}</div>
-			{#if !app.sectionCollapsed('labels')}
-				{#each labels.filter((l) => l.task_count > 0) as label (label.id)}
-					<a
-						href="/etiket/{encodeURIComponent(label.name)}"
-						class:active={current === `/etiket/${encodeURIComponent(label.name)}`}
-						onclick={onnavigate}
-					>
-						<span class="dot" aria-hidden="true"></span>
-						{label.name}
-						<span class="count">{label.task_count}</span>
-					</a>
-				{/each}
-			{/if}
-		</div>
-	{/if}
+				{#if !group.collapsed}
+					{#each inside as project (project.id)}
+						{@render projectRow(project, true)}
+					{/each}
+					{#if !inside.length}
+						<p class="empty">{t('sidebar.emptyGroup')}</p>
+					{/if}
+				{/if}
+			</div>
+		{/each}
 
-	<div class="foot">
-		<a
-			href="/indstillinger"
-			class="settings"
-			class:active={current.startsWith('/indstillinger')}
-			onclick={onnavigate}
-		>
-			<svg viewBox="0 0 24 24" aria-hidden="true">
-				<circle cx="12" cy="12" r="3" />
-				<path
-					d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"
-				/>
-			</svg>
-			{t('nav.settings')}
-		</a>
-
-		<!-- A quiet indicator, not an alarm: losing the socket for a moment is
-		     normal, and the app keeps working without it. -->
-		{#if !app.connected}
-			<span class="offline" title={t('nav.offlineHint')}>{t('nav.offline')}</span>
+		{#if shared.length}
+			<div class="group">
+				<div class="group-head">{@render foldHeading('shared', t('sidebar.shared'))}</div>
+				{#if !app.sectionCollapsed('shared')}
+					{#each shared as project (project.id)}
+						{@render projectRow(project, false)}
+					{/each}
+				{/if}
+			</div>
 		{/if}
-		<button class="user" onclick={signOut}>
-			<span class="avatar" style="background: {app.user?.avatar_color}">
-				{app.user?.name?.[0]?.toUpperCase() ?? '?'}
-			</span>
-			<span class="user-name">{app.user?.name}</span>
-			<span class="signout">{t('nav.signOut')}</span>
-		</button>
+
+		{#if filters.length}
+			<div class="group">
+				<div class="group-head">{@render foldHeading('filters', t('sidebar.filters'))}</div>
+				{#if !app.sectionCollapsed('filters')}
+					{#each filters as filter (filter.id)}
+						<a
+							href="/filter/{filter.id}"
+							class:active={current === `/filter/${filter.id}`}
+							onclick={onnavigate}
+						>
+							<span class="dot" aria-hidden="true"></span>
+							{filter.name}
+						</a>
+					{/each}
+				{/if}
+			</div>
+		{/if}
+
+		{#if labels.length}
+			<div class="group">
+				<div class="group-head">{@render foldHeading('labels', t('sidebar.labels'))}</div>
+				{#if !app.sectionCollapsed('labels')}
+					{#each labels.filter((l) => l.task_count > 0) as label (label.id)}
+						<a
+							href="/etiket/{encodeURIComponent(label.name)}"
+							class:active={current === `/etiket/${encodeURIComponent(label.name)}`}
+							onclick={onnavigate}
+						>
+							<span class="dot" aria-hidden="true"></span>
+							{label.name}
+							<span class="count">{label.task_count}</span>
+						</a>
+					{/each}
+				{/if}
+			</div>
+		{/if}
+
+		<div class="foot">
+			<a
+				href="/indstillinger"
+				class="settings"
+				class:active={current.startsWith('/indstillinger')}
+				onclick={onnavigate}
+			>
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<circle cx="12" cy="12" r="3" />
+					<path
+						d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"
+					/>
+				</svg>
+				{t('nav.settings')}
+			</a>
+
+			<!-- A quiet indicator, not an alarm: losing the socket for a moment is
+			     normal, and the app keeps working without it. -->
+			{#if !app.connected}
+				<span class="offline" title={t('nav.offlineHint')}>{t('nav.offline')}</span>
+			{/if}
+			<button class="user" onclick={signOut}>
+				<span class="avatar" style="background: {app.user?.avatar_color}">
+					{app.user?.name?.[0]?.toUpperCase() ?? '?'}
+				</span>
+				<span class="user-name">{app.user?.name}</span>
+				<span class="signout">{t('nav.signOut')}</span>
+			</button>
+		</div>
 	</div>
 	<!-- Also a slider for the keyboard: arrow keys move it, and Home puts it back.
 	     A drag handle with no keyboard equivalent is a setting some people simply
@@ -970,9 +982,29 @@
 		padding: var(--s4) var(--s3);
 		background: var(--surface-sunken);
 		border-right: 1px solid var(--line);
-		overflow-y: auto;
+		/* Selve bjælken ruller ikke længere — .scroller gør. `hidden` frem for
+		   ingenting, fordi den stadig er den yderste kant: løber en række over,
+		   skal den klippes her og ikke skubbe kolonnen bredere. */
+		overflow: hidden;
 		padding-left: max(var(--s3), env(safe-area-inset-left));
 		position: relative;
+	}
+
+	/* `min-height: 0`, ellers nægter et flex-element at blive lavere end sit
+	   indhold, og boksen ville vokse ned gennem bunden af skærmen i stedet for at
+	   rulle — samme fælde som `min-width: 0` på kontonavnet længere nede.
+
+	   Ikke `overflow-x: hidden` her: `overflow-y: auto` gør den anden akse til
+	   `auto` af sig selv, og en vandret rullebjælke under menuen er en fejl i en
+	   række, ikke i boksen. At klippe den ville skjule fejlen; prøven måler begge
+	   bokse. */
+	.scroller {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: var(--s5);
 	}
 
 	/* Wider than it looks: a 1px target is a target you miss. The visible line stays
@@ -1213,6 +1245,11 @@
 	   The dot is the resting state; the chevron takes over on hover or focus, and
 	   stays put while the group is folded, so a folded group still shows the way
 	   back open. */
+	/* Uden baggrund. Knappen dækkede prikken med et felt i --surface, og på den
+	   sænkede bjælke er det en lys firkant: en foldet gruppe stod med en hvid
+	   klods ud for navnet permanent, fordi chevronen bliver stående, når gruppen
+	   er lukket. Prikken tones ud i stedet for at blive dækket — det er samme
+	   skifte, uden noget at male henover den med. */
 	.chevron-button {
 		position: absolute;
 		left: calc(var(--s2) - 5px);
@@ -1223,7 +1260,13 @@
 		border-radius: var(--radius-sm);
 		color: inherit;
 		opacity: 0;
-		background: var(--surface);
+		/* Fordi prikken herunder tones ud frem for at blive dækket. En `opacity`
+		   under 1 laver en stakkontekst og maler elementet, som var det placeret
+		   med `z-index: 0` — så prikken, der står senere i DOM'en, lagde sig oven
+		   på knappen i det øjeblik den forsvandt. Den var usynlig og tog stadig
+		   klikket: prøven brugte tredive sekunder på at folde en gruppe, der ikke
+		   ville foldes. Ét lag op, og rækkefølgen er den samme som før. */
+		z-index: 1;
 	}
 
 	.folder-head:hover .chevron-button,
@@ -1232,9 +1275,18 @@
 		opacity: 1;
 	}
 
+	/* Præcis de tre tilfælde ovenfor, læst nedad i stedet for opad: står chevronen
+	   der, er prikken væk. `opacity` og ikke `display`, for de to ligger oven i
+	   hinanden — forsvandt prikken ud af flowet, ville navnet rykke sig hver gang
+	   pilen kom frem. */
+	.folder-head:hover .group-dot,
+	.folder-head:has(.chevron-button:focus-visible) .group-dot,
+	.folder-head:has(.chevron-button[aria-expanded='false']) .group-dot {
+		opacity: 0;
+	}
+
 	.chevron-button:hover {
 		color: var(--ink);
-		background: var(--surface);
 	}
 
 	.fold a,

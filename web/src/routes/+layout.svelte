@@ -437,7 +437,6 @@
 			padding-left: max(var(--s3), env(safe-area-inset-left));
 			padding-right: var(--s3);
 			border-right: 1px solid var(--line);
-			overflow-y: auto;
 		}
 	}
 </style>
