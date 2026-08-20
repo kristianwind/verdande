@@ -650,8 +650,18 @@ func pad2(n int) string {
 // The trailing group is bounded rather than greedy: without a limit, "hver mandag
 // kl 10 p1" would hand the whole tail to the recurrence parser, which would refuse
 // all of it and leave the task not repeating at all.
+//
+// Mellemleddet må være et ord og ikke kun et tal. "hver anden tirsdag" er den måde,
+// folk siger det på — recurrence-pakken har oversat "hver anden" til "hver 2."
+// siden den blev skrevet — men her stoppede mønsteret efter "anden" og gav den
+// sætning videre. Den er ikke en regel, så "hver anden" blev stående i titlen og
+// "tirsdag" blev en forfaldsdato. Sløjfen nedenfor kan kun *fjerne* ord fra
+// enden; den kan ikke hente et, mønsteret aldrig tog med.
+//
+// Fundet af en prøve, der brugte vendingen som selvfølgelig og opdagede, at den
+// ikke var det.
 var reRepeat = regexp.MustCompile(
-	`(?i)(?:^|\s)((?:hver|hvert|every|each)\s+(?:\d+\.?\s+)?[\p{L}]+(?:\s*(?:,|\bog\b|\band\b)\s*[\p{L}]+)*` +
+	`(?i)(?:^|\s)((?:hver|hvert|every|each)\s+(?:\d+\.?\s+|(?:anden|andet|tredje|fjerde|femte|sjette|other)\s+)?[\p{L}]+(?:\s*(?:,|\bog\b|\band\b)\s*[\p{L}]+)*` +
 		`|hverdage|ugedage|weekdays?|dagligt|daily|ugentligt|weekly|månedligt|maanedligt|monthly|årligt|aarligt|yearly|annually` +
 		`|den\s+\d{1,2}\.?\s+i\s+måneden|den\s+\d{1,2}\.?\s+i\s+maaneden)(?:\s|$)`)
 

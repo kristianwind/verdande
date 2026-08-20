@@ -603,3 +603,36 @@ func TestASectionIsWrittenWithASlash(t *testing.T) {
 		}
 	}
 }
+
+// "hver anden tirsdag" er den måde, folk siger det på.
+//
+// recurrence-pakken har oversat "hver anden" til "hver 2." siden den blev skrevet,
+// men sætningen nåede aldrig frem til den: mønsteret her tog kun ét ord efter
+// "hver", så det, der blev givet videre, var "hver anden" — ikke en regel. Så blev
+// de to ord stående i titlen, og "tirsdag" blev til en forfaldsdato. Opgaven
+// gentog sig ikke, og der stod ikke noget om det.
+//
+// Fundet af en prøve, der brugte vendingen som selvfølgelig og opdagede, at den
+// ikke var det.
+func TestEveryOtherWeekdayIsARepetition(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		rule string
+		left string
+	}{
+		{"vande planterne hver anden tirsdag", "FREQ=WEEKLY;BYDAY=TU;INTERVAL=2", "vande planterne"},
+		{"vande planterne hver 2. tirsdag", "FREQ=WEEKLY;BYDAY=TU;INTERVAL=2", "vande planterne"},
+		{"water the plants every other tuesday", "FREQ=WEEKLY;BYDAY=TU;INTERVAL=2", "water the plants"},
+		{"gå tur hver tredje søndag", "FREQ=WEEKLY;BYDAY=SU;INTERVAL=3", "gå tur"},
+		// Den, der virkede i forvejen, skal blive ved med at gøre det.
+		{"tømme opvasker hver mandag", "FREQ=WEEKLY;BYDAY=MO", "tømme opvasker"},
+	} {
+		got := Parse(tc.text, time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC), "da")
+		if got.Recurrence != tc.rule {
+			t.Errorf("%q gav reglen %q, want %q", tc.text, got.Recurrence, tc.rule)
+		}
+		if got.Content != tc.left {
+			t.Errorf("%q efterlod titlen %q, want %q", tc.text, got.Content, tc.left)
+		}
+	}
+}
