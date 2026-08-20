@@ -316,3 +316,81 @@ func TestNothingAtOrBelowTheMarkerComesBack(t *testing.T) {
 		}
 	}
 }
+
+// Den samme mail må ikke kunne blive en opgave to gange.
+//
+// Prøven kører hele vejen imod en rigtig server: den finder de flagede mails,
+// tager flaget af dem, og spørger så forfra som en ny synkronisering ville — med
+// markøren sat til nul, altså det værst tænkelige tilfælde, hvor alt, hvad vi
+// selv havde husket, er væk. Der skal ikke komme noget tilbage.
+//
+// Det er det, markøren ikke kunne love. Den holdt kun, hvis uids var, hvad
+// serveren sagde, og fejlede på et fetch-svar uden uid, på en UIDVALIDITY, der
+// skiftede, og på to postkasse-rækker, der pegede samme sted og hver især førte
+// deres eget regnskab. Alle tre gav det samme: mailen blev en opgave igen.
+func TestAnUnflaggedMailDoesNotComeBack(t *testing.T) {
+	addr, pool := serveMailbox(t, []mail{
+		{subject: "Faktura 4711", from: "anders@example.dk", body: "Vedhæftet.", flagged: true},
+		{subject: "Nyhedsbrev", from: "noreply@example.com", body: "Læs mere", flagged: false},
+		{subject: "Kontrakt", from: "jura@example.dk", body: "Til underskrift", flagged: true},
+	})
+
+	client, err := Dial(Account{Host: addr, Username: "kw", Password: "hemmelig", RootCAs: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	msgs, _, err := client.Since(0, 25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("fandt %d flagede mails, ventede 2", len(msgs))
+	}
+
+	uids := make([]uint32, 0, len(msgs))
+	for _, m := range msgs {
+		uids = append(uids, m.UID)
+	}
+	if err := client.Unflag(uids); err != nil {
+		t.Fatalf("Unflag: %v", err)
+	}
+
+	// Forfra, og fra nul: selv en instans, der intet husker, må ikke finde dem igen.
+	again, _, err := client.Since(0, 25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again) != 0 {
+		t.Fatalf("%d mails kom igen efter at flaget var taget af — den første af dem er %q",
+			len(again), again[0].Subject)
+	}
+}
+
+// Et tomt kald må ikke åbne mappen skrivbar for ingenting.
+func TestUnflagWithNothingToDoIsQuiet(t *testing.T) {
+	addr, pool := serveMailbox(t, []mail{
+		{subject: "Faktura", from: "a@example.dk", body: "x", flagged: true},
+	})
+	client, err := Dial(Account{Host: addr, Username: "kw", Password: "hemmelig", RootCAs: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.Unflag(nil); err != nil {
+		t.Errorf("Unflag(nil) = %v", err)
+	}
+	// Kun nuller: der er intet at adressere, og mailen skal beholde sit flag.
+	if err := client.Unflag([]uint32{0, 0}); err != nil {
+		t.Errorf("Unflag(nuller) = %v", err)
+	}
+	msgs, _, err := client.Since(0, 25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Errorf("mailen mistede sit flag, uden at nogen havde adresseret den")
+	}
+}

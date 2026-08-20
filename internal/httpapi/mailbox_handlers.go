@@ -175,6 +175,10 @@ func (s *Server) SyncMailbox(ctx context.Context, user *store.User, m *store.Mai
 
 	created := 0
 	highest := m.LastUID
+	// The uids of the mails that actually became tasks. Only those get unflagged,
+	// and only after the task is committed: a flag removed from a mail whose task
+	// was never written is a mail nobody will ever see again.
+	done := make([]uint32, 0, len(messages))
 	for _, msg := range messages {
 		if ctx.Err() != nil {
 			// What was made so far is already committed and counted, and the marker
@@ -204,10 +208,25 @@ func (s *Server) SyncMailbox(ctx context.Context, user *store.User, m *store.Mai
 			continue
 		}
 		created++
+		done = append(done, msg.UID)
 		if msg.UID > highest {
 			highest = msg.UID
 		}
 		s.hub.Publish(projectID, "task.created", toTaskJSON(*task))
+	}
+
+	// The flag comes off what became a task. This is what actually stops a mail
+	// arriving twice; the marker below is now a second line rather than the only
+	// one. See imap.Unflag for why the record belongs in the mailbox and not here.
+	//
+	// Outside the request's context, like the marker: a cancelled request that
+	// already created tasks must still take the flags off them, or the next run
+	// makes them all again.
+	if err := client.Unflag(done); err != nil {
+		// Not fatal, and not the caller's problem. A folder somebody opened
+		// read-only, or a server that refuses the STORE, still gets the uid marker
+		// underneath — worse, but not broken.
+		s.log.Warn("could not unflag imported mail", "err", err, "mailbox", m.ID, "count", len(done))
 	}
 
 	// A run that got all the way through moves the marker to the whole of what the

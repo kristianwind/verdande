@@ -310,3 +310,61 @@ func cut(text string) string {
 	}
 	return text
 }
+
+// Unflag takes the flag off the messages that have become tasks.
+//
+// This is what stops the same mail arriving twice, and it replaces a marker that
+// could not be made to hold. The marker was a uid: remember the highest one seen,
+// start above it next time. That is correct only if uids are what the server says
+// they are, and it broke in every way such a scheme can — a fetch reply without a
+// uid, a UIDVALIDITY that changed under a rebuilt mailbox, two mailbox rows
+// pointing at the same folder and each keeping its own marker. Every one of those
+// produced the same symptom: the same mail became a task again, and again.
+//
+// Unflagging moves the record out of our database and into the mailbox, where the
+// question is asked. "Flagged" means "turn this into a task"; once it is a task,
+// the flag has done its job and is not true any more. Nothing has to be
+// remembered, so there is nothing to get out of step — a second sync, a second
+// mailbox row, or a database restored from a backup all find the same answer,
+// because the answer is in the mailbox.
+//
+// It is destructive in the small way that matters: it changes something in
+// somebody's mail. That is the trade, and it is the right way round — a flag is a
+// note to self that this needs doing, and it has been done.
+//
+// The folder is re-selected writable. Since() opens it read-only on purpose, and
+// a search should not need write access just because a later step might.
+func (c *Client) Unflag(uids []uint32) error {
+	if len(uids) == 0 {
+		return nil
+	}
+	if _, err := c.c.Select(c.folder, nil).Wait(); err != nil {
+		return fmt.Errorf("open %s for writing: %w", c.folder, err)
+	}
+
+	set := imap.UIDSetNum()
+	for _, u := range uids {
+		if u == 0 {
+			// No uid means nothing to address. The message keeps its flag and will
+			// be seen again — which is the failure this whole function exists to
+			// prevent, so it is worth saying rather than skipping quietly.
+			continue
+		}
+		set.AddNum(imap.UID(u))
+	}
+	if len(set) == 0 {
+		return nil
+	}
+
+	// Silent: the server has nothing to tell us that we would act on, and the
+	// untagged replies would only have to be collected and thrown away.
+	cmd := c.c.Store(set, &imap.StoreFlags{
+		Op:     imap.StoreFlagsDel,
+		Silent: true,
+		Flags:  []imap.Flag{imap.FlagFlagged},
+	}, nil)
+	if err := cmd.Close(); err != nil {
+		return fmt.Errorf("unflag in %s: %w", c.folder, err)
+	}
+	return nil
+}

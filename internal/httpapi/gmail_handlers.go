@@ -251,6 +251,17 @@ func (s *Server) handleGmailSyncNow(w http.ResponseWriter, r *http.Request) {
 //
 // Returns how many were made. Also used by the background job, which is why it
 // takes a context and a user rather than a request.
+// maxGmailSeen bounds the list of message ids already turned into tasks.
+//
+// Gmail is read-only here — the scope is `gmail.readonly`, deliberately, because
+// asking for less is what makes the consent screen something a person can agree
+// to — so verdande cannot unstar a message the way the IMAP side unflags one. The
+// record has to live on this side, and a record on this side has to be bounded.
+//
+// A count rather than the previous rule of "whatever Gmail returned this run",
+// which was not a bound but a way of forgetting.
+const maxGmailSeen = 2000
+
 func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 	box, err := s.db.MailboxOfKind(ctx, user.ID, "gmail")
 	if err != nil {
@@ -362,13 +373,34 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 	}
 
 	if created > 0 {
-		// Only the ids Gmail still returns are kept, so the list cannot grow
-		// without bound as messages fall out of the 30-day window.
-		keep := make([]string, 0, len(ids))
+		// The ids this run saw, on top of the ones already known.
+		//
+		// It used to keep only the ids Gmail returned *this run*, to stop the list
+		// growing without bound. That threw away every id that was not on the page
+		// it happened to fetch — and the query is capped, so on an account with more
+		// starred mail than one page, each run forgot the messages the last one had
+		// remembered. They came back unseen, and became tasks again, and again. That
+		// is the duplicate.
+		//
+		// Bounded by a count instead. Newest first, and a ceiling far above any
+		// plausible page, so an id leaves the list because it is old rather than
+		// because it was not in the last answer.
+		keep := make([]string, 0, len(ids)+len(box.Seen))
+		added := map[string]bool{}
 		for _, id := range ids {
-			if seen[id] {
+			if seen[id] && !added[id] {
 				keep = append(keep, id)
+				added[id] = true
 			}
+		}
+		for _, id := range box.Seen {
+			if !added[id] {
+				keep = append(keep, id)
+				added[id] = true
+			}
+		}
+		if len(keep) > maxGmailSeen {
+			keep = keep[:maxGmailSeen]
 		}
 		box.Seen = keep
 		box.LastSyncAt = time.Now()
