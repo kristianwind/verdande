@@ -979,6 +979,203 @@ test('en opgave kan trækkes hen over et månedsskifte i uge-visningen', async (
  * asserting against a project the admin can already see would pass with the old
  * per-project endpoint behind it.
  */
+/**
+ * Kalender: Google's events and verdande's own tasks in one grid, and the rule
+ * that tells them apart.
+ *
+ * The Google half is stubbed at the network layer rather than connected. There are
+ * no credentials in a test run and there never will be — an OAuth consent screen is
+ * a human pressing a button on somebody else's website — so what can be proved here
+ * is what the grid does with events once it has them, which is the part that has a
+ * rule in it: a task is draggable and reschedules, an event is not and cannot.
+ *
+ * The date is read out of the *page*, not out of this process. Playwright pins the
+ * browser to Europe/Copenhagen and node is pinned to nothing, so for two hours of
+ * every day the two disagree about what today is — which is how a green suite
+ * starts failing at half past midnight. Today is also the one day guaranteed to be
+ * in the month grid whatever the weekday, so nothing here has to page.
+ */
+test('kalenderen viser Googles begivenheder over egne opgaver, og kun opgaven kan trækkes', async ({
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	// A day at least a week out, whose next day is in the same Monday-to-Sunday
+	// week — so the drag below crosses one cell and not one grid.
+	//
+	// Worked out in the browser, not here. Playwright pins the page to
+	// Europe/Copenhagen and this process is pinned to nothing, so for two hours of
+	// every day the two disagree about what today is. A week out also keeps this
+	// test's day clear of the ones the rest of the suite dates things on.
+	const { day, next } = await page.evaluate(() => {
+		const iso = (d) =>
+			`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+				d.getDate()
+			).padStart(2, '0')}`;
+		const monday = (d) => {
+			const m = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+			m.setDate(m.getDate() - ((m.getDay() + 6) % 7));
+			return iso(m);
+		};
+		const cursor = new Date();
+		cursor.setDate(cursor.getDate() + 7);
+		for (let i = 0; i < 14; i++) {
+			cursor.setDate(cursor.getDate() + 1);
+			const after = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1);
+			if (monday(cursor) === monday(after)) return { day: iso(cursor), next: iso(after) };
+		}
+		throw new Error('no two consecutive days inside one week in three weeks');
+	});
+
+	// A calendar that is connected and holds two events that day: one with a clock
+	// and one that lasts the whole day. The window is deliberately wide, so the
+	// notice about having paged past it stays out of the way.
+	await page.route('**/api/v1/calendar/events*', (route) =>
+		route.fulfill({
+			json: {
+				from: '2000-01-01',
+				to: '2099-12-31',
+				events: [
+					{
+						id: 'ev-1',
+						calendar_id: 'c1',
+						summary: 'Bestyrelsesmøde',
+						starts_at: `${day}T14:00:00+02:00`,
+						ends_at: `${day}T15:30:00+02:00`,
+						start_day: day,
+						end_day: day,
+						all_day: false,
+						url: 'https://calendar.google.com/event?eid=abc',
+						calendar_name: 'Arbejde',
+						colour: '#0b8043'
+					},
+					{
+						id: 'ev-2',
+						calendar_id: 'c1',
+						summary: 'Feriedag',
+						start_day: day,
+						end_day: day,
+						all_day: true,
+						calendar_name: 'Familien',
+						colour: '#3f51b5'
+					}
+				]
+			}
+		})
+	);
+	await page.route('**/api/v1/calendar', (route) =>
+		route.fulfill({
+			json: {
+				connected: true,
+				account: 'kw@nolimit.dk',
+				read_only: true,
+				has_client: true,
+				redirect_uri: 'http://localhost/oauth/calendar/callback',
+				calendars: []
+			}
+		})
+	);
+
+	// verdande's own half of the grid: a task on that day, made the way anybody
+	// would make it. The date is written out rather than typed as "i morgen", so
+	// the assertion does not depend on the parser as well.
+	const box = page.getByLabel('Ny opgave');
+	await box.fill(`vande blomster ${day}`);
+	await box.press('Enter');
+	// Not asserted here: this is the Today view and the task is dated a week out,
+	// so it is correctly absent. The grid below is where it has to turn up.
+	await expect(box).toHaveValue('');
+
+	// The menu item, which is the thing the sidebar gained.
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.locator('a[href="/kalender"]').click();
+	await page.waitForURL('**/kalender');
+	await expect(page.getByRole('heading', { name: 'Kalender', level: 1 })).toBeVisible();
+
+	// The week, not the month, and for a reason worth writing down: a month cell
+	// truncates at three chips and this suite has other tests putting tasks on
+	// other days. A week cell holds ten, so what is asserted below is what the view
+	// does with events rather than how full somebody else left the month.
+	await page.getByRole('button', { name: 'Uge', exact: true }).click();
+
+	// Forward a week at a time until the row is the one holding that day. Bounded,
+	// because a loop that pages for ever on a broken button is a timeout with no
+	// explanation in it.
+	const cell = page.locator(`[data-date="${day}"]`);
+	const forward = page.getByRole('button', { name: 'Næste uge' });
+	for (let i = 0; i < 6 && (await cell.count()) === 0; i++) {
+		await forward.click();
+	}
+	await expect(cell, `uge-visningen nåede aldrig frem til ${day}`).toBeVisible();
+
+	// Both kinds are in the same cell, which is the whole point of the view.
+	const event = cell.locator('.event').filter({ hasText: 'Bestyrelsesmøde' });
+	const allDay = cell.locator('.event').filter({ hasText: 'Feriedag' });
+	const task = cell.locator('.chip').filter({ hasText: 'vande blomster' });
+	await expect(event).toBeVisible();
+	await expect(allDay).toBeVisible();
+	await expect(task).toBeVisible();
+
+	// A timed event carries its clock; an all-day one has none to carry.
+	await expect(event).toContainText('14:00');
+	await expect(allDay).not.toContainText(':');
+
+	// The rule. An event is read-only, so it must not offer to be moved — the drop
+	// targets would refuse it anyway, but a chip that lifts off the page and then
+	// will not land reads as a bug rather than as a rule.
+	await expect(event).toHaveAttribute('draggable', 'false');
+	await expect(allDay).toHaveAttribute('draggable', 'false');
+	await expect(task).toHaveAttribute('draggable', 'true');
+
+	// And it cannot be ticked off either: there is nothing to complete about
+	// somebody else's meeting.
+	expect(await event.evaluate((el) => el.tagName)).not.toBe('BUTTON');
+
+	// It does link back to Google, which is what makes it a pointer to the event
+	// rather than a second copy of it.
+	await expect(event).toHaveAttribute('href', /^https:\/\/calendar\.google\.com\//);
+
+	// The task still reschedules by drag, in a grid that now has events in it.
+	await task.dragTo(page.locator(`[data-date="${next}"]`));
+	await expect(page.locator(`[data-date="${next}"]`).getByText('vande blomster')).toBeVisible();
+	await expect(cell.getByText('vande blomster')).toBeHidden();
+	// The events stayed where they were; a rescheduled task moves nothing else.
+	await expect(cell.locator('.event')).toHaveCount(2);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * The view without a calendar connected, which is what every fresh instance is.
+ *
+ * It has to draw anyway. The grid is verdande's own tasks with due dates — the
+ * thing this view was before anything was laid over it — and a Google account that
+ * is not there must not take it down with it.
+ */
+test('kalenderen virker uden en forbundet Google-konto', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/kalender');
+
+	await expect(page.getByRole('heading', { name: 'Kalender', level: 1 })).toBeVisible();
+	// Seven weekday columns and a grid under them, whatever day of the week it is.
+	await expect(page.locator('.calendar .grid .day').first()).toBeVisible();
+
+	// It says so rather than looking like a calendar with nothing in it, and it
+	// says where to go about it.
+	await expect(page.getByText('Ingen kalender er forbundet endnu.')).toBeVisible();
+	await expect(
+		page.locator('a[href="/indstillinger/integrationer"]').first()
+	).toBeVisible();
+
+	// The week is the same grid with a different span, and switching to it must not
+	// lose the events prop on the way.
+	await page.getByRole('button', { name: 'Uge', exact: true }).click();
+	await expect(page.locator('.calendar.week')).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
 test('historik-siden viser hændelser fra et projekt, administratoren ikke er med i', async ({
 	browser,
 	page
