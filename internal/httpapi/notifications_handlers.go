@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -106,18 +108,44 @@ func (s *Server) PushToUser(userID, title, body, projectID string) {
 	s.pushToUser(userID, title, body, projectID)
 }
 
-func (s *Server) pushToUser(userID, title, body, projectID string) {
+// pushOutcome is what happened, per device.
+//
+// It exists because "nothing arrives" was unanswerable. A push that a service
+// refuses is the ordinary failure here — a stale subscription, a VAPID subject the
+// service will not take, a browser that revoked permission without telling the
+// server — and every one of them looked exactly like silence.
+type pushOutcome struct {
+	Subscriptions int           `json:"subscriptions"`
+	Sent          int           `json:"sent"`
+	Failed        []pushFailure `json:"failed"`
+}
+
+// pushFailure names the service and quotes what it said.
+//
+// The host and not the endpoint: the rest of that URL is the credential the push
+// service issued for this device, and it does not belong in an answer, a log line
+// or a screenshot.
+type pushFailure struct {
+	Service string `json:"service"`
+	Reason  string `json:"reason"`
+}
+
+func (s *Server) pushToUser(userID, title, body, projectID string) pushOutcome {
 	ctx, cancel := contextWithBackgroundTimeout(30 * time.Second)
 	defer cancel()
 
+	var out pushOutcome
 	subs, err := s.db.ListPushSubscriptions(ctx, userID)
 	if err != nil || len(subs) == 0 {
-		return
+		return out
 	}
+	out.Subscriptions = len(subs)
+
 	public, private, err := s.vapidKeys(ctx)
 	if err != nil {
 		s.log.Warn("vapid keys", "err", err)
-		return
+		out.Failed = append(out.Failed, pushFailure{Service: "verdande", Reason: err.Error()})
+		return out
 	}
 
 	payload := push.Payload{Title: title, Body: body, URL: "/projekt/" + projectID}
@@ -128,13 +156,101 @@ func (s *Server) pushToUser(userID, title, body, projectID string) {
 			Public: public, Private: private, Subject: "mailto:" + s.cfg.SMTP.From,
 		})
 		if err == nil {
+			out.Sent++
 			continue
 		}
-		s.log.Debug("web push failed", "err", err, "endpoint", sub.Endpoint)
+		// Warn, not Debug.
+		//
+		// This was the one line that would have said why no notification ever
+		// arrived, and at Debug it is not printed on an instance running at the
+		// default level. A delivery that fails silently and a delivery that does
+		// not happen look the same from the outside, and the difference is the
+		// whole diagnosis.
+		reason := pushReason(sub.Endpoint, err)
+		s.log.Warn("web push refused", "reason", reason, "service", pushHost(sub.Endpoint), "user", userID)
+		out.Failed = append(out.Failed, pushFailure{
+			Service: pushHost(sub.Endpoint),
+			Reason:  reason,
+		})
 		if recErr := s.db.RecordPushFailure(ctx, sub.Endpoint, push.IsGone(err)); recErr != nil {
 			s.log.Warn("record push failure", "err", recErr)
 		}
 	}
+	return out
+}
+
+// pushReason is what went wrong, with the endpoint taken back out of it.
+//
+// Go wraps a transport failure as `*url.Error`, and its message is `Post
+// "https://fcm.googleapis.com/fcm/send/dQw4w9…": dial tcp: …` — the whole
+// endpoint, which is the credential the push service issued for that device. It
+// would have gone into the answer, the log line and any screenshot of either. A
+// test written to prove the host was reported instead is what found it.
+//
+// Unwrapped first, so the cause is what is quoted. Then the endpoint is scrubbed
+// anyway: the next error type to carry it will not come with a warning.
+func pushReason(endpoint string, err error) string {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr.Err != nil {
+		err = urlErr.Err
+	}
+	reason := err.Error()
+	if endpoint != "" {
+		reason = strings.ReplaceAll(reason, endpoint, pushHost(endpoint))
+	}
+	return reason
+}
+
+// pushHost is the service an endpoint belongs to, and nothing else from it.
+func pushHost(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		return "ukendt"
+	}
+	return u.Host
+}
+
+// handlePushTest sends one notification to this account's devices and says what
+// happened to it.
+//
+// Reported as "der kommer ikke nogen". Everything about that was invisible: the
+// settings page said "on for this device" as soon as a subscription existed, and a
+// refusal from the push service went into a Debug line nobody sees. There was no
+// way to tell "the browser never subscribed" from "the service refused it" from
+// "nothing has come due yet" — three different problems with one appearance.
+//
+// It goes through the same path as a real notification rather than a shortcut, so
+// what it proves is the thing that actually has to work.
+//
+// The words come from the client, which is where the dictionaries are. A server
+// that carries its own copy of "This is a test" carries it in one language, and
+// this one deliberately keeps its prose in the interface — see
+// `internal/i18n`. The text is only ever shown back to the person who asked for
+// it, on their own devices.
+func (s *Server) handlePushTest(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		title = "verdande"
+	}
+	// Bounded: this is written into a notification on somebody's lock screen, and
+	// a megabyte of title is not a notification.
+	if len(title) > 200 {
+		title = title[:200]
+	}
+	body := strings.TrimSpace(req.Body)
+	if len(body) > 500 {
+		body = body[:500]
+	}
+
+	user := userFrom(r.Context())
+	writeJSON(w, http.StatusOK, s.pushToUser(user.ID, title, body, ""))
 }
 
 func (s *Server) vapidKeys(ctx contextLike) (string, string, error) {

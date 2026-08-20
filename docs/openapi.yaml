@@ -2079,6 +2079,53 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Validation" }
 
+  /api/v1/push/test:
+    post:
+      tags: [notifications]
+      summary: Send one notification to your own devices, and say what happened.
+      description: |
+        The answer to "no notifications arrive". A push that a service refuses is
+        the ordinary failure — a stale subscription, a browser that revoked
+        permission without telling the server — and every one of them looks
+        exactly like silence from the outside.
+
+        It goes through the same path a real notification takes, so what it proves
+        is the thing that has to work. The title and body come from the caller
+        because the dictionaries live in the interface.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, maxLength: 200 }
+                body: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: What each device did with it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscriptions:
+                    type: integer
+                    description: Devices registered for this account.
+                  sent:
+                    type: integer
+                  failed:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        service:
+                          type: string
+                          description: The push service's host — never the endpoint, which is a credential.
+                        reason:
+                          type: string
+                          description: What the service said.
+
   /api/v1/sections/{sectionID}:
     parameters:
       - { name: sectionID, in: path, required: true, schema: { type: string } }

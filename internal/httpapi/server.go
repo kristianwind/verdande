@@ -295,6 +295,9 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Get("/key", s.handlePushKey)
 				r.Post("/subscribe", s.handleSubscribePush)
 				r.Post("/unsubscribe", s.handleUnsubscribePush)
+				// One notification, to this account's own devices, reporting what
+				// each of them did with it. The answer to "der kommer ikke nogen".
+				r.Post("/test", s.handlePushTest)
 			})
 
 			r.Route("/attachments/{attachmentID}", func(r chi.Router) {

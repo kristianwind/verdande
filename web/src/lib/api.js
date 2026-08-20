@@ -366,6 +366,8 @@ export const api = {
 	pushKey: () => get('/push/key'),
 	subscribePush: (subscription) => post('/push/subscribe', subscription),
 	unsubscribePush: (endpoint) => post('/push/unsubscribe', { endpoint, keys: {} }),
+	// Teksten kommer herfra, fordi ordbøgerne gør. Serveren har ingen.
+	testPush: (title, body) => post('/push/test', { title, body }),
 
 	// --- integrations
 	getMailAddress: () => get('/mail-address'),

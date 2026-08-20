@@ -35,6 +35,43 @@
 		}
 	}
 
+	let testing = $state(false);
+	let testResult = $state(null);
+
+	/**
+	 * Én notifikation, hele vejen gennem den rigtige rute, og et svar på hvad der
+	 * skete med den.
+	 *
+	 * Den siger ikke "sendt" og lader det være. Kommer den frem, ved man det, fordi
+	 * den ligger på skærmen; kommer den ikke, står der her, hvem der afviste den og
+	 * med hvilke ord — og hvis ingen afviste den, står der, at det så er browseren
+	 * eller styresystemet, der holder den tilbage. Det er de tre steder, den kan
+	 * blive væk, og nu peger svaret på ét af dem.
+	 */
+	async function testPush() {
+		testing = true;
+		testResult = null;
+		try {
+			const r = await api.testPush(t('push.testTitle'), t('push.testBody'));
+			if (!r.subscriptions) {
+				testResult = { bad: true, text: t('push.testNone') };
+			} else if (r.failed?.length) {
+				testResult = {
+					bad: true,
+					text: r.failed
+						.map((f) => t('push.testFailed', { service: f.service, reason: f.reason }))
+						.join(' ')
+				};
+			} else {
+				testResult = { bad: false, text: t('push.testSent', { n: r.sent }) };
+			}
+		} catch (e) {
+			testResult = { bad: true, text: humanMessage(e) };
+		} finally {
+			testing = false;
+		}
+	}
+
 	async function disablePush() {
 		busy = true;
 		try {
@@ -165,7 +202,18 @@
 		<p class="hint">{t('push.on')}</p>
 		<div class="row">
 			<button class="secondary" onclick={disablePush} disabled={busy}>{t('push.turnOff')}</button>
+			<!-- "Til" er ikke det samme som "virker".
+			     Ruden sagde til, så snart der var et abonnement, og en push, tjenesten
+			     afviste, gik i en logline på Debug, som ingen ser. Tre forskellige
+			     problemer — browseren tilmeldte sig aldrig, tjenesten afviste den,
+			     der er ikke noget forfaldent endnu — så ens ud fra den her side. -->
+			<button class="secondary" onclick={testPush} disabled={busy || testing}>
+				{testing ? t('push.testing') : t('push.test')}
+			</button>
 		</div>
+		{#if testResult}
+			<p class="hint" class:bad={testResult.bad}>{testResult.text}</p>
+		{/if}
 	{:else}
 		<div class="row">
 			<button class="primary" onclick={enablePush} disabled={busy}>
@@ -261,6 +309,10 @@
 {/if}
 
 <style>
+	.bad {
+		color: var(--danger);
+	}
+
 	.what {
 		display: flex;
 		flex-direction: column;

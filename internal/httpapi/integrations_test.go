@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/kristianwind/verdande/internal/config"
+	"github.com/kristianwind/verdande/internal/store"
 )
 
 // --- MCP -----------------------------------------------------------------------------
@@ -1466,5 +1468,64 @@ func TestTheMailAddressCanBeRotated(t *testing.T) {
 	}
 	if third, _ := again["address"].(string); third == second {
 		t.Error("the second rotation returned the same address")
+	}
+}
+
+// "Der kommer ingen notifikationer" må kunne besvares.
+//
+// Alt om det var usynligt: indstillingssiden sagde "til for denne enhed", så snart
+// der fandtes et abonnement, og en push, tjenesten afviste, gik i en Debug-linje,
+// som ikke skrives på en instans, der kører på standardniveau. Man kunne ikke
+// skelne "browseren tilmeldte sig aldrig" fra "tjenesten afviste den" fra "der er
+// ikke noget forfaldent endnu" — tre forskellige problemer med ét udseende.
+func TestATestNotificationSaysWhatHappenedToIt(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	// Ingen enheder: svaret skal sige nul frem for at lade som om det gik godt.
+	resp, body := ts.do(t, "POST", "/api/v1/push/test", map[string]any{
+		"title": "Prøve", "body": "kom den frem?",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, body %v", resp.StatusCode, body)
+	}
+	if body["subscriptions"] != float64(0) {
+		t.Errorf("subscriptions = %v uden tilmeldte enheder", body["subscriptions"])
+	}
+
+	// En enhed, der peger på en tjeneste, som ikke findes. Den skal komme tilbage
+	// som et navngivent afslag og ikke som tavshed.
+	user, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.db.SavePushSubscription(t.Context(), &store.PushSubscription{
+		UserID:   user.ID,
+		Endpoint: "https://push.example.invalid/abc",
+		P256dh:   "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U",
+		Auth:     "aUZmY2xDS2FQUXJJVmJIeA",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body = ts.do(t, "POST", "/api/v1/push/test", map[string]any{"title": "Prøve"})
+	if body["subscriptions"] != float64(1) {
+		t.Fatalf("subscriptions = %v", body["subscriptions"])
+	}
+	failed, _ := body["failed"].([]any)
+	if len(failed) != 1 {
+		t.Fatalf("failed har %d poster, want 1 — afslaget blev slugt", len(failed))
+	}
+	first, _ := failed[0].(map[string]any)
+	if first["service"] != "push.example.invalid" {
+		t.Errorf("service = %v", first["service"])
+	}
+	if first["reason"] == "" || first["reason"] == nil {
+		t.Error("afslaget kom uden en grund")
+	}
+	// Og aldrig hele adressen: resten af den er den legitimation, tjenesten gav
+	// enheden, og den hører hverken i et svar, en log eller et skærmbillede.
+	if strings.Contains(fmt.Sprint(first), "/abc") {
+		t.Errorf("endepunktet lækkede med ud: %v", first)
 	}
 }
