@@ -3038,3 +3038,57 @@ test('flere noter kan markeres, arkiveres og hentes frem igen', async ({ page })
 
 	expect(trouble).toEqual([]);
 });
+
+/**
+ * Én note, der ikke kan tegnes, må ikke tage ruden med sig.
+ *
+ * Meldt ind som "jeg kan ikke skifte mellem noter — uanset hvilken jeg trykker
+ * på, åbner de ikke". Editoren indlæste med `note.body.trim()` uden værn, og
+ * `body` er en streng fra serveren hver eneste gang — indtil den ikke er. Så
+ * kaster den inde i et `$effect`, og en effekt, der kaster, tager komponentens
+ * opdateringer med sig: den forrige note bliver stående, og ingen note kan åbnes
+ * bagefter. Klikket kan ikke engang lande.
+ *
+ * Formen fremtvinges her frem for at vente på den nyttelast, der gjorde det:
+ * hvad der end fik `body` til at mangle, er svaret det samme — én note må ikke
+ * kunne låse de tolv hundrede andre ude.
+ */
+test('en note uden krop må ikke låse ruden', async ({ page }) => {
+	const errors = [];
+	page.on('pageerror', (e) => errors.push(e.message));
+
+	await page.goto('/noter');
+	for (const title of ['Alfa', 'Beta']) {
+		await page.getByRole('button', { name: 'Ny note' }).click();
+		const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+		await ed.click();
+		await page.keyboard.type(title);
+		await expect(ed.locator('h1')).toHaveText(title);
+		await page.keyboard.press('Enter');
+		await page.keyboard.type('Brødtekst i ' + title);
+		await expect(ed.locator('p').filter({ hasText: 'Brødtekst i ' + title })).toBeVisible();
+		await page.waitForTimeout(900);
+	}
+	await page.reload();
+	await expect(page.locator('li .row strong').filter({ hasText: 'Beta' })).toBeVisible();
+
+	await page.route('**/api/v1/notes/*', async (route) => {
+		if (route.request().method() !== 'GET') return route.continue();
+		const res = await route.fetch();
+		const note = await res.json();
+		delete note.body;
+		await route.fulfill({ response: res, json: note });
+	});
+
+	await page.locator('li').filter({ hasText: 'Alfa' }).first().click();
+	await page.waitForTimeout(600);
+	expect(errors, 'noten kastede under indlæsningen').toEqual([]);
+
+	await page.unroute('**/api/v1/notes/*');
+	await page.locator('li').filter({ hasText: 'Beta' }).first().click();
+	await expect(
+		page.getByRole('textbox', { name: 'Notens tekst' }).locator('h1'),
+		'ruden er låst: den næste note åbner ikke'
+	).toHaveText('Beta', { timeout: 5000 });
+	expect(errors, 'ruden efterlod en fejl bag sig').toEqual([]);
+});

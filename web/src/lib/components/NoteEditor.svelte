@@ -35,20 +35,53 @@
 	let loadedId = $state(null);
 	$effect(() => {
 		if (!editor || !note || note.id === loadedId) return;
-		// An empty note opens on its title. That is what Apple Notes does, and it is
-		// also what the list needs: the first line becomes the name of the note, so a
-		// note whose first line is body text is a note called by its first sentence.
+
+		// Sat *før* tegningen, ikke efter.
 		//
-		// Tested on the text and not on the rendered result: an empty body renders as
-		// one empty paragraph, not as nothing, so a falsy check here never fired.
-		editor.innerHTML = note.body.trim() ? markdownToHtml(note.body) : '<h1><br></h1>';
+		// Kaster noget herunder, er noten stadig den, der er forsøgt indlæst — og
+		// uden det her ville effekten prøve igen ved hver eneste ændring bagefter og
+		// kaste hver gang.
 		loadedId = note.id;
 		active = {};
 		// Kildevisningen hører til den note, den blev slået til på. Skifter man note,
 		// er det den rige flade, man skal møde — ellers står den næste note som kode,
 		// uden at nogen har bedt om det.
 		asSource = false;
-		colourCode();
+
+		// Én note, der ikke kan tegnes, må ikke tage ruden med sig.
+		//
+		// Det var `note.body.trim()` uden værn, og `body` er en streng fra serveren
+		// hver eneste gang — indtil den ikke er. Så kaster den her inde i et
+		// `$effect`, og en effekt, der kaster, tager komponentens opdateringer med
+		// sig: den forrige note bliver stående, og *ingen* note kan åbnes bagefter.
+		// Klikket kan ikke engang lande. Meldt ind som "jeg kan ikke skifte mellem
+		// noter, uanset hvilken jeg trykker på", hvilket er præcis, hvad det ser ud
+		// som fra den anden side.
+		//
+		// Fejlen står i konsollen frem for i en toast: den hører til den, der kan
+		// rette den, og en note, der viser sin egen tekst uden formatering, siger
+		// allerede til den, der læser den, at noget er galt.
+		//
+		// `textContent` og ikke `innerHTML` i faldbakken — teksten er ikke tegnet, og
+		// at lægge den ind som markup ville være at køre det, tegningen lige nægtede.
+		// Gemningen er ikke i fare: den skriver `draft`, som kommer fra svaret og
+		// ikke fra det, der står i editoren, indtil nogen taster i den.
+		const body = note.body ?? '';
+		try {
+			// An empty note opens on its title. That is what Apple Notes does, and it
+			// is also what the list needs: the first line becomes the name of the
+			// note, so a note whose first line is body text is a note called by its
+			// first sentence.
+			//
+			// Tested on the text and not on the rendered result: an empty body renders
+			// as one empty paragraph, not as nothing, so a falsy check here never
+			// fired.
+			editor.innerHTML = body.trim() ? markdownToHtml(body) : '<h1><br></h1>';
+			colourCode();
+		} catch (e) {
+			editor.textContent = body;
+			console.error('verdande: noten kunne ikke tegnes', note.id, e);
+		}
 	});
 
 	const SYNTAX = [
