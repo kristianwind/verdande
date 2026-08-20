@@ -3423,3 +3423,50 @@ test('et projekts kalender kan vises som en uge', async ({ page }) => {
 
 	expect(trouble).toEqual([]);
 });
+
+/**
+ * En gentagelse siges på læserens sprog, også dem serveren kun kan på dansk.
+ *
+ * `recurrence.Describe` skriver dansk og kan ikke bare tage en locale med:
+ * `toTaskJSON` har niogtyve kaldesteder, og mange er WebSocket-udsendelser, hvor én
+ * nyttelast når alle i et projekt på én gang — der findes ikke ét sprog at skrive
+ * den i. Reglen er den samme uanset hvem der læser den, så beskrivelsen hører
+ * hjemme dér, hvor læseren er.
+ *
+ * De to her er valgt, fordi de *ikke* står på listen over de fem almindelige, som
+ * fladen altid har kunnet navngive. Før det her faldt de tilbage til serverens
+ * tekst — og den er dansk, hvad end kontoen er sat til.
+ */
+test('en gentagelse, serveren kun kan på dansk, siges alligevel i fladen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	for (const [text, says] of [
+		['vande planterne hver mandag', 'hver mandag'],
+		['tømme opvasker hverdage', 'hverdage']
+	]) {
+		const box = page.getByLabel('Ny opgave');
+		await box.fill(text);
+		await box.press('Enter');
+		await page.waitForTimeout(400);
+
+		// I indbakken og ikke på I dag: en ugentlig regel sætter den første
+		// forfaldsdag til den næste sådan dag, som sjældent er i dag.
+		await page
+			.getByRole('navigation', { name: 'Hovedmenu' })
+			.getByRole('link', { name: /^Indbakke/ })
+			.click();
+
+		const name = text.split(' ').slice(0, 2).join(' ');
+		const row = page.locator('.row', { hasText: name }).first();
+		await expect(row).toBeVisible();
+		await expect(
+			row.locator('.repeat'),
+			`"${text}" blev ikke læst som en gentagelse`
+		).toContainText(says);
+
+		await page.goto('/');
+	}
+
+	expect(trouble).toEqual([]);
+});
