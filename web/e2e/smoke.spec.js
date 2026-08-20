@@ -3303,3 +3303,78 @@ test('en opgave kan få et klokkeslæt, og beholder det når den flyttes', async
 
 	expect(trouble).toEqual([]);
 });
+
+/**
+ * Notelisten står i grupper.
+ *
+ * Den føltes tæt, og grunden var ikke afstanden mellem rækkerne: hver række sagde
+ * tre ting, og to af dem gentog sig selv nedad. Datoen stod på hver eneste række,
+ * også når tyve noter deler dag, og projektet fik en linje for sig selv.
+ *
+ * Datoen er flyttet op i en overskrift, favoritterne har fået deres egen gruppe —
+ * de lå allerede først, der stod bare ikke hvorfor — og arkivet grupperes på samme
+ * måde, for det er dér, de tolv hundrede importerede ligger.
+ */
+test('notelisten grupperer favoritter og datoer, også i arkivet', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	for (const title of ['Gruppe én', 'Gruppe to']) {
+		await page.getByRole('button', { name: 'Ny note' }).click();
+		const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+		await ed.click();
+		await page.keyboard.type(title);
+		await page.keyboard.press('Enter');
+		await page.keyboard.type('Brødtekst i ' + title);
+		await expect(ed.locator('h1')).toHaveText(title);
+		await page.waitForTimeout(800);
+	}
+	await page.reload();
+
+	// Skrevet i dag, så de står under dagens overskrift.
+	const today = page.getByRole('heading', { name: /^I dag/ });
+	await expect(today, 'der er ingen datogruppe').toBeVisible();
+
+	// En favorit får sin egen gruppe. Uden overskriften ligger den bare først, og
+	// der står ikke hvorfor.
+	await expect(page.getByRole('heading', { name: /Favoritter/i })).toBeHidden();
+	const row = page.locator('li').filter({ hasText: 'Gruppe én' }).first();
+	await row.hover();
+	await row.getByRole('button', { name: /favorit/i }).click();
+	const favourites = page.getByRole('heading', { name: /Favoritter/i });
+	await expect(favourites).toBeVisible();
+
+	// Og den ligger under den, ikke under dagen.
+	const inFavourites = page
+		.locator('h3.group', { hasText: /Favoritter/i })
+		.locator('+ ul li')
+		.filter({ hasText: 'Gruppe én' });
+	await expect(inFavourites).toBeVisible();
+
+	// Grupper kan foldes sammen. Ikke husket på tværs af besøg: en gruppe, der
+	// åbner foldet uden at nogen bad om det, er en liste, der ser tom ud.
+	await favourites.getByRole('button').click();
+	await expect(inFavourites).toBeHidden();
+	await favourites.getByRole('button').click();
+	await expect(inFavourites).toBeVisible();
+
+	// En søgning grupperes ikke: serveren har sorteret efter hvor godt hver note
+	// matchede, og at dele det op i måneder ville stille rækkefølgen om efter noget
+	// andet end det, der blev spurgt om.
+	await page.getByPlaceholder('Søg i noter').fill('Brødtekst');
+	await expect(page.locator('li').filter({ hasText: 'Gruppe to' }).first()).toBeVisible();
+	await expect(page.locator('h3.group')).toHaveCount(0);
+	await page.getByPlaceholder('Søg i noter').fill('');
+
+	// Arkivet grupperes på samme måde. Det er dér, det betyder mest.
+	await row.hover();
+	await row.getByRole('button', { name: /Arkivér/i }).click();
+	await page.getByRole('button', { name: 'Vis arkivet' }).click();
+	await expect(
+		page.locator('h3.group'),
+		'arkivet står ugrupperet'
+	).not.toHaveCount(0);
+	await expect(page.locator('li').filter({ hasText: 'Gruppe én' }).first()).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});

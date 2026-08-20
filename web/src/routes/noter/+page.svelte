@@ -16,6 +16,7 @@
 	import { page } from '$app/stores';
 	import { t, tag } from '$lib/i18n.svelte.js';
 	import { NOTE, startDrag } from '$lib/dnd.js';
+	import { colorVar } from '$lib/colors.js';
 	import NoteEditor from '$lib/components/NoteEditor.svelte';
 
 	let notes = $state([]);
@@ -71,6 +72,100 @@
 			const field = order === 'created' ? 'created_at' : 'updated_at';
 			return new Date(b[field]).getTime() - new Date(a[field]).getTime();
 		});
+
+	// --- listen i grupper ----------------------------------------------------------
+	//
+	// Listen føltes tæt, og grunden var ikke afstanden mellem rækkerne: hver række
+	// sagde tre ting, og to af dem gentog sig selv nedad. Datoen stod på hver eneste
+	// række — også når tyve noter deler dag — og projektet fik en linje for sig selv.
+	// Tre linjer pr. note, gange tolv hundrede.
+	//
+	// Gentagelserne flyttes derhen, hvor de siger noget. Datoen bliver til
+	// overskriften over en gruppe, og så forsvinder den fra rækken; projektet bliver
+	// en lille mærkat ude til højre. Noten går fra tre linjer til to, og luften
+	// kommer af, at der er mindre at skrive — ikke af at listen bliver længere.
+
+	/** Grupper, der er foldet sammen. Kun i denne session. */
+	let folded = $state(new Set());
+
+	function toggleGroup(key) {
+		const next = new Set(folded);
+		next.has(key) ? next.delete(key) : next.add(key);
+		folded = next;
+	}
+
+	/**
+	 * Hvilken dato en gruppe måles på: den, der er sorteret efter.
+	 *
+	 * Ellers ville listen stå i én rækkefølge og være grupperet efter en anden, og
+	 * så er overskrifterne løgn — en note ville stå under "August" mellem to fra
+	 * juli, fordi den var *rørt* i august og *oprettet* i juli.
+	 */
+	const groupDate = (note) => (order === 'created' ? note.created_at : note.updated_at);
+
+	/**
+	 * Hvad en gruppe hedder. I dag, i går, denne uge — og derefter måneden.
+	 *
+	 * Nøglen og etiketten er to ting: etiketten er sproget, og nøglen er den, der
+	 * afgør om to noter hører sammen. Måneden som nøgle må bære året med sig, eller
+	 * ville august 2026 og august 2025 blive én bunke.
+	 */
+	function bucketOf(note) {
+		if (order === 'title') {
+			// Sorteret på navn er der ingen dato at gruppere på, så det bliver
+			// forbogstavet — og datoen kommer tilbage i rækken, hvor den så er den
+			// eneste, der siger noget.
+			const first = (note.title || '').trim().charAt(0).toUpperCase();
+			const letter = /\p{L}|\p{N}/u.test(first) ? first : '#';
+			return { key: 'a-' + letter, label: letter };
+		}
+
+		const at = new Date(groupDate(note));
+		if (Number.isNaN(at.getTime())) return { key: 'ukendt', label: t('notes.groupUnknown') };
+
+		const now = new Date();
+		const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const days = Math.floor((midnight - new Date(at.getFullYear(), at.getMonth(), at.getDate())) / 86400000);
+
+		if (days <= 0) return { key: 'i-dag', label: t('notes.groupToday') };
+		if (days === 1) return { key: 'i-gaar', label: t('notes.groupYesterday') };
+		if (days < 7) return { key: 'ugen', label: t('notes.groupWeek') };
+
+		const label = at.toLocaleDateString(tag(), { month: 'long', year: 'numeric' });
+		return { key: `m-${at.getFullYear()}-${at.getMonth()}`, label };
+	}
+
+	/**
+	 * Listen, delt op.
+	 *
+	 * En søgning grupperes ikke: serveren har sorteret efter hvor godt hver note
+	 * matchede, og at dele det op i måneder ville stille rækkefølgen om efter noget,
+	 * der ikke er svaret på det, der blev spurgt om.
+	 */
+	let groups = $derived.by(() => {
+		if (query.trim()) return [{ key: 'fundet', label: '', notes: ordered, plain: true }];
+
+		const out = [];
+		const favourites = ordered.filter((n) => n.pinned);
+		if (favourites.length) {
+			out.push({ key: 'favoritter', label: t('notes.groupFavourites'), notes: favourites, star: true });
+		}
+
+		let current = null;
+		for (const note of ordered) {
+			if (note.pinned) continue;
+			const bucket = bucketOf(note);
+			if (!current || current.key !== bucket.key) {
+				current = { key: bucket.key, label: bucket.label, notes: [] };
+				out.push(current);
+			}
+			current.notes.push(note);
+		}
+		return out;
+	});
+
+	/** Projektets egen farve, som i sidebjælken. */
+	const projectColour = (id) => colorVar(app.projects.find((p) => p.id === id)?.color);
 	let selected = $state(null);
 	// Hvilken række der er valgt. Se open(): editoren venter på hele noten.
 	let selectedId = $state(null);
@@ -258,6 +353,25 @@
 	 * which is exactly the thing the editor was built to stop showing. What is
 	 * wanted here is the sentence, not the notation.
 	 */
+	/**
+	 * Uddraget, uden titlen foran.
+	 *
+	 * Titlen *er* første linje — det er hele reglen for, hvad en note hedder — så et
+	 * uddrag, der begynder fra toppen, siger navnet én gang til. Det var svært at se,
+	 * så længe en dato stod imellem dem; nu står de oven på hinanden, og så står der
+	 * "Verdande" og under det "Verdande Forbindelse til connectoren".
+	 */
+	function preview(note) {
+		const body = note.preview ?? note.body ?? '';
+		const nl = body.indexOf('\n');
+		const rest = nl === -1 ? '' : body.slice(nl + 1);
+		// Kun hvis den første linje faktisk *er* titlen. Et uddrag fra serveren er
+		// afkortet, så en lang første linje kan være hele uddraget — og så er der
+		// ikke andet at vise end den.
+		const withoutTitle = plain(rest);
+		return withoutTitle || plain(body);
+	}
+
 	function plain(body) {
 		return (body ?? '')
 			// Et billede har ingen ord i sig. Uden det her stod der
@@ -515,69 +629,99 @@
 				{query ? t('notes.noneFound') : showArchive ? t('notes.emptyArchive') : t('notes.noneYet')}
 			</p>
 		{:else}
-			<ul>
-				{#each ordered as note (note.id)}
-					<li>
-						<div class="rowline">
-							<button
-								class="row"
-								class:on={selectedId === note.id}
-								class:picked={picked.has(note.id)}
-								onclick={(e) => rowClick(e, note)}
-								draggable="true"
-								ondragstart={(e) => onDragStart(e, note)}
-								ondragend={() => (dragging = null)}
-							>
-								<strong>{note.title || t('notes.untitled')}</strong>
-								<!-- Dato og begyndelse på samme linje, som Apple Noter gør det: to
-								     linjer pr. note frem for tre, og datoen er dét, man skanner
-								     efter, når man leder efter noget, man skrev i tirsdags. -->
-								<span class="under">
-									<!-- Datoen, der svarer til den rækkefølge, listen står i.
-									     Den viste altid `updated_at`, og for tolv hundrede
-									     importerede noter er det i aftes — så en note fra 2017
-									     stod som "i går", og den dato, man sorterede efter, var
-									     ingen steder at se. -->
-									<span class="when" title={stamp(note)}>{when(shownDate(note))}</span>
-									<span class="preview">{plain(note.preview ?? note.body)}</span>
-								</span>
-								{#if note.project_id}
-									<span class="filed">{projectName(note.project_id)}</span>
-								{/if}
-							</button>
-							<!-- De to knapper står oven på hinanden i en smal søjle.
-							     Ved siden af hinanden tog de toogfyrre pixels af en liste,
-							     der er tre hundrede bred — og de bruges sjældent, mens
-							     titlen og uddraget læses hele tiden. -->
-							<div class="rowactions">
-							<!-- Én note lagt væk, uden at markere den først. Markeringen er
-							     til flere; det her er til den ene, man står med — og i
-							     arkivet er det vejen tilbage. -->
-							<button
-								class="archive-one"
-								onclick={() => archiveOne(note)}
-								aria-label={note.archived_at ? t('notes.unarchive') : t('notes.archiveOne')}
-								title={note.archived_at ? t('notes.unarchive') : t('notes.archiveOne')}
-							>
-								<svg viewBox="0 0 24 24" aria-hidden="true">
-									<path d="M3 7h18v3H3zM5 10v9h14v-9M10 14h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
-								</svg>
-							</button>
-							<button
-								class="star"
-								class:on={note.pinned}
-								onclick={() => favourite(note)}
-								aria-pressed={note.pinned}
-								aria-label={note.pinned ? t('notes.unfavourite') : t('notes.favourite')}
-								title={note.pinned ? t('notes.unfavourite') : t('notes.favourite')}
-							>
-								{note.pinned ? '★' : '☆'}
-							</button>
+			{#each groups as group (group.key)}
+				<!-- Overskriften klæber, mens man ruller. Med tolv hundrede noter er det
+				     forskellen på at rulle og på at lede: man kan altid se, hvilken måned
+				     man er nede i. -->
+				{#if !group.plain}
+					<h3 class="group">
+						<!-- Ingen `aria-label`. Den ville erstatte knappens indhold som dens
+						     navn, og knappen *er* overskriften — så overskriften ville hedde
+						     "Fold I dag sammen" i stedet for "I dag". `aria-expanded` siger
+						     tilstanden, som den gør på gruppehovederne i sidebjælken. -->
+						<button onclick={() => toggleGroup(group.key)} aria-expanded={!folded.has(group.key)}>
+							{#if group.star}
+								<span class="mark favmark" aria-hidden="true">★</span>
+							{:else}
+								<span class="mark" class:closed={folded.has(group.key)} aria-hidden="true">▾</span>
+							{/if}
+							{group.label}
+							<span class="count">{group.notes.length}</span>
+						</button>
+					</h3>
+				{/if}
+				{#if !folded.has(group.key)}
+					<ul>
+						{#each group.notes as note (note.id)}
+						<li>
+							<div class="rowline">
+								<button
+									class="row"
+									class:on={selectedId === note.id}
+									class:picked={picked.has(note.id)}
+									onclick={(e) => rowClick(e, note)}
+									draggable="true"
+									ondragstart={(e) => onDragStart(e, note)}
+									ondragend={() => (dragging = null)}
+								>
+									<!-- Titel og projekt på linje ét, uddrag på linje to. Datoen står
+									     i gruppens overskrift og ikke her — undtagen når der er sorteret
+									     på navn, for så er der ingen overskrift, der siger den, og så er
+									     den det eneste tilbage, der gør. -->
+									<span class="head">
+										<strong>{note.title || t('notes.untitled')}</strong>
+										{#if order === 'title'}
+											<span class="when" title={stamp(note)}>{when(shownDate(note))}</span>
+										{/if}
+										{#if note.project_id}
+											<!-- Projektets egen farve, den samme som prikken i sidebjælken.
+											     Mærkaten sagde det samme som alle de andre i en grå, der var
+											     lysere end uddraget — og projektet er dét, man skanner efter,
+											     når man leder i tolv hundrede noter. Nu kan Hjem kendes fra
+											     Claude uden at læse ordet. -->
+											<span class="filed" style="--project: {projectColour(note.project_id)}">
+												<span class="dot" aria-hidden="true"></span>
+												{projectName(note.project_id)}
+											</span>
+										{/if}
+									</span>
+									<span class="preview">{preview(note)}</span>
+								</button>
+								<!-- De to knapper står oven på hinanden i en smal søjle.
+								     Ved siden af hinanden tog de toogfyrre pixels af en liste,
+								     der er tre hundrede bred — og de bruges sjældent, mens
+								     titlen og uddraget læses hele tiden. -->
+								<div class="rowactions">
+								<!-- Én note lagt væk, uden at markere den først. Markeringen er
+								     til flere; det her er til den ene, man står med — og i
+								     arkivet er det vejen tilbage. -->
+								<button
+									class="archive-one"
+									onclick={() => archiveOne(note)}
+									aria-label={note.archived_at ? t('notes.unarchive') : t('notes.archiveOne')}
+									title={note.archived_at ? t('notes.unarchive') : t('notes.archiveOne')}
+								>
+									<svg viewBox="0 0 24 24" aria-hidden="true">
+										<path d="M3 7h18v3H3zM5 10v9h14v-9M10 14h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+									</svg>
+								</button>
+								<button
+									class="star"
+									class:on={note.pinned}
+									onclick={() => favourite(note)}
+									aria-pressed={note.pinned}
+									aria-label={note.pinned ? t('notes.unfavourite') : t('notes.favourite')}
+									title={note.pinned ? t('notes.unfavourite') : t('notes.favourite')}
+								>
+									{note.pinned ? '★' : '☆'}
+								</button>
+								</div>
 							</div>
-						</div>
-					</li>
-				{/each}
-			</ul>
+						</li>
+						{/each}
+					</ul>
+				{/if}
+			{/each}
 		{/if}
 	</aside>
 
@@ -925,19 +1069,99 @@
 		color: var(--accent);
 	}
 
+	/* --- grupperne ----------------------------------------------------------
+	 *
+	 * Overskriften klæber. Med tolv hundrede noter er det forskellen på at rulle og
+	 * på at lede: man kan altid se, hvilken måned man er nede i.
+	 *
+	 * Baggrunden er ikke gennemsigtig. En klæbende overskrift uden en er en
+	 * overskrift med rækkerne kørende igennem sig. */
+	h3.group {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		margin: 0;
+		background: var(--ground);
+		border-bottom: 1px solid var(--line);
+	}
+
+	h3.group button {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		width: 100%;
+		padding: var(--s2) var(--s2);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		letter-spacing: 0.07em;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+	}
+
+	h3.group button:hover {
+		color: var(--ink-muted);
+	}
+
+	h3.group .mark {
+		flex: none;
+		width: 0.75em;
+		font-size: 0.85em;
+		line-height: 1;
+		color: var(--ink-faint);
+		transition: transform var(--fast) var(--ease);
+	}
+
+	h3.group .mark.closed {
+		transform: rotate(-90deg);
+	}
+
+	/* Sit eget navn og ikke `.star`. Rækkens favoritknap hedder også det og er
+	   gennemsigtig, indtil man peger på rækken — så overskriftens stjerne arvede
+	   den gennemsigtighed og stod der aldrig. To ting, der ligner hinanden, er
+	   ikke det samme, og et delt klassenavn er en påstand om, at de er. */
+	h3.group .favmark {
+		color: var(--accent);
+		font-size: 1em;
+	}
+
+	h3.group .count {
+		margin-left: auto;
+		font-weight: 500;
+		letter-spacing: 0;
+	}
+
+	/* Stregen mellem rækkerne er væk.
+	 *
+	 * Grupperne giver strukturen nu, og en streg pr. note er tolv hundrede streger.
+	 * Luften kommer af, at rækken siger to ting i stedet for tre — ikke af at listen
+	 * bliver længere. */
 	.row {
 		display: block;
 		flex: 1;
 		min-width: 0;
 		text-align: left;
-		padding: var(--s2) var(--s2) var(--s3);
+		/* Plads til højre for de to knapper, der ligger oven på rækken. Uden den
+		   løber uddraget ind under stjernen — usynligt, indtil man peger på rækken
+		   og knappen dukker op oven i ordene. */
+		padding: var(--s2) 26px calc(var(--s2) + 2px) var(--s2);
 		border-radius: var(--radius);
 		color: var(--ink-muted);
-		border-bottom: 1px solid var(--line);
 	}
 
-	li:last-child .row {
-		border-bottom: 0;
+	/* Titel, dato og projekt på én linje. Projektet ude til højre, hvor øjet kan
+	   løbe ned ad søjlen uden at læse resten. */
+	.head {
+		display: flex;
+		align-items: baseline;
+		gap: var(--s2);
+		min-width: 0;
+	}
+
+	.head strong {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.row:hover {
@@ -964,33 +1188,56 @@
 
 	/* Dato og begyndelse på samme linje, som Apple Noter gør det. To linjer pr.
 	   note frem for tre, og datoen først, fordi det er den, man skanner efter. */
-	.under {
-		display: flex;
-		gap: var(--s2);
-		min-width: 0;
-		font-size: var(--text-xs);
-		color: var(--ink-faint);
-	}
 
 	.when {
 		flex: none;
 		color: var(--ink-muted);
 	}
 
+	/* `display: block`, og det er ikke pynt.
+	 *
+	 * Uddraget lå før inde i en flex-boks, der ejede afkortningen. Da datoen flyttede
+	 * op i gruppens overskrift, forsvandt den boks — og et inline-element klippes
+	 * ikke af `overflow: hidden`, så den sidste sætning løb videre ind under
+	 * favoritstjernen. Reglerne skal stå på det element, der faktisk skal klippes. */
 	.preview {
+		display: block;
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
-	/* Hvor den ligger, med en mappe foran — Apple Noters egen måde at sige det på,
-	   og den eneste linje her, der ikke er notens eget indhold. */
+	/* Projektets egen farve, den samme som prikken i sidebjælken.
+	 *
+	 * Mærkaten sagde det samme som alle de andre i en grå, der var lysere end
+	 * uddraget — og projektet er dét, man skanner efter, når man leder i tolv
+	 * hundrede noter. En prik i projektets farve og en tekst, der ikke er lysere end
+	 * det, den står ved siden af: Hjem kan kendes fra Claude uden at ordet læses.
+	 *
+	 * Prikken bærer farven, ikke teksten. Fem projekters farver som skriftfarve på
+	 * en lys flade er fem forskellige grader af læsbarhed, og den lyseste af dem er
+	 * ikke læsbar. */
 	.filed {
-		display: block;
-		margin-top: 2px;
+		display: flex;
+		align-items: center;
+		gap: 0.375em;
+		flex: none;
+		margin-left: auto;
+		max-width: 45%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 		font-size: var(--text-xs);
-		color: var(--ink-faint);
+		color: var(--ink-muted);
+	}
+
+	.filed .dot {
+		width: 6px;
+		height: 6px;
+		flex: none;
+		border-radius: var(--radius-full);
+		background: var(--project, var(--line-strong));
 	}
 
 	.filed::before {
