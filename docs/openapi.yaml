@@ -2079,6 +2079,48 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Validation" }
 
+  /api/v1/calendar/subscriptions:
+    post:
+      tags: [calendar]
+      summary: Subscribe to a calendar you only have an address to.
+      description: |
+        An ICS or `webcal://` address. Several per person, unlike the Google
+        connection, which is one — the address is the identity here, the way the
+        token is for OAuth.
+
+        The address is fetched once before it is stored: an address that cannot be
+        read is a typo far more often than a server that happens to be down, and
+        saying so while somebody is still looking at the field is worth two
+        seconds. `webcal://` is rewritten to `https://`, and the destination is
+        checked against the private-network wall both when it is written down and
+        again on the resolved address every time it is fetched.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, description: "https:// or webcal://" }
+                name:
+                  type: string
+                  description: Optional. The calendar's own name is used when this is empty.
+      responses:
+        "201":
+          description: Subscribed, and fetched once.
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /api/v1/calendar/subscriptions/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [calendar]
+      summary: Stop subscribing. The cached events go with it.
+      responses:
+        "204": { description: Gone. }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/v1/push/test:
     post:
       tags: [notifications]

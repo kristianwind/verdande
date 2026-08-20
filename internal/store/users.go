@@ -16,6 +16,11 @@ var (
 	ErrNotFound      = errors.New("store: not found")
 	ErrEmailInUse    = errors.New("store: that email address already has an account")
 	ErrInviteInvalid = errors.New("store: invite is not valid")
+	// ErrDuplicate er en unik nøgle, der blev brudt, oversat til noget en handler
+	// kan spørge om. Drivereren udstiller ikke sin egen fejltype brugbart, og en
+	// handler, der matcher på tekst, er en handler, der går i stykker den dag
+	// driveren omformulerer sig.
+	ErrDuplicate = errors.New("store: already exists")
 )
 
 type User struct {

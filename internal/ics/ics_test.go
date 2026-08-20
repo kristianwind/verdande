@@ -220,3 +220,101 @@ func TestFilename(t *testing.T) {
 		}
 	}
 }
+
+// En abonnementskalender, som den ser ud fra nogen andens software.
+//
+// Alle fire former, der findes i naturen, i én fil: en heldagsbegivenhed, en med
+// et UTC-stempel, en med TZID og lokal tid, og en over flere dage. Plus en, der
+// mangler det, et gitter ikke kan undvære, og en foldet linje — begge dele
+// kommer, og de kommer uden varsel.
+func TestParseCalendarReadsTheFourShapesThatExist(t *testing.T) {
+	body := "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"X-WR-CALNAME:Helligdage\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:heldag@example.dk\r\n" +
+		"DTSTART;VALUE=DATE:20260824\r\n" +
+		"DTEND;VALUE=DATE:20260825\r\n" +
+		"SUMMARY:Grundlovsdag\r\n" +
+		"END:VEVENT\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:utc@example.dk\r\n" +
+		"DTSTART:20260825T120000Z\r\n" +
+		"DTEND:20260825T133000Z\r\n" +
+		`SUMMARY:Møde med en meget lang titel\, der er foldet over to lin` + "\r\n" + " jer\r\n" +
+		"END:VEVENT\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:lokal@example.dk\r\n" +
+		"DTSTART;TZID=Europe/Copenhagen:20260826T090000\r\n" +
+		"DTEND;TZID=Europe/Copenhagen:20260826T100000\r\n" +
+		"SUMMARY:Tandlæge\r\n" +
+		"END:VEVENT\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:flerdage@example.dk\r\n" +
+		"DTSTART;VALUE=DATE:20260901\r\n" +
+		"DTEND;VALUE=DATE:20260904\r\n" +
+		"SUMMARY:Ferie\r\n" +
+		"END:VEVENT\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"SUMMARY:Uden uid og uden start\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+
+	cal := ParseCalendar(body)
+
+	if cal.Name != "Helligdage" {
+		t.Errorf("kalenderens navn = %q", cal.Name)
+	}
+	if len(cal.Events) != 4 {
+		t.Fatalf("%d begivenheder, want 4 — den femte mangler både uid og start", len(cal.Events))
+	}
+
+	// Heldag. DTEND er eksklusiv i filen: en endagsbegivenhed slutter næste morgen.
+	// Gemmes inklusivt, ellers dækker hver eneste heldagsbegivenhed én celle for
+	// meget — og en helligdag æder dagen efter sig.
+	one := cal.Events[0]
+	if !one.AllDay || one.StartDay != "2026-08-24" || one.EndDay != "2026-08-24" {
+		t.Errorf("heldag: %+v", one)
+	}
+	if one.StartsAt != "" {
+		t.Errorf("en heldagsbegivenhed fik et klokkeslæt: %q", one.StartsAt)
+	}
+
+	// UTC, og den foldede linje samlet igen.
+	two := cal.Events[1]
+	if two.StartsAt != "2026-08-25T12:00:00Z" || two.EndsAt != "2026-08-25T13:30:00Z" {
+		t.Errorf("utc: %+v", two)
+	}
+	if two.Summary != "Møde med en meget lang titel, der er foldet over to linjer" {
+		t.Errorf("den foldede linje blev ikke samlet: %q", two.Summary)
+	}
+
+	// Lokal tid med TZID: klokkeslættet står, som filen skrev det. At flytte det
+	// her ville spørge *denne* proces, hvilken tidszone den er i.
+	three := cal.Events[2]
+	if three.StartsAt != "2026-08-26T09:00:00" {
+		t.Errorf("lokal: %q", three.StartsAt)
+	}
+
+	// Flere dage, begge ender inklusive.
+	four := cal.Events[3]
+	if four.StartDay != "2026-09-01" || four.EndDay != "2026-09-03" {
+		t.Errorf("ferie: %s til %s", four.StartDay, four.EndDay)
+	}
+}
+
+// En fil, der ikke er en kalender, må ikke koste noget. Den hentes på et skema
+// uden nogen, der kigger med, og en fejl her ville være en sweep, der stopper.
+func TestParseCalendarSurvivesRubbish(t *testing.T) {
+	for _, body := range []string{
+		"",
+		"ikke en kalender overhovedet",
+		"BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n",
+		"BEGIN:VEVENT\r\nDTSTART:x\r\nEND:VEVENT\r\n",
+		"BEGIN:VEVENT\r\nUID:a\r\nDTSTART:2026\r\nEND:VEVENT\r\n",
+	} {
+		if got := ParseCalendar(body); len(got.Events) != 0 {
+			t.Errorf("%q gav %d begivenheder", body, len(got.Events))
+		}
+	}
+}

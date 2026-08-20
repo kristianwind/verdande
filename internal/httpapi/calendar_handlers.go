@@ -3,10 +3,17 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/kristianwind/verdande/internal/gcal"
+	"github.com/kristianwind/verdande/internal/ics"
+	"github.com/kristianwind/verdande/internal/safedial"
 	"github.com/kristianwind/verdande/internal/store"
 )
 
@@ -205,9 +212,21 @@ type calendarStatusJSON struct {
 	// ReadOnly is stated rather than assumed. Nothing writes a Google calendar, and
 	// an interface that quietly looks editable is one somebody will try to edit.
 	ReadOnly bool `json:"read_only"`
+
+	// Abonnementer står ved siden af Google-kontoen og ikke inde i den: man kan
+	// have det ene uden det andet, og det er hele pointen med dem — en privat
+	// konto, der ikke kan bruge en Internal OAuth-klient, kan abonnere.
+	Subscriptions []store.CalendarAccount `json:"subscriptions"`
 }
 
 func (s *Server) handleGetCalendar(w http.ResponseWriter, r *http.Request) {
+	// Læst først, så de også kommer med, når der ingen Google-konto er.
+	subscriptions, err := s.db.Subscriptions(r.Context(), userFrom(r.Context()).ID)
+	if err != nil {
+		s.internal(w, r, "subscriptions", err)
+		return
+	}
+
 	user := userFrom(r.Context())
 
 	out := calendarStatusJSON{
@@ -223,6 +242,7 @@ func (s *Server) handleGetCalendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if account == nil || account.RefreshToken == "" {
+		out.Subscriptions = subscriptions
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
@@ -253,6 +273,7 @@ func (s *Server) handleGetCalendar(w http.ResponseWriter, r *http.Request) {
 	if calendars != nil {
 		out.Calendars = calendars
 	}
+	out.Subscriptions = subscriptions
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -383,12 +404,23 @@ func (s *Server) handleCalendarSyncNow(w http.ResponseWriter, r *http.Request) {
 // Returns how many events were written. Also used by the background job, which is
 // why it takes a context and a user rather than a request.
 func (s *Server) SyncCalendars(ctx context.Context, user *store.User) (int, error) {
+	// Abonnementer først, og deres fejl tæller ikke mod Google.
+	//
+	// De to har intet med hinanden at gøre ud over at ende samme sted: et
+	// abonnement er en adresse, der hentes, hvor Google er et token, der udløber.
+	// En kalender, hvis vært er nede, må ikke få det til at se ud som om
+	// Google-forbindelsen er væk — og omvendt.
+	written, err := s.syncSubscriptions(ctx, user)
+	if err != nil {
+		s.log.Warn("calendar subscriptions", "err", err, "user", user.ID)
+	}
+
 	account, err := s.db.CalendarAccountFor(ctx, user.ID, calendarProviderName)
 	if err != nil {
-		return 0, err
+		return written, err
 	}
 	if account == nil || account.RefreshToken == "" {
-		return 0, nil // not connected; nothing to do and nothing to complain about
+		return written, nil // not connected; nothing to do and nothing to complain about
 	}
 
 	// The same guard the mailboxes have, for the same reason: a press of "fetch
@@ -414,7 +446,6 @@ func (s *Server) SyncCalendars(ctx context.Context, user *store.User) (int, erro
 	}
 
 	from, to := calendarWindow(time.Now())
-	written := 0
 	for _, calendar := range calendars {
 		if !calendar.Shown {
 			continue
@@ -545,4 +576,233 @@ func calendarWindow(now time.Time) (string, string) {
 func validDay(s string) bool {
 	_, err := time.Parse(calendarDateLayout, s)
 	return err == nil
+}
+
+// --- abonnementer -----------------------------------------------------------------
+
+// maxICSBytes bounds one fetch. A published calendar of a decade of holidays is a
+// few hundred kilobytes; ten megabytes is not a calendar, and reading it into
+// memory on a schedule with nobody watching is how a homelab instance falls over
+// at three in the morning.
+const maxICSBytes = 10 << 20
+
+// normaliseCalendarURL turns what somebody pastes into something that can be
+// fetched.
+//
+// `webcal://` is not a scheme anything speaks. It is a convention — the same URL
+// over https, with a scheme that makes a desktop hand it to the calendar app
+// instead of the browser — and every publisher writes their links that way. A
+// person pasting one has pasted the right address; refusing it would be refusing
+// them on a technicality.
+func normaliseCalendarURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if after, ok := strings.CutPrefix(raw, "webcal://"); ok {
+		raw = "https://" + after
+	}
+	if !strings.HasPrefix(raw, "https://") && !strings.HasPrefix(raw, "http://") {
+		return "", errors.New("must be an https:// or webcal:// address")
+	}
+	// The same wall the AI provider's base_url goes through, and for the same
+	// reason: this is an address a user typed, and the server is about to fetch it
+	// on a schedule of their choosing.
+	if reason := safedial.CheckURL(raw); reason != "" {
+		return "", errors.New(reason)
+	}
+	return raw, nil
+}
+
+// icsClient is the client a subscribed calendar is fetched with.
+//
+// safedial, checked on the *resolved* address at connect time and on every
+// redirect hop — because a name that passed the check when it was pasted can
+// answer 127.0.0.1 when the sweep runs at three in the morning.
+//
+// The field exists so a test can put an ordinary client here: httptest listens on
+// loopback, which is exactly what this refuses, so a test of the *format* cannot
+// otherwise reach its own server. It is never set outside a test, and the wall it
+// bypasses is tested where it belongs — `normaliseCalendarURL` refuses a private
+// address where it is written down, and `internal/push` proves the connect-time
+// half.
+func (s *Server) icsClient() *http.Client {
+	if s.icsFetch != nil {
+		return s.icsFetch
+	}
+	return safedial.Client(30 * time.Second)
+}
+
+// fetchICS reads a subscribed calendar.
+//
+// safedial, not a plain client — checked on the resolved address at connect time
+// and on every redirect hop, because a name that passed the check when it was
+// pasted can answer 127.0.0.1 when the sweep runs at three in the morning.
+func (s *Server) fetchICS(ctx context.Context, url string) (ics.Subscribed, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return ics.Subscribed{}, err
+	}
+	req.Header.Set("Accept", "text/calendar, text/plain;q=0.9, */*;q=0.5")
+	req.Header.Set("User-Agent", "verdande/"+Version)
+
+	resp, err := s.icsClient().Do(req)
+	if err != nil {
+		return ics.Subscribed{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return ics.Subscribed{}, fmt.Errorf("%s said %s", resp.Request.URL.Host, resp.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxICSBytes+1))
+	if err != nil {
+		return ics.Subscribed{}, err
+	}
+	if len(body) > maxICSBytes {
+		return ics.Subscribed{}, errors.New("that calendar is too large")
+	}
+	return ics.ParseCalendar(string(body)), nil
+}
+
+// syncSubscriptions refreshes every calendar this person subscribes to by address.
+//
+// One failing address does not stop the others. A subscription is somebody else's
+// server, and the ordinary state of somebody else's server is that it is fine
+// until one morning it is not — a holiday feed that 404s must not take the
+// football club's fixtures down with it.
+func (s *Server) syncSubscriptions(ctx context.Context, user *store.User) (int, error) {
+	subs, err := s.db.Subscriptions(ctx, user.ID)
+	if err != nil || len(subs) == 0 {
+		return 0, err
+	}
+
+	from, to := calendarWindow(time.Now())
+	written := 0
+	var failures []string
+
+	for _, sub := range subs {
+		if ctx.Err() != nil {
+			return written, ctx.Err()
+		}
+		unlock := s.lockSync("calendar:" + sub.ID)
+
+		calendarID, err := s.db.SubscribedCalendarID(ctx, sub.ID)
+		if err != nil {
+			unlock()
+			failures = append(failures, sub.URL)
+			continue
+		}
+
+		cal, err := s.fetchICS(ctx, sub.URL)
+		if err != nil {
+			unlock()
+			s.log.Warn("subscribed calendar", "err", err, "url", sub.URL, "user", user.ID)
+			failures = append(failures, sub.URL)
+			continue
+		}
+
+		// The name the file calls itself, once. A subscription is added under its
+		// address because that is all there is to go on before it has been fetched.
+		if err := s.db.RenameSubscribedCalendar(ctx, sub.ID, cal.Name); err != nil {
+			s.log.Warn("name subscribed calendar", "err", err)
+		}
+
+		rows := make([]store.CalendarEvent, 0, len(cal.Events))
+		for _, e := range cal.Events {
+			// Outside the window is not stored. The grid asks about a window, the
+			// sweep replaces a window, and a decade of holidays in one file would
+			// otherwise be a decade of rows rewritten every fifteen minutes.
+			if e.EndDay < from || e.StartDay > to {
+				continue
+			}
+			rows = append(rows, store.CalendarEvent{
+				RemoteID: e.UID, Summary: e.Summary, Location: e.Location, URL: e.URL,
+				StartsAt: e.StartsAt, EndsAt: e.EndsAt,
+				StartDay: e.StartDay, EndDay: e.EndDay, AllDay: e.AllDay,
+			})
+		}
+		if err := s.db.ReplaceCalendarEvents(ctx, calendarID, from, to, rows); err != nil {
+			unlock()
+			return written, err
+		}
+		if err := s.db.MarkCalendarSynced(ctx, sub.ID, time.Now()); err != nil {
+			s.log.Warn("mark subscription synced", "err", err)
+		}
+		written += len(rows)
+		unlock()
+	}
+
+	if len(failures) == len(subs) {
+		return written, fmt.Errorf("none of the %d subscribed calendars could be read", len(subs))
+	}
+	return written, nil
+}
+
+// handleSubscribeCalendar adds a calendar somebody only has an address to.
+//
+// Fetched once, here, before it is stored. An address that cannot be read is a
+// typo far more often than it is a server that happens to be down, and telling
+// somebody now — while they are looking at the field they just pasted into — is
+// worth the two seconds. A subscription that silently never fills is the same
+// silence the notifications had.
+func (s *Server) handleSubscribeCalendar(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		URL  string `json:"url"`
+		Name string `json:"name"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+
+	url, err := normaliseCalendarURL(req.URL)
+	if err != nil {
+		writeFieldErrors(w, map[string]string{"url": err.Error()})
+		return
+	}
+
+	user := userFrom(r.Context())
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+
+	cal, err := s.fetchICS(ctx, url)
+	if err != nil {
+		s.log.Warn("subscribe calendar", "err", err, "user", user.ID)
+		writeFieldErrors(w, map[string]string{"url": "that address could not be read"})
+		return
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = strings.TrimSpace(cal.Name)
+	}
+	if name == "" {
+		name = url
+	}
+
+	account, err := s.db.SubscribeCalendar(r.Context(), user.ID, url, name)
+	if err != nil {
+		// The unique index is the one refusal worth naming: subscribing twice to
+		// the same address is the same calendar fetched twice, with no way to say
+		// which one counts.
+		if errors.Is(err, store.ErrDuplicate) {
+			writeFieldErrors(w, map[string]string{"url": "that calendar is already subscribed"})
+			return
+		}
+		s.storeError(w, r, "subscribe calendar", err)
+		return
+	}
+
+	// The events it already fetched, rather than making the person wait fifteen
+	// minutes for the sweep to prove it worked.
+	if _, err := s.syncSubscriptions(r.Context(), user); err != nil {
+		s.log.Warn("first subscription sync", "err", err)
+	}
+	writeJSON(w, http.StatusCreated, account)
+}
+
+func (s *Server) handleUnsubscribeCalendar(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+	if err := s.db.DeleteCalendarAccount(r.Context(), user.ID, chi.URLParam(r, "id")); err != nil {
+		s.storeError(w, r, "unsubscribe calendar", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

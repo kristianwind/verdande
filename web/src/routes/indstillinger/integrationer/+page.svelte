@@ -191,6 +191,41 @@
 		}
 	}
 
+	// --- abonnementer ---------------------------------------------------------
+	let subscriptionURL = $state('');
+	let subscribing = $state(false);
+	let subscriptionError = $state('');
+
+	async function subscribe(event) {
+		event.preventDefault();
+		const url = subscriptionURL.trim();
+		if (!url) return;
+		subscribing = true;
+		subscriptionError = '';
+		try {
+			await api.subscribeCalendar(url, '');
+			subscriptionURL = '';
+			calendar = await api.getCalendar();
+		} catch (e) {
+			// Feltets egen fejl frem for en toast: den hører til det felt, der lige
+			// blev skrevet i, og en toast, der forsvinder, er en fejlmeddelelse, man
+			// skal huske.
+			subscriptionError = e.fields?.url ?? humanMessage(e);
+		} finally {
+			subscribing = false;
+		}
+	}
+
+	async function unsubscribe(sub) {
+		if (!confirm(t('int.unsubscribeQuestion', { name: sub.account || sub.url }))) return;
+		try {
+			await api.unsubscribeCalendar(sub.id);
+			calendar = await api.getCalendar();
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
 	async function saveCalendars(event) {
 		event.preventDefault();
 		savingCalendars = true;
@@ -547,6 +582,48 @@
 				<button class="danger" onclick={disconnectCalendar}>{t('int.disconnect')}</button>
 			</div>
 		</form>
+	{/if}
+
+	<!-- Abonnementer står uden for Google-forgreningen ovenfor, og det er hele
+	     pointen: en konto, der ikke kan bruge instansens OAuth-klient — en privat
+	     Gmail mod en Internal-registrering — kan stadig abonnere på en adresse. -->
+	{#if calendar !== null}
+		<div class="subs">
+			<h3>{t('int.subscriptions')}</h3>
+			<p class="hint">{t('int.subscriptionsHint')}</p>
+
+			{#if calendar.subscriptions?.length}
+				<ul class="subs-list">
+					{#each calendar.subscriptions as sub (sub.id)}
+						<li>
+							<span class="name">{sub.account || sub.url}</span>
+							<span class="url mono">{sub.url}</span>
+							<button class="danger" onclick={() => unsubscribe(sub)}>
+								{t('int.unsubscribe')}
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+
+			<form onsubmit={subscribe}>
+				<div class="field">
+					<label for="calendar-url">{t('int.subscriptionURL')}</label>
+					<input
+						id="calendar-url"
+						class="mono"
+						bind:value={subscriptionURL}
+						placeholder="https://… eller webcal://…"
+					/>
+					{#if subscriptionError}<p class="error">{subscriptionError}</p>{/if}
+				</div>
+				<div class="row">
+					<button class="primary" type="submit" disabled={subscribing}>
+						{subscribing ? t('int.subscribing') : t('int.subscribe')}
+					</button>
+				</div>
+			</form>
+		</div>
 	{/if}
 </section>
 

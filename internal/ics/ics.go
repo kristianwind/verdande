@@ -367,3 +367,180 @@ func unescape(s string) string {
 	r := strings.NewReplacer(`\n`, "\n", `\N`, "\n", `\,`, ",", `\;`, ";", `\\`, `\`)
 	return r.Replace(s)
 }
+
+// --- reading a whole calendar ------------------------------------------------------
+
+// Event is one VEVENT, reduced to what a grid needs — the same shape the Google
+// side already stores, so the two arrive in the database identically.
+//
+// Days at both ends, inclusive, because that is the question a grid asks: which
+// cells does this cover. StartsAt keeps the stamp as the file wrote it, offset and
+// all: it is what the chip shows, and reparsing it here would ask *this process*
+// what time zone it is in.
+type Event struct {
+	UID      string
+	Summary  string
+	Location string
+	URL      string
+	AllDay   bool
+	StartsAt string // RFC3339, empty for an all-day event
+	EndsAt   string
+	StartDay string // YYYY-MM-DD
+	EndDay   string
+}
+
+// Subscribed is what an .ics file somebody subscribed to says.
+//
+// Its own name rather than `Calendar`: that one is the *writing* side — what
+// verdande publishes as a feed — and the two are different documents that happen
+// to share a format. One name for both would be a promise that a round trip
+// through this package is lossless, which it is not and does not need to be.
+type Subscribed struct {
+	Name     string
+	TimeZone string
+	Events   []Event
+}
+
+// ParseCalendar reads an .ics file that somebody subscribed to.
+//
+// Forgiving in the same way ParseVTODO is, and for a sharper reason: this file was
+// written by somebody else's software and is fetched on a schedule with nobody
+// watching. One property this does not understand must not cost the other four
+// hundred events in the file — so anything unrecognised is skipped, and an event
+// without the two things a grid cannot do without (a uid and a start) is dropped
+// rather than stored half-made.
+//
+// # What it deliberately does not do
+//
+// **Recurrence is not expanded.** RRULE in a subscribed calendar means "and then
+// every Tuesday until 2031", and expanding it here would mean writing a year of
+// rows per rule and re-deciding what happens when the file changes. A recurring
+// event is stored as its first occurrence, which is honest — it is what the file
+// says on its own terms — and the day it matters, the answer is an expander shared
+// with `internal/recurrence`, not a second one written here.
+//
+// **Time zones are not resolved.** A DTSTART with TZID=Europe/Copenhagen is stored
+// with the offset the file carries or, when it carries none, as a local stamp. The
+// alternative is shipping a tz database and deciding what to do when the file
+// names a zone this build has never heard of. The day that matters, it is one
+// place.
+func ParseCalendar(body string) Subscribed {
+	var cal Subscribed
+	var current *Event
+	depth := 0
+
+	for _, line := range unfold(body) {
+		name, params, value := splitLine(line)
+		upper := strings.ToUpper(name)
+
+		switch upper {
+		case "BEGIN":
+			if strings.EqualFold(value, "VEVENT") {
+				current = &Event{}
+			}
+			depth++
+			continue
+		case "END":
+			depth--
+			if strings.EqualFold(value, "VEVENT") && current != nil {
+				if current.UID != "" && current.StartDay != "" {
+					cal.Events = append(cal.Events, *current)
+				}
+				current = nil
+			}
+			continue
+		}
+
+		if current == nil {
+			// Calendar-level properties. X-WR-CALNAME is what every publisher uses
+			// to say what the calendar is called; there is no standard property for
+			// it, which is why a non-standard one is read here.
+			switch upper {
+			case "X-WR-CALNAME":
+				cal.Name = unescape(value)
+			case "X-WR-TIMEZONE":
+				cal.TimeZone = value
+			}
+			continue
+		}
+
+		switch upper {
+		case "UID":
+			current.UID = value
+		case "SUMMARY":
+			current.Summary = unescape(value)
+		case "LOCATION":
+			current.Location = unescape(value)
+		case "URL":
+			current.URL = value
+		case "DTSTART":
+			current.AllDay = isDateOnly(params, value)
+			current.StartDay, current.StartsAt = readStamp(params, value)
+		case "DTEND":
+			day, at := readStamp(params, value)
+			current.EndsAt = at
+			// DTEND is exclusive for an all-day event: a one-day event ends on the
+			// next morning. Stored inclusive, or every all-day event would cover one
+			// cell too many — and a public holiday would eat the day after it.
+			if current.AllDay {
+				day = shiftDay(day, -1)
+			}
+			current.EndDay = day
+		}
+	}
+
+	// A missing DTEND means the event ends when it starts. Filled after the loop
+	// rather than inside it, because DTEND may arrive before DTSTART in a file
+	// nobody promised would be in order.
+	for i := range cal.Events {
+		if cal.Events[i].EndDay == "" || cal.Events[i].EndDay < cal.Events[i].StartDay {
+			cal.Events[i].EndDay = cal.Events[i].StartDay
+		}
+	}
+	return cal
+}
+
+// isDateOnly reports whether a stamp is a day rather than a moment. VALUE=DATE
+// says so outright; an eight-character value says it by being one.
+func isDateOnly(params, value string) bool {
+	if strings.Contains(strings.ToUpper(params), "VALUE=DATE") {
+		return true
+	}
+	return len(value) == 8 && !strings.ContainsAny(value, "T")
+}
+
+// readStamp returns the day and, for a timed event, the moment as RFC3339.
+//
+// Three shapes exist in the wild: 20260821 (a day), 20260821T140000Z (UTC), and
+// 20260821T140000 with a TZID parameter (a local time in a named zone). The third
+// is kept as written, without a zone: resolving it needs a tz database, and a
+// stamp that says 14:00 is closer to the truth than one this process has moved.
+func readStamp(params, value string) (day, at string) {
+	value = strings.TrimSpace(value)
+	if len(value) < 8 {
+		return "", ""
+	}
+	day = value[0:4] + "-" + value[4:6] + "-" + value[6:8]
+	if len(value) < 15 || value[8] != 'T' {
+		return day, ""
+	}
+
+	clock := value[9:11] + ":" + value[11:13] + ":" + value[13:15]
+	switch {
+	case strings.HasSuffix(value, "Z"):
+		return day, day + "T" + clock + "Z"
+	default:
+		// A local stamp, with or without a TZID. Written without an offset, which
+		// is what the interface already treats as "the clock the file said".
+		return day, day + "T" + clock
+	}
+}
+
+// shiftDay moves a YYYY-MM-DD by whole days.
+func shiftDay(day string, by int) string {
+	t, err := time.Parse("2006-01-02", day)
+	if err != nil {
+		return day
+	}
+	return t.AddDate(0, 0, by).Format("2006-01-02")
+}

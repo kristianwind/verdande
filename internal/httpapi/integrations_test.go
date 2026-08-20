@@ -2,12 +2,15 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kristianwind/verdande/internal/config"
 	"github.com/kristianwind/verdande/internal/store"
@@ -1527,5 +1530,115 @@ func TestATestNotificationSaysWhatHappenedToIt(t *testing.T) {
 	// enheden, og den hører hverken i et svar, en log eller et skærmbillede.
 	if strings.Contains(fmt.Sprint(first), "/abc") {
 		t.Errorf("endepunktet lækkede med ud: %v", first)
+	}
+}
+
+// Et abonnement på en kalender, man kun har en adresse til.
+//
+// Bedt om som "abonnering af flere kalendere (ics og webcal?)". Google-vejen er
+// OAuth og én konto pr. person; det her er en adresse, og man har flere. Det er
+// også den eneste vej for en privat konto, som en Internal-registrering afviser
+// med `org_internal`.
+//
+// Prøven går uden om handleren og ind i det, den kalder. Grunden er væggen:
+// `httptest` lytter på loopback, og safedial nægter — både når adressen skrives
+// ned og igen når den hentes. Det er rigtigt, og det skal ikke kunne slås fra fra
+// en prøve. Så adressereglerne prøves for sig i TestWebcalIsRewrittenToHTTPS, og
+// her prøves resten af vejen: hentning, format, navn, gitteret og afmeldingen.
+func TestSubscribingToACalendarByAddress(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	day := time.Now().AddDate(0, 0, 2).Format("20060102")
+	feedBody := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nX-WR-CALNAME:Helligdage\r\n" +
+		"BEGIN:VEVENT\r\nUID:en@example.dk\r\n" +
+		"DTSTART;VALUE=DATE:" + day + "\r\nDTEND;VALUE=DATE:" + day + "\r\n" +
+		"SUMMARY:Grundlovsdag\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+
+	var hits int
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "text/calendar")
+		w.Write([]byte(feedBody))
+	}))
+	defer feed.Close()
+	ts.api.icsFetch = &http.Client{Timeout: 10 * time.Second}
+
+	user, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Tilføjet under sin adresse, som er alt der er at gå efter, før den er hentet.
+	if _, err := ts.db.SubscribeCalendar(t.Context(), user.ID, feed.URL, feed.URL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ts.api.syncSubscriptions(t.Context(), user); err != nil {
+		t.Fatal(err)
+	}
+	if hits == 0 {
+		t.Fatal("adressen blev aldrig hentet")
+	}
+
+	// Navnet kommer fra filen. X-WR-CALNAME er det, alle udgivere bruger; der
+	// findes ingen standardegenskab for det.
+	_, status := ts.do(t, "GET", "/api/v1/calendar", nil)
+	subs, _ := status["subscriptions"].([]any)
+	if len(subs) != 1 {
+		t.Fatalf("%d abonnementer i svaret", len(subs))
+	}
+	first, _ := subs[0].(map[string]any)
+	if first["account"] != "Helligdage" {
+		t.Errorf("navnet er %v, want Helligdage", first["account"])
+	}
+
+	// Og begivenheden står i gitteret.
+	from := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	to := time.Now().AddDate(0, 0, 7).Format("2006-01-02")
+	_, events := ts.do(t, "GET", "/api/v1/calendar/events?from="+from+"&to="+to, nil)
+	list, _ := events["events"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("%d begivenheder efter abonnementet", len(list))
+	}
+	if e, _ := list[0].(map[string]any); e["summary"] != "Grundlovsdag" {
+		t.Errorf("begivenheden er %v", e["summary"])
+	}
+
+	// Den samme adresse to gange er den samme kalender hentet to gange, og der er
+	// ingen måde at sige hvilken der gælder.
+	if _, err := ts.db.SubscribeCalendar(t.Context(), user.ID, feed.URL, ""); !errors.Is(err, store.ErrDuplicate) {
+		t.Errorf("den samme adresse blev accepteret to gange: %v", err)
+	}
+
+	// Fjernet igen, og begivenhederne går med.
+	resp, _ := ts.do(t, "DELETE", "/api/v1/calendar/subscriptions/"+first["id"].(string), nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("unsubscribe: status %d", resp.StatusCode)
+	}
+	_, events = ts.do(t, "GET", "/api/v1/calendar/events?from="+from+"&to="+to, nil)
+	if list, _ := events["events"].([]any); len(list) != 0 {
+		t.Errorf("%d begivenheder blev tilbage efter afmeldingen", len(list))
+	}
+}
+
+// webcal:// er https med et andet skema foran. Det er ikke en protokol, noget
+// taler — det er en konvention, der får et skrivebord til at give adressen til
+// kalenderprogrammet i stedet for til browseren, og alle udgivere skriver deres
+// links sådan. At afvise den ville være at afvise folk på en teknikalitet.
+func TestWebcalIsRewrittenToHTTPS(t *testing.T) {
+	got, err := normaliseCalendarURL("webcal://example.dk/kalender.ics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "https://example.dk/kalender.ics" {
+		t.Errorf("blev til %q", got)
+	}
+
+	// Og en adresse indad afvises, hvor den skrives — ikke først når den hentes.
+	if _, err := normaliseCalendarURL("http://127.0.0.1:8080/x.ics"); err == nil {
+		t.Error("en loopback-adresse blev godtaget")
+	}
+	if _, err := normaliseCalendarURL("file:///etc/passwd"); err == nil {
+		t.Error("et skema, der ikke er http, blev godtaget")
 	}
 }

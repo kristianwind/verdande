@@ -27,6 +27,9 @@ type testServer struct {
 	*httptest.Server
 	db     *store.DB
 	client *http.Client
+	// api er den samme server, routeren hænger på. Et par prøver har brug for at
+	// nå ind i den — se `icsFetch` — og uden den her er der kun håndtaget udefra.
+	api *Server
 }
 
 func newTestServer(t *testing.T) *testServer {
@@ -62,7 +65,8 @@ func newTestServerWith(t *testing.T, configure func(*config.Config)) *testServer
 	// Discard: a passing test should print nothing, and these handlers log freely.
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	srv := httptest.NewServer(New(cfg, db, log, nil))
+	api := New(cfg, db, log, nil)
+	srv := httptest.NewServer(api)
 	t.Cleanup(srv.Close)
 
 	jar, err := cookiejar.New(nil)
@@ -75,6 +79,7 @@ func newTestServerWith(t *testing.T, configure func(*config.Config)) *testServer
 		// The cookie jar is what makes this a session test rather than a
 		// sequence of unrelated requests.
 		client: &http.Client{Jar: jar, Timeout: 10 * time.Second},
+		api:    api,
 	}
 }
 

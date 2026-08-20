@@ -63,6 +63,8 @@ type Server struct {
 	// the endpoints that check a secret are limited separately and more tightly
 	// than the rest of the API.
 	loginLimiter *limiter
+	// Sat kun af prøver; se icsClient().
+	icsFetch     *http.Client
 	mailLimiter  *limiter
 	resetLimiter *limiter
 	// Second factors are counted against the *account*, not the address. An
@@ -392,6 +394,12 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Post("/authorize", s.handleCalendarAuthorize)
 				r.Post("/sync", s.handleCalendarSyncNow)
 				r.Get("/events", s.handleCalendarEvents)
+
+				// Abonnementer: en kalender, man kun har en adresse til. Flere pr.
+				// person, hvor Google er én — det er adressen, der er identiteten,
+				// hvor tokenet er det for OAuth.
+				r.Post("/subscriptions", s.handleSubscribeCalendar)
+				r.Delete("/subscriptions/{id}", s.handleUnsubscribeCalendar)
 			})
 
 			r.Route("/import", func(r chi.Router) {

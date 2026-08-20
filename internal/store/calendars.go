@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -13,6 +15,12 @@ type CalendarAccount struct {
 	UserID   string `json:"-"`
 	Provider string `json:"provider"`
 	Account  string `json:"account,omitempty"`
+
+	// URL er tom for en OAuth-konto og adressen for et abonnement. Den er
+	// identiteten på et abonnement, som tokenet er det for Google: to rækker med
+	// den samme adresse for den samme person ville være den samme kalender hentet
+	// to gange, uden nogen måde at sige hvilken der gælder.
+	URL string `json:"url,omitempty"`
 
 	RefreshToken string    `json:"-"` // never leaves the server
 	AccessToken  string    `json:"-"`
@@ -65,10 +73,17 @@ type CalendarEvent struct {
 const calendarAccountColumns = `id, user_id, provider, account, refresh_token,
 	access_token, expires_at, last_sync_at, created_at`
 
+// Med adressen. Skrivningen tilføjer den selv, fordi indsættelsen navngiver
+// søjlerne; læsningen skal bede om den.
+const calendarAccountRead = calendarAccountColumns + `, url`
+
 // CalendarAccountFor returns a person's connection to one provider, or nil.
 func (db *DB) CalendarAccountFor(ctx context.Context, userID, provider string) (*CalendarAccount, error) {
-	row := db.QueryRowContext(ctx, `SELECT `+calendarAccountColumns+`
-		FROM calendar_accounts WHERE user_id = ? AND provider = ?`, userID, provider)
+	// `url = ''`: en OAuth-konto. Uden det ville et abonnement hos den samme
+	// udbyder kunne svare på spørgsmålet "hvad er personen forbundet til med
+	// Google", og et abonnement har hverken token eller konto at svare med.
+	row := db.QueryRowContext(ctx, `SELECT `+calendarAccountRead+`
+		FROM calendar_accounts WHERE user_id = ? AND provider = ? AND url = ''`, userID, provider)
 	a, err := db.scanCalendarAccount(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -106,19 +121,29 @@ func (db *DB) SaveCalendarAccount(ctx context.Context, a *CalendarAccount) error
 	// struct with no id in it, and matching on the id would insert a second row
 	// that the unique index then refuses — which reads to the person as "connecting
 	// failed" when what happened is that it already had.
+	// `WHERE url = ''` fordi indekset er delvist siden 0026.
+	//
+	// En OAuth-konto er én pr. person og udbyder — det er tokenet, der er
+	// identiteten — mens et abonnement er én pr. adresse, og man har flere. De to
+	// bor i samme tabel, fordi et abonnement *er* en kalender med begivenheder i,
+	// og den halvdel er den samme. Målet for konflikten skal sige, hvilken af de to
+	// slags rækker der tales om, ellers ved SQLite det ikke.
 	_, err = db.ExecContext(ctx, `
-		INSERT INTO calendar_accounts (`+calendarAccountColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (user_id, provider) DO UPDATE SET
+		INSERT INTO calendar_accounts (`+calendarAccountColumns+`, url)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (user_id, provider) WHERE url = '' DO UPDATE SET
 		    account = excluded.account,
 		    refresh_token = excluded.refresh_token,
 		    access_token = excluded.access_token,
 		    expires_at = excluded.expires_at,
 		    last_sync_at = excluded.last_sync_at`,
 		a.ID, a.UserID, a.Provider, a.Account, refresh, access,
-		unixOrZero(a.ExpiresAt), unixOrZero(a.LastSyncAt), a.CreatedAt.Unix())
+		unixOrZero(a.ExpiresAt), unixOrZero(a.LastSyncAt), a.CreatedAt.Unix(), a.URL)
 	if err != nil {
 		return err
+	}
+	if a.URL != "" {
+		return nil
 	}
 
 	// The row that is actually there wins. On a reconnect the insert above updated
@@ -126,7 +151,7 @@ func (db *DB) SaveCalendarAccount(ctx context.Context, a *CalendarAccount) error
 	// calendars are hung off the id, so writing them against it would attach them
 	// to nothing.
 	return db.QueryRowContext(ctx,
-		`SELECT id FROM calendar_accounts WHERE user_id = ? AND provider = ?`,
+		`SELECT id FROM calendar_accounts WHERE user_id = ? AND provider = ? AND url = ''`,
 		a.UserID, a.Provider).Scan(&a.ID)
 }
 
@@ -362,7 +387,7 @@ func (db *DB) scanCalendarAccount(row scanner) (CalendarAccount, error) {
 	var a CalendarAccount
 	var expires, lastSync, created int64
 	err := row.Scan(&a.ID, &a.UserID, &a.Provider, &a.Account, &a.RefreshToken,
-		&a.AccessToken, &expires, &lastSync, &created)
+		&a.AccessToken, &expires, &lastSync, &created, &a.URL)
 	if err != nil {
 		return a, err
 	}
@@ -377,4 +402,130 @@ func (db *DB) scanCalendarAccount(row scanner) (CalendarAccount, error) {
 	a.LastSyncAt = timeOrZero(lastSync)
 	a.CreatedAt = time.Unix(created, 0)
 	return a, nil
+}
+
+// --- abonnementer ---------------------------------------------------------------
+
+// SubscribeCalendar adds a calendar somebody only has an address to.
+//
+// One row in `calendar_accounts` with a url and no tokens, and one row in
+// `calendars` hung off it — because a subscription *is* one calendar, where an
+// OAuth account is a list of them somebody picks from. Written together so a
+// subscription is never a row with nothing under it: the sweep looks for accounts,
+// and one without a calendar would be fetched for ever and stored nowhere.
+//
+// Shown from the start. Ticking a box after adding an address is a second step for
+// a decision the person already made by adding it.
+func (db *DB) SubscribeCalendar(ctx context.Context, userID, url, name string) (*CalendarAccount, error) {
+	account := &CalendarAccount{
+		ID:        NewID(),
+		UserID:    userID,
+		Provider:  "ics",
+		Account:   name,
+		URL:       url,
+		CreatedAt: time.Now(),
+	}
+
+	err := db.Tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO calendar_accounts (id, user_id, provider, account, url, created_at)
+			VALUES (?, ?, 'ics', ?, ?, ?)`,
+			account.ID, userID, name, url, account.CreatedAt.Unix()); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO calendars (id, account_id, remote_id, name, shown)
+			VALUES (?, ?, ?, ?, 1)`,
+			NewID(), account.ID, url, name)
+		return err
+	})
+	if isUniqueViolation(err) {
+		return nil, ErrDuplicate
+	}
+	if err != nil {
+		return nil, err
+	}
+	return account, nil
+}
+
+// Subscriptions lists the calendars a person subscribes to by address.
+func (db *DB) Subscriptions(ctx context.Context, userID string) ([]CalendarAccount, error) {
+	rows, err := db.QueryContext(ctx, `SELECT `+calendarAccountRead+`
+		FROM calendar_accounts WHERE user_id = ? AND url <> ''
+		ORDER BY created_at`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []CalendarAccount{}
+	for rows.Next() {
+		a, err := db.scanCalendarAccount(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// AllSubscriptions is every subscription on the instance, for the sweep.
+//
+// The sweep runs for the server rather than for a session, so it cannot ask "whose
+// is this" the way a handler can — it is handed the user id along with the row and
+// writes against that.
+func (db *DB) AllSubscriptions(ctx context.Context) ([]CalendarAccount, error) {
+	rows, err := db.QueryContext(ctx, `SELECT `+calendarAccountRead+`
+		FROM calendar_accounts WHERE url <> '' ORDER BY last_sync_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []CalendarAccount{}
+	for rows.Next() {
+		a, err := db.scanCalendarAccount(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// RenameSubscribedCalendar writes the name the file calls itself.
+//
+// A subscription is added with the address as its name, because that is all there
+// is to go on before it has been fetched once. The file usually says better —
+// X-WR-CALNAME is what every publisher uses — and taking it means the list says
+// "Danske helligdage" instead of a URL nobody reads.
+//
+// Only when the person has not renamed it themselves: a name they typed is an
+// instruction, and a name from the file is a guess.
+func (db *DB) RenameSubscribedCalendar(ctx context.Context, accountID, name string) error {
+	if strings.TrimSpace(name) == "" {
+		return nil
+	}
+	return db.Tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE calendar_accounts SET account = ?
+			WHERE id = ? AND (account = '' OR account = url)`, name, accountID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `
+			UPDATE calendars SET name = ?
+			WHERE account_id = ? AND (name = '' OR name = remote_id)`, name, accountID)
+		return err
+	})
+}
+
+// SubscribedCalendarID is the single calendar row under a subscription.
+func (db *DB) SubscribedCalendarID(ctx context.Context, accountID string) (string, error) {
+	var id string
+	err := db.QueryRowContext(ctx,
+		`SELECT id FROM calendars WHERE account_id = ? LIMIT 1`, accountID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return id, err
 }

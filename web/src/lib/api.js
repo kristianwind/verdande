@@ -383,6 +383,10 @@ export const api = {
 	// an event, only which calendars to look at.
 	getCalendar: () => get('/calendar'),
 	setCalendars: (shown) => put('/calendar/calendars', { shown }),
+	// En kalender, man kun har en adresse til. Flere pr. person, hvor Google er
+	// én: adressen er identiteten, som tokenet er det for OAuth.
+	subscribeCalendar: (url, name) => post('/calendar/subscriptions', { url, name }),
+	unsubscribeCalendar: (id) => del(`/calendar/subscriptions/${id}`),
 	disconnectCalendar: () => del('/calendar'),
 	authorizeCalendar: () => post('/calendar/authorize'),
 	syncCalendar: () => post('/calendar/sync'),
