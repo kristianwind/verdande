@@ -104,15 +104,21 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | AI layer (Anthropic/OpenAI/Google/local) | Built, degrades when unconfigured |
 | Gmail: OAuth2 with PKCE, polling, one-way to tasks | Done, tested |
 | Google Calendar: read-only, laid over the task calendar | Built, never run against Google |
+| Calendar subscriptions: ICS and webcal, several per person | Done, tested |
+| Times on tasks, set by dragging in the week grid | Done, tested |
+| Notes: archive, grouped list, images, source view | Done, tested |
 | Update notice for administrators | Done, tested |
 | Personal API tokens | Done, tested |
 | OpenAPI 3.1 spec, checked against the router | Done, tested |
 | End-to-end smoke tests (Playwright) | Done |
 | Documentation, landing page, licence | Done |
 
-**Not finished:** Web Push, the AI providers, and the Gmail and Google Calendar
-API calls are implemented against their specifications and have only ever been
-exercised there, not against live services. Everything else has an interface: opening a task shows
+**Not finished:** Web Push, the AI providers and the Google Calendar API calls are
+implemented against their specifications and have only ever been exercised there,
+not against live services. Gmail is no longer in that list — it runs in production,
+including the flagging and de-duplication that took a day to get right. Calendar
+subscriptions over ICS and webcal are proven; the Google half of the calendar is
+not. Everything else has an interface: opening a task shows
 its description, sub-tasks, comments, files and reminders, and the settings pages
 cover the account, notifications, integrations, AI, API tokens, import, export and
 templates.

@@ -39,8 +39,23 @@ reply within a week.
 - **The CSP** is computed at startup by hashing the inline scripts in the built
   page, rather than allowing `unsafe-inline`.
 
+- **Note bodies, task titles, descriptions and comments are not encrypted.** The
+  sealing above covers credentials — mailbox passwords, OAuth tokens, TOTP secrets,
+  AI keys — and nothing else. A note holding a password is holding it in plain text
+  in every backup that can be downloaded. Encrypting note bodies is on the list and
+  is larger than it sounds: the full-text index and the folded search column are
+  both derived from the body, so both would have to go and search would have to be
+  rewritten to decrypt in application code.
+
 ## What it does not do
 
-verdande has no rate limiting beyond the login and password-reset endpoints, and
-no audit log of reads. It is built to be run behind something — a Cloudflare
-Tunnel, a reverse proxy, a VPN — by somebody who knows what they exposed.
+Rate limiting covers the endpoints a stranger can reach: signing in, resetting a
+password, the second factor, the installation beacon, and inbound mail. **Nothing
+else is limited** — an authenticated caller can ask as often as they like, and a
+signed-in account that wanted to be a nuisance can be one.
+
+There is no audit log of reads. Who *changed* something is recorded per project;
+who looked at it is not.
+
+It is built to be run behind something — a Cloudflare Tunnel, a reverse proxy, a
+VPN — by somebody who knows what they exposed.
