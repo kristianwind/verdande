@@ -496,6 +496,7 @@
 			<div class="field">
 				<label for="calendar-redirect">{t('int.redirectURI')}</label>
 				<input id="calendar-redirect" class="mono" readonly value={calendar.redirect_uri} />
+				<p class="hint">{t('int.calendarSameClient')}</p>
 			</div>
 		{:else if !calendar.has_client}
 			<p class="hint">{t('int.noClient')}</p>

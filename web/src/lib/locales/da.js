@@ -547,7 +547,7 @@ export const da = {
 		'Klienten er sat i miljøet (VERDANDE_GMAIL_CLIENT_ID), så den kan ikke ændres her. Det er med vilje: en værdi i runens manifest er en beslutning, der bliver anvendt igen ved hver genstart, og en formular, der kunne overskrive den, ville gøre manifestet til en løgn.',
 	'int.oauthClient': 'OAuth-klient hos Google',
 	'int.registerHint':
-		'Registrér en klient i Google Cloud Console → APIs & Services → Credentials → OAuth client ID → Web application, slå Gmail API til, og indsæt de to værdier her. Din egen konto skal stå som testbruger, så længe appen ikke er verificeret hos Google.',
+		'Registrér en klient i Google Cloud Console → APIs & Services → Credentials → OAuth client ID → Web application, og indsæt de to værdier her. Den samme klient bruges til både Gmail og Google Kalender: slå det API til, du skal bruge, og tilføj begge redirect-URI\'er — den nedenfor og kalenderens, som står i panelet Google Kalender. Din egen konto skal stå som testbruger, så længe appen ikke er verificeret hos Google.',
 	'int.redirectURI': 'Godkendt redirect-URI',
 	'int.clientID': 'Klient-id',
 	'int.clientSecret': 'Klienthemmelighed',
@@ -592,6 +592,8 @@ export const da = {
 		'Læses, aldrig skrives. Begivenhederne vises i Kalender ved siden af dine egne opgaver med forfaldsdato — de kan ikke flyttes eller lukkes herfra, for de hører til i Google.',
 	'int.connectCalendar': 'Forbind Google Kalender',
 	'int.calendarConnectedAs': 'Forbundet som',
+	'int.calendarSameClient':
+		'Bruger den samme OAuth-klient som Gmail ovenfor. Google Calendar API skal være slået til, og denne adresse skal stå som godkendt redirect-URI.',
 	'int.whichCalendars': 'Hvilke kalendere vises',
 	'int.noCalendars': 'Kontoen har ingen kalendere at vise.',
 	'int.calendarLastSync': 'Sidst hentet {when}.',

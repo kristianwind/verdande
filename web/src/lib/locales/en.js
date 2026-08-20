@@ -543,7 +543,7 @@ export const en = {
 		'The client is set in the environment (VERDANDE_GMAIL_CLIENT_ID), so it cannot be changed here. That is deliberate: a value in the Rune’s manifest is a decision reapplied on every restart, and a form that could overwrite it would make the manifest a lie.',
 	'int.oauthClient': 'OAuth client at Google',
 	'int.registerHint':
-		'Register a client in Google Cloud Console → APIs & Services → Credentials → OAuth client ID → Web application, enable the Gmail API, and paste the two values here. Your own account has to be listed as a test user for as long as the app is unverified with Google.',
+		'Register a client in Google Cloud Console → APIs & Services → Credentials → OAuth client ID → Web application and paste the two values here. The same client serves both Gmail and Google Calendar: enable whichever API you need, and add both redirect URIs — the one below and the calendar\'s, which is shown in the Google Calendar panel. Your own account has to be listed as a test user for as long as the app is unverified with Google.',
 	'int.redirectURI': 'Authorised redirect URI',
 	'int.clientID': 'Client ID',
 	'int.clientSecret': 'Client secret',
@@ -588,6 +588,8 @@ export const en = {
 		'Read, never written. The events appear in Calendar beside your own tasks with due dates — they cannot be moved or completed from here, because they belong to Google.',
 	'int.connectCalendar': 'Connect Google Calendar',
 	'int.calendarConnectedAs': 'Connected as',
+	'int.calendarSameClient':
+		'Uses the same OAuth client as Gmail above. The Google Calendar API has to be enabled, and this address has to be listed as an authorised redirect URI.',
 	'int.whichCalendars': 'Which calendars are shown',
 	'int.noCalendars': 'The account has no calendars to show.',
 	'int.calendarLastSync': 'Last fetched {when}.',
