@@ -369,3 +369,67 @@ func TestSearchAnswersWithTheBestMatchFirst(t *testing.T) {
 		t.Errorf("øverst stod %q; den note, der hedder det, man søgte efter, skal stå først", found[0].Title)
 	}
 }
+
+// A word inside a word.
+//
+// Reported as "søgning har ikke det store held": a note holding
+// `gamerule keepInventory true` could not be found by typing "keep inventory".
+// The index is built of tokens, and `keepInventory` is one token — so the two
+// words are nowhere, and the search says there is nothing while the note is right
+// there.
+//
+// A decade of notes is full of these: commands, identifiers, file names. Every one
+// of them is several words the index thinks is one.
+func TestAWordInsideAWordIsStillFound(t *testing.T) {
+	db, userID := sealedStore(t)
+	ctx := context.Background()
+
+	if err := db.SaveNote(ctx, &Note{
+		CreatedBy: userID,
+		Body:      "Minecraft Bedrock\n\ngamerule keepInventory true",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A second note, so a fallback that simply returns everything would be caught.
+	if err := db.SaveNote(ctx, &Note{
+		CreatedBy: userID,
+		Body:      "Indkøb\n\nKaffe og filtre",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, q := range []string{
+		"keep inventory", // the two words, which is how somebody looks for it
+		"inventory",      // the tail on its own — no prefix query can reach this
+		"keepinventory",  // written as one, which the index does hold
+		"KEEP INVENTORY", // and case is not a question anybody is asking
+		"vacuum",         // not in either note
+	} {
+		found, err := db.SearchNotes(ctx, q, 10)
+		if err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+		want := 1
+		if q == "vacuum" {
+			want = 0
+		}
+		if len(found) != want {
+			t.Errorf("%q found %d notes, want %d", q, len(found), want)
+			continue
+		}
+		if want == 1 && found[0].Title != "Minecraft Bedrock" {
+			t.Errorf("%q found %q", q, found[0].Title)
+		}
+	}
+
+	// The fast path is still the fast path: a word the index does hold must not be
+	// answered by the scan, or the ranking that was built for twelve hundred notes
+	// is quietly gone.
+	found, err := db.SearchNotes(ctx, "Bedrock", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("an ordinary word found %d notes", len(found))
+	}
+}

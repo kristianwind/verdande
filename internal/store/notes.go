@@ -289,12 +289,73 @@ func (db *DB) SearchNotes(ctx context.Context, query string, limit int) ([]Note,
 	//
 	// Joined rather than `rowid IN (…)`: the rank belongs to the match, and a
 	// subquery throws it away.
-	return db.notesJoin(ctx, noteColumnsQualified, `
+	found, err := db.notesJoin(ctx, noteColumnsQualified, `
 		JOIN notes_fts ON notes_fts.rowid = notes.rowid
 		WHERE notes.deleted_at IS NULL
 		  AND notes_fts MATCH ?
 		ORDER BY bm25(notes_fts, 10.0, 1.0, 1.0)
 		LIMIT ?`, expr, limit)
+	if err != nil || len(found) > 0 {
+		return found, err
+	}
+	return db.searchNotesInside(ctx, query, limit)
+}
+
+// searchNotesInside finds a word that lives *inside* another word.
+//
+// An index is built of tokens, and a token is what a tokenizer decided was a
+// word. `gamerule keepInventory true` is three of them, and the middle one is
+// `keepinventory` — so "keep inventory" asks for two words that are nowhere, and
+// gets nothing. Reported as "søgning har ikke det store held", which from where
+// the person is sitting is exactly what it is: the note is right there, and the
+// search says there is nothing.
+//
+// A prefix query gets half of it. `keep*` does match `keepinventory`; `inventory*`
+// cannot, because it is not a prefix of anything — and the two are joined with AND,
+// so the half that works is thrown away by the half that cannot.
+//
+// This is not an exotic case in a notes app. A decade of notes is full of
+// commands, identifiers and file names, and every one of them is several words the
+// index thinks is one: `keepInventory`, `VACUUM INTO`, `apple-notes-til-markdown`.
+//
+// So: the index answers first, and when it has nothing, the text is read. Every
+// term has to appear somewhere in the note, anywhere, in any word.
+//
+// # What it costs, and when to stop doing it this way
+//
+// A LIKE with a leading % cannot use an index; this reads every note. At twelve
+// hundred notes that is four megabytes and a millisecond or two, and it only runs
+// when the fast path already came back empty — which is the search that was about
+// to disappoint somebody. At a hundred thousand notes it would be the wrong shape,
+// and the answer then is an FTS5 `trigram` index, not a bigger scan.
+//
+// It does not rank. bm25 needs a match to rank, and there is no match here — that
+// is the whole situation. The rows are the most recently touched first, and the
+// set is small, because the index already said there was nothing in it.
+func (db *DB) searchNotesInside(ctx context.Context, query string, limit int) ([]Note, error) {
+	terms := SearchTerms(query)
+	if len(terms) == 0 {
+		return nil, nil
+	}
+
+	// `fold` is `title || ' ' || body` with the Danish letters transliterated, so
+	// one column covers the title, the body and "gron" for "grøn" at once. LIKE is
+	// case-insensitive for ASCII in SQLite, which is what makes `keepInventory`
+	// answer to "inventory".
+	//
+	// The needle is safe to interpolate into a pattern because `tokenize` splits on
+	// everything that is not a letter or a digit: a term cannot contain % or _, so
+	// there is no wildcard for somebody to smuggle in. It is still a bound
+	// parameter — that is about SQL, and this is about LIKE.
+	where := "WHERE deleted_at IS NULL"
+	args := make([]any, 0, len(terms)+1)
+	for _, term := range terms {
+		where += " AND fold LIKE ?"
+		args = append(args, "%"+FoldDanish(term)+"%")
+	}
+	args = append(args, limit)
+
+	return db.notesWhere(ctx, where+" ORDER BY updated_at DESC LIMIT ?", args...)
 }
 
 // SetNoteTimes writes the dates a note had somewhere else.

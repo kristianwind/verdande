@@ -166,15 +166,42 @@ func (db *DB) ListTasks(ctx context.Context, userID string, f TaskFilter) ([]Tas
 		// labels are short, and their names are typed by the person searching for
 		// them, so there is no spelling to be generous about. The diacritic
 		// folding that matters for task text does not earn a second index here.
+		//
+		// The third arm is a word inside a word. An index is built of tokens, and
+		// `SpeedAdmin` is one of them — so "speed admin" asks for two words that are
+		// nowhere. A prefix query gets half of it (`speed*` matches, `admin*` cannot)
+		// and the two are joined with AND, so the half that works is thrown away.
+		//
+		// Notes got the same arm, and for the same reason. Having it in one of the
+		// two would be worse than having it in neither: "it finds it in my notes but
+		// not in my tasks" is a bug report waiting, and the answer to it would be
+		// this line.
+		//
+		// It scans, and it only ever runs when somebody typed something in the box —
+		// Today and Kommende do not set `Search`. Every term has to appear, so the
+		// arms are ANDed with each other while the whole thing is ORed with the two
+		// above.
+		inside := make([]string, 0, maxSearchTerms)
+		insideArgs := make([]any, 0, maxSearchTerms)
+		for _, term := range SearchTerms(f.Search) {
+			inside = append(inside, "t.fold LIKE ?")
+			insideArgs = append(insideArgs, "%"+FoldDanish(term)+"%")
+		}
+		text := ""
+		if len(inside) > 0 {
+			text = " OR (" + strings.Join(inside, " AND ") + ")"
+		}
+
 		where = append(where, `(
 			t.rowid IN (SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ?)
 			OR t.id IN (
 				SELECT tl.task_id FROM task_labels tl
 				JOIN labels l ON l.id = tl.label_id
 				WHERE lower(l.name) LIKE ?
-			)
+			)`+text+`
 		)`)
 		args = append(args, expr, "%"+strings.ToLower(strings.TrimSpace(f.Search))+"%")
+		args = append(args, insideArgs...)
 	}
 	if f.FilterSQL != "" {
 		where = append(where, "("+f.FilterSQL+")")

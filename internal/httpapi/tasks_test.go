@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -1775,5 +1776,44 @@ func TestQuickAddSectionIDIsCheckedAgainstTheProject(t *testing.T) {
 	}
 	if moved["content"] != "male gavlen" {
 		t.Errorf("content = %v", moved["content"])
+	}
+}
+
+// A word inside a word, on the task side.
+//
+// The notes search grew this first — a note holding `keepInventory` could not be
+// found by typing "keep inventory" — and a task is the same sentence with a
+// different table behind it. `SpeedAdmin` is one token, so "speed admin" asks for
+// two words that are nowhere.
+//
+// Having it in one of the two searches would be worse than having it in neither:
+// "it finds it in my notes but not in my tasks" is the next report.
+func TestATaskIsFoundByAWordInsideAWord(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "Opret kodeord til Kulturskolen (SpeedAdmin)",
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{"content": "Køb kaffe"})
+
+	for _, tc := range []struct {
+		query string
+		want  int
+	}{
+		{"speed admin", 1},
+		{"admin", 1},
+		{"speedadmin", 1},
+		{"kulturskolen", 1},
+		{"vandhane", 0},
+	} {
+		resp, body := ts.do(t, "GET", "/api/v1/search?q="+url.QueryEscape(tc.query), nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%q: status %d", tc.query, resp.StatusCode)
+		}
+		tasks, _ := body["tasks"].([]any)
+		if len(tasks) != tc.want {
+			t.Errorf("%q found %d tasks, want %d", tc.query, len(tasks), tc.want)
+		}
 	}
 }

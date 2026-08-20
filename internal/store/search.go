@@ -90,6 +90,20 @@ func MatchExprOver(query string, columns ...string) string {
 	return b.String()
 }
 
+// SearchTerms is the words a query asks about, capped the same way the MATCH
+// expression is.
+//
+// Exported because two searches need the same list: the FTS expression is built
+// from it, and so is the substring arm that finds a word living inside another
+// word. Two tokenizers would be two answers to "what did they type".
+func SearchTerms(query string) []string {
+	terms := tokenize(query)
+	if len(terms) > maxSearchTerms {
+		terms = terms[:maxSearchTerms]
+	}
+	return terms
+}
+
 // tokenize splits on everything that is not a letter or a digit. Splitting on
 // punctuation rather than whitespace alone means "q3/2026" searches for "q3" and
 // "2026" instead of for a term FTS5's own tokenizer would never have indexed.
