@@ -22,6 +22,9 @@ forward mail to, and an MCP endpoint so Claude can work your task list directly.
   Firma, labelled regnskab. Danish and English, mixed freely in one line.
 - **Projects, sections, sub-tasks, labels, [saved filters](filters.md).** List,
   board and calendar views, and foldable groups over the projects in the sidebar.
+- **Notes, beside the work.** Rich text to write in, Markdown on disk. A note is
+  shared by filing it in a project; `#project` and `[[another note]]` are links,
+  and a task shows what has been written about it.
 - **Drag where it means something** — reorder a list or a board, file a project
   under a group, drop a task on another project, or drop it on another day.
 - **Sharing** with owner, editor and viewer roles. Anyone outside your instance
@@ -30,6 +33,33 @@ forward mail to, and an MCP endpoint so Claude can work your task list directly.
 - **Repeating tasks** as RRULE, reminders, comments and attachments.
 - **[Calendar](caldav.md), [mail](mail.md) and [Claude](mcp.md)** connected over
   open standards rather than private formats.
+
+## What it looks like
+
+![Upcoming as a month](screenshots/upcoming.png)
+
+*Upcoming, as a month. A week and a plain list are the other two, and a task can be
+dragged from one day onto another.*
+
+![A project as a list](screenshots/sections.png)
+
+*The same project as a list, where sections read as bands. As a board they are
+columns.*
+
+![Waiting on others](screenshots/delegated.png)
+
+*What you have handed to somebody else, grouped by whoever has it.*
+
+![Settings, integrations](screenshots/settings.png)
+
+*Where [Gmail](mailboxes.md), the [calendar feed](caldav.md) and the
+[mail-to-task address](mail.md) are connected.*
+
+![Settings, people](screenshots/admin.png)
+
+*Inviting somebody to the instance. There is no open registration — everybody
+arrives through a link, and picks their own password. See
+[signing in](signing-in.md).*
 
 ## Getting it running
 
