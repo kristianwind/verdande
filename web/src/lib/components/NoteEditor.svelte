@@ -884,8 +884,20 @@
 		 * clamp frem for et tal: en smal rude får det hele, en bred får en
 		 * linjelængde, øjet kan finde tilbage i. Øvre grænse omkring 68rem, hvor en
 		 * linje er lang nok til at rumme en kommando og kort nok til at læse. */
-		max-width: clamp(38rem, 92%, 68rem);
+		/* Grænsen sættes som polstring og ikke som bredde, og det er rullebjælken,
+		 * der afgør det.
+		 *
+		 * Det er *dette* element, der ruller. Var det også det, der blev smallere,
+		 * fulgte rullebjælken med ind: den stod ved tekstsøjlens kant med en
+		 * håndflade tom rude til højre for sig og svævede midt i arket. Med
+		 * polstring er elementet lige så bredt som ruden — bjælken bliver ved
+		 * kanten, hvor den hører til — og teksten er nøjagtig lige så bred som før.
+		 *
+		 * `max()` mod nul, fordi en smal rude ellers ville få negativ polstring, og
+		 * `border-box` er sat globalt, så bredden er hele boksen og ikke boksen plus
+		 * polstringen. Uden det ville det her give en vandret rullebjælke. */
 		width: 100%;
+		padding-right: max(0px, calc(100% - clamp(38rem, 92%, 68rem)));
 	}
 
 	.hidden {
