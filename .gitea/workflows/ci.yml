@@ -23,6 +23,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Så en kørsel kan udløses uden at skulle opfinde en commit. Det er ikke
+  # bekvemmelighed: uden den er den eneste måde at få CI til at køre igen mod
+  # uændret kode at skubbe noget tomt, og en tom commit i historikken er en
+  # løgn om, at der skete noget.
+  workflow_dispatch:
 
 # Ingen `concurrency:`-blok. GitHub-udgaven aflyser en kørsel, når en nyere
 # kommer, og det er stadig det rigtige at gøre — men understøttelsen kom sent til
