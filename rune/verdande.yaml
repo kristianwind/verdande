@@ -15,30 +15,39 @@ gameskill:
   # this: a manifest with new fields and an unchanged version is a manifest the
   # panel has no reason to re-read, so the fields never appear and the failure is
   # silent — the server's settings page simply does not offer them.
-  # Bumpet til 5, fordi imagets adresse flyttede. En rune opdaterer ikke sig selv:
-  # panelet skriver rune-rækken fra en UI-handling, så ændringen her kræver
-  # **Runes → verdande → Update** — og katalog-listen caches ti minutter, så to
-  # forsøg lige efter hinanden kan begge give den gamle version.
-  version: 5
+  # Bumpet til 6: v5 flyttede imaget til vores egen Gitea, og det virkede ikke.
+  # En rune opdaterer ikke sig selv — panelet skriver rune-rækken fra en
+  # UI-handling, så ændringen her kræver **Runes → verdande → Update**, og
+  # katalog-listen caches ti minutter, så to forsøg lige efter hinanden kan begge
+  # give den gamle version.
+  version: 6
   icon: "app"
 
   # The image is distroless — no shell — so keep_entrypoint runs the binary the
   # image already declares as its ENTRYPOINT, and startup.exec passes it argv
   # directly rather than through /bin/sh, which does not exist in there.
-  # Hentes fra vores egen Gitea frem for fra GHCR.
+  # GHCR, ikke vores egen Gitea. v5 prøvede det sidste og tog instansen ned.
   #
-  # Panelets `PullImage` sætter aldrig `RegistryAuth`, så registret skal kunne
-  # læses anonymt. Det kan det her: pakken er *ikke* knyttet til repoet — Gitea
-  # binder kun en container-pakke til et repo, når den bliver skubbet med et
-  # repo-link — så dens synlighed følger brugeren `kw`, som er offentlig, mens
-  # `kw/verdande` bliver ved med at være privat. Bevist med en `docker pull` uden
-  # nogen legitimation, som hentede samme digest som GHCR havde.
+  # Panelets `PullImage` sætter aldrig `RegistryAuth`, så registret SKAL kunne
+  # læses uden legitimation. GHCR kan: dens token-endepunkt svarer 200 og udsteder
+  # en pull-token til hvem som helst. Gitea på gitea.nolimit.dk kan ikke —
+  # `/v2/token?scope=repository:kw/verdande:pull` svarer 401, også efter at repoet
+  # blev gjort offentligt. Instansen kræver login på alt, registret inklusive, og
+  # det er en indstilling for hele instansen frem for for denne pakke.
   #
-  # Skubbes den nogensinde på en måde, der knytter den til repoet, bliver den
-  # privat med det samme, og panelet får `No such image` — lydløst, fordi
-  # `pullImageRetry` kasserer fejlen og `ContainerCreate` først slår op lokalt.
+  # Sådan ser det ud, når det går galt, for det tog en time at finde: panelet
+  # river containeren ned for at anvende runen, pullet fejler, `pullImageRetry`
+  # kasserer fejlen, og `ContainerCreate` slår derefter op LOKALT og siger
+  # `No such image`. Serveren står som "running" uden container_id, og udadtil er
+  # det en 502. Fejlen nævner aldrig, at det var et login, der manglede.
+  #
+  # Sådan afgør man det, uden at blive narret: spørg registrets token-endepunkt
+  # med `curl` og se efter en 200 med et token i. Test det ALDRIG med
+  # `docker --config <tom-mappe> pull` — en tom config stopper ikke maskinens
+  # credential-helper, så pullet bliver autentificeret uden at se sådan ud, og
+  # svaret er præcis det modsatte af sandheden.
   docker:
-    image: "gitea.nolimit.dk/kw/verdande:latest"
+    image: "ghcr.io/kristianwind/verdande:latest"
     data_path: /data
     keep_entrypoint: true
 
