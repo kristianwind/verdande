@@ -53,3 +53,47 @@ func TestAllowPrivateStillReaches(t *testing.T) {
 	}
 	resp.Body.Close()
 }
+
+// Tailscale skal virke, og på begge familier.
+//
+// IPv4-halvdelen slap allerede igennem, men ved et tilfælde: Gos IsPrivate
+// dækker RFC1918 og ikke det CGNAT-område, Tailscale låner. IPv6-halvdelen gjorde
+// ikke — fd7a:115c:a1e0::/48 ligger inde i fc00::/7. Samme maskine var altså
+// tilgængelig eller ej alt efter, hvilken adressefamilie man ramte den på.
+//
+// Testen står her for at holde begge dele fast: at 100.x er tilladt med vilje og
+// ikke af held, og at fd7a: ikke ryger tilbage bag muren, næste gang nogen rydder
+// op i prædikatet.
+func TestTailnetIsNotTheInside(t *testing.T) {
+	for _, s := range []string{
+		"100.64.0.0", "100.72.154.85", "100.127.255.255",
+		"fd7a:115c:a1e0::1", "fd7a:115c:a1e0:ab12:3456:7890:abcd:ef01",
+	} {
+		if Blocked(net.ParseIP(s)) {
+			t.Errorf("Blocked(%s) = true, men det er en tailnet-adresse", s)
+		}
+		if !IsTailscale(net.ParseIP(s)) {
+			t.Errorf("IsTailscale(%s) = false", s)
+		}
+	}
+
+	// Undtagelsen skal være så smal, som den er navngivet. Naboerne til området
+	// er ikke Tailscale, og en anden unique-local-adresse er stadig indenfor.
+	for _, s := range []string{
+		"100.63.255.255", // lige under 100.64.0.0/10
+		"100.128.0.0",    // lige over
+		"fd00::1",        // unique-local, men ikke Tailscales
+		"fd7b:115c:a1e0::1",
+		"192.168.1.150",
+	} {
+		if IsTailscale(net.ParseIP(s)) {
+			t.Errorf("IsTailscale(%s) = true, men den ligger uden for området", s)
+		}
+	}
+	// Og de af dem, der er indenfor, skal stadig være det.
+	for _, s := range []string{"fd00::1", "fd7b:115c:a1e0::1", "192.168.1.150"} {
+		if !Blocked(net.ParseIP(s)) {
+			t.Errorf("Blocked(%s) = false — muren er væk for mere end Tailscale", s)
+		}
+	}
+}

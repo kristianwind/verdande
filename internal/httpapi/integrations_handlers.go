@@ -215,20 +215,31 @@ func (s *Server) handleSetAISettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The address is checked where it is typed, as well as when it is dialled.
+	// The address is checked where it is typed, as well as when it is dialled. A
+	// scheme other than http or https is refused outright, for everybody —
+	// file:// and gopher:// are not providers.
 	//
-	// safedial refuses a private destination at connect time and is the actual
-	// wall; this is so the person entering it hears about it now rather than
-	// discovering it later as a failed summary. A scheme other than http or https
-	// is refused outright — file:// and gopher:// are not providers.
+	// The private-network wall has one exception, and it is the point of the
+	// provider it guards. "OpenAI-compatible (Ollama, LM Studio, …)" means a model
+	// on this machine or on the desk beside it: 127.0.0.1:11434, 192.168.1.150.
+	// safedial refuses exactly those, so the address the field suggested in its
+	// own placeholder was an address the server would not accept.
+	//
+	// Admins only, because the wall is there for a real reason: a server that
+	// fetches a user-supplied address lets the person supplying it reach what
+	// they cannot reach themselves. An admin on a self-hosted instance already
+	// owns the host and everything on its network, so this grants them nothing
+	// new. An invited user is a different person, and for them it stays shut.
 	if url := strings.TrimSpace(req.BaseURL); url != "" {
 		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			writeFieldErrors(w, map[string]string{"base_url": "must start with http:// or https://"})
 			return
 		}
-		if reason := safedial.CheckURL(url); reason != "" {
-			writeFieldErrors(w, map[string]string{"base_url": reason})
-			return
+		if !user.IsAdmin {
+			if reason := safedial.CheckURL(url); reason != "" {
+				writeFieldErrors(w, map[string]string{"base_url": reason})
+				return
+			}
 		}
 		req.BaseURL = url
 	}
@@ -265,11 +276,20 @@ func (s *Server) aiConfig(r *http.Request, userID string) (ai.Config, error) {
 		v, _ := values[key].(string)
 		return v
 	}
+	// Worked out per request rather than stored beside the address: it answers
+	// "may this person reach the private network", and somebody who is no longer
+	// an admin should stop being able to. A flag written at save time would
+	// outlive the role that granted it.
+	allowPrivate := false
+	if u := userFrom(r.Context()); u != nil && u.IsAdmin {
+		allowPrivate = true
+	}
 	return ai.Config{
-		Provider: ai.Provider(str("provider")),
-		APIKey:   str("api_key"),
-		BaseURL:  str("base_url"),
-		Model:    str("model"),
+		Provider:     ai.Provider(str("provider")),
+		APIKey:       str("api_key"),
+		BaseURL:      str("base_url"),
+		Model:        str("model"),
+		AllowPrivate: allowPrivate,
 	}, nil
 }
 

@@ -21,6 +21,13 @@
 		{ value: 'compatible', label: 'OpenAI-kompatibel (Ollama, LM Studio, …)' }
 	];
 
+	// Every field error needs somewhere to appear, and this list is the check that
+	// it does. `base_url` had nowhere: a refused address set `errors`, skipped the
+	// toast because the object was not empty, and then rendered nothing — so the
+	// one provider meant for running your own model looked like a save that did
+	// nothing at all. Anything without a slot is shouted rather than dropped.
+	const SHOWN = ['provider', 'model', 'base_url'];
+
 	// Suggestions, not a closed list: the model field is free text, because a new
 	// model name must not require a new release of this app to be usable.
 	const SUGGESTED_MODEL = {
@@ -56,7 +63,8 @@
 			saved = true;
 		} catch (e) {
 			errors = e.fields ?? {};
-			if (!Object.keys(errors).length) app.toast(humanMessage(e));
+			const homeless = Object.keys(errors).filter((field) => !SHOWN.includes(field));
+			if (!Object.keys(errors).length || homeless.length) app.toast(humanMessage(e));
 		} finally {
 			saving = false;
 		}
@@ -105,6 +113,7 @@
 						bind:value={settings.model}
 						placeholder={SUGGESTED_MODEL[settings.provider] ?? ''}
 					/>
+					{#if errors.model}<p class="error">{errors.model}</p>{/if}
 				</div>
 
 				{#if settings.provider === 'compatible'}
@@ -116,6 +125,7 @@
 							bind:value={settings.base_url}
 							placeholder="http://localhost:11434/v1"
 						/>
+						{#if errors.base_url}<p class="error">{errors.base_url}</p>{/if}
 					</div>
 				{/if}
 

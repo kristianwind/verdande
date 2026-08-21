@@ -719,6 +719,86 @@ func TestTheAIProviderSurvivesConnectingSomethingElse(t *testing.T) {
 	}
 }
 
+// Reported from use as "the AI settings are not saved" — the second time, and a
+// different cause than the one above.
+//
+// The provider is called "OpenAI-kompatibel (Ollama, LM Studio, …)" and the
+// address field suggests http://localhost:11434/v1. Both of those live on the
+// private network, which safedial refuses — so the address the interface proposed
+// was the address the server rejected, and the one provider that exists for
+// running your own model could not be configured at all.
+//
+// It looked like a save that did nothing, because the 422 came back on a field
+// with nowhere to show it. Two bugs wearing one coat.
+func TestAdminMayPointAIAtAModelOnTheLAN(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	// The three shapes a self-hosted model actually takes: another machine on the
+	// LAN, the loopback name, and the loopback address.
+	for _, addr := range []string{
+		"http://192.168.1.150:8080/v1",
+		"http://localhost:11434/v1",
+		"http://127.0.0.1:1234/v1",
+	} {
+		resp, body := ts.do(t, "PUT", "/api/v1/ai/settings", map[string]any{
+			"provider": "compatible", "model": "gemma-4-26b-qat", "base_url": addr,
+		})
+		if resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("save %s: status %d, body %v", addr, resp.StatusCode, body)
+		}
+	}
+
+	_, body := ts.do(t, "GET", "/api/v1/ai/settings", nil)
+	if body["base_url"] != "http://127.0.0.1:1234/v1" {
+		t.Errorf("base_url = %v after saving, want it to have survived", body["base_url"])
+	}
+	if body["provider"] != "compatible" {
+		t.Errorf("provider = %v", body["provider"])
+	}
+}
+
+// The wall stays up for everybody else.
+//
+// An admin on a self-hosted instance already owns the host and its network, so a
+// private destination grants them nothing they did not have. An invited user is a
+// different person, and for them the address field would be a way to find out
+// what answers on the host's network.
+func TestAnInvitedUserCannotPointAIAtThePrivateNetwork(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	other := ts.newUser(t, "andreas@example.dk", "Andreas")
+
+	resp, body := other.do(t, "PUT", "/api/v1/ai/settings", map[string]any{
+		"provider": "compatible", "model": "llama3.1",
+		"base_url": "http://192.168.1.150:8080/v1",
+	})
+	if resp.StatusCode == http.StatusNoContent {
+		t.Fatal("an invited user was allowed to point the AI at the private network")
+	}
+	fields, _ := body["fields"].(map[string]any)
+	if fields["base_url"] == nil {
+		t.Errorf("the refusal did not name the field it was about: %v", body)
+	}
+}
+
+// A scheme that is not http or https is refused for everybody, admin or not.
+func TestAISettingsRefuseANonHTTPAddress(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, body := ts.do(t, "PUT", "/api/v1/ai/settings", map[string]any{
+		"provider": "compatible", "model": "llama3.1", "base_url": "file:///etc/passwd",
+	})
+	if resp.StatusCode == http.StatusNoContent {
+		t.Fatal("file:// was accepted as a provider address")
+	}
+	fields, _ := body["fields"].(map[string]any)
+	if fields["base_url"] == nil {
+		t.Errorf("no error on base_url: %v", body)
+	}
+}
+
 func TestGmailSettings(t *testing.T) {
 	ts := newTestServer(t)
 	ts.bootstrap(t)

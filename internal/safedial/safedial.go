@@ -24,16 +24,57 @@
 // lives), the private ranges, unique-local IPv6, and the unspecified address.
 // Everything else is allowed: this is not an allowlist of the internet, it is a
 // wall around the inside.
+//
+// With one named exception, for Tailscale — see tailnets below.
 package safedial
 
 import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"syscall"
 	"time"
 )
+
+// tailnets are Tailscale's own ranges, and they are not "the inside".
+//
+// A tailnet is not a network you happen to be on; it is one every member had to
+// authenticate to join. A verdande whose host is on one reaches its peers on
+// purpose, and the operator who joined it meant to.
+//
+// Half of this already worked, by luck rather than intent: Go's IsPrivate covers
+// RFC1918 and not the carrier-grade NAT range Tailscale borrows, so 100.x
+// addresses passed the wall without anybody deciding they should. The IPv6 half
+// did not — fd7a:115c:a1e0::/48 sits inside fc00::/7 and was refused. The same
+// machine was reachable or not depending on which family its address had, which
+// is the kind of difference nobody debugs on purpose.
+//
+// Naming both makes the allowance deliberate, and writes down its cost: on an
+// instance with people you have invited, this is a network they can now ask the
+// server to reach. That is the trade, and it is the operator's to make.
+var tailnets = []netip.Prefix{
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("fd7a:115c:a1e0::/48"),
+}
+
+// IsTailscale reports whether an address belongs to a tailnet.
+func IsTailscale(ip net.IP) bool {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return false
+	}
+	// Unmap first: ParseIP gives a v4 address as 4-in-6, and a v4 prefix does not
+	// contain a v6-shaped address however equal the two look when printed.
+	addr = addr.Unmap()
+	for _, n := range tailnets {
+		if n.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
 
 // ErrPrivate is returned when a connection was refused for where it pointed. It
 // deliberately does not say which address it resolved to: the answer is itself
@@ -46,8 +87,15 @@ func (e *ErrPrivate) Error() string {
 
 // Blocked reports whether an address must not be dialled.
 func Blocked(ip net.IP) bool {
-	return ip == nil ||
-		ip.IsLoopback() ||
+	if ip == nil {
+		return true
+	}
+	// Before the private check, not after: a tailnet's IPv6 range is unique-local,
+	// so asking IsPrivate first would refuse it.
+	if IsTailscale(ip) {
+		return false
+	}
+	return ip.IsLoopback() ||
 		ip.IsUnspecified() ||
 		ip.IsLinkLocalUnicast() ||
 		ip.IsLinkLocalMulticast() ||

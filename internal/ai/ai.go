@@ -47,6 +47,12 @@ type Config struct {
 	// ProviderCompatible and useful for a proxy in front of the others.
 	BaseURL string
 	Model   string
+	// AllowPrivate lets BaseURL be on this machine or its private network.
+	//
+	// Set by the caller from who is asking, never read from storage: it is the
+	// answer to "may this person reach the LAN", and that answer can change after
+	// the address was saved. See the handler for who gets it and why.
+	AllowPrivate bool
 }
 
 func (c Config) Configured() bool {
@@ -73,13 +79,17 @@ type Client struct {
 }
 
 func New(cfg Config) *Client {
+	dial := safedial.Client
+	if cfg.AllowPrivate {
+		dial = safedial.AllowPrivate
+	}
 	return &Client{
 		cfg: cfg,
 		// Generous: a local model on modest hardware can take a while to produce
 		// its first token, and the alternative is a timeout that only ever fires
 		// for the people running their own.
-		// safedial, not a plain client. `base_url` is typed into a field in the
-		// interface, so it is a user-supplied address — and a server that fetches a
+		// safedial by default. `base_url` is typed into a field in the interface,
+		// so it is a user-supplied address — and a server that fetches a
 		// user-supplied address is a way to ask it to reach things the caller
 		// cannot: the panel next door, a database on the same bridge, the cloud
 		// metadata endpoint. On a homelab that is most of what is worth reaching.
@@ -87,7 +97,13 @@ func New(cfg Config) *Client {
 		// The check is on the resolved address rather than on the URL, because a
 		// name answers whatever its owner says — and can answer differently the
 		// second time, after a parse-time check has passed.
-		http: safedial.Client(120 * time.Second),
+		//
+		// And then the exception, which is the whole reason this provider exists:
+		// a model you run yourself IS on that network. Blocking it made the two
+		// lines above true and the feature useless — the comment about a local
+		// model being slow to its first token was written for a case the dialler
+		// refused to reach. AllowPrivate is granted per request, not per address.
+		http: dial(120 * time.Second),
 	}
 }
 
