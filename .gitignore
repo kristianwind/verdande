@@ -67,5 +67,9 @@ node_modules.nosync/
 HANDOFF.md
 NOTES-PLAN.md
 
+# Samme grund: instruktionen til flytningen navngiver kassen, runneren, registret
+# og hvordan man kommer til dem. Arbejdspapir, ikke produktdokumentation.
+GITEA-FLYTNING.md
+
 # Agenternes arbejdstræer. Et git-repo inde i et git-repo, som ikke hører til her.
 .claude/worktrees/
