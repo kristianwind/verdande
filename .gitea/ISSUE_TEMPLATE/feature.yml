@@ -1,0 +1,24 @@
+name: Feature
+about: Suggest something
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      # Absolut adresse, ikke GitHubs `../../blob/main/…`: Gitea lægger en fil
+      # under `/src/branch/<gren>/`, så den relative form peger ingen steder her.
+      value: |
+        Please check the [non-goals](https://gitea.nolimit.dk/kw/verdande/src/branch/main/README.md#non-goals)
+        first — some things are deliberately not being built.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The problem, not the solution. What does the current version make hard?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you had in mind
+    validations:
+      required: false

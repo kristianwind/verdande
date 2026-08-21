@@ -2,11 +2,14 @@ name: Release
 
 # Samme udløser som GitHub-workflowet: et semver-tag, og ikke andet.
 #
-# Gitea Actions læser samme format som GitHub Actions og kan bruge handlinger
-# derfra, men det er *ikke* det samme sted. Filen ligger derfor for sig i
-# `.gitea/workflows/` frem for at være delt: `secrets.GITHUB_TOKEN` findes ikke
-# her, registret er et andet, og der er ingen Releases-side at skrive til. En delt
-# fil ville være fire betingede led, der hver kun gælder ét af de to steder.
+# Gitea Actions læser samme format som GitHub Actions, men det er *ikke* det
+# samme sted. Filen ligger derfor for sig frem for at være delt: der er intet
+# `secrets.GITHUB_TOKEN`, registret er et andet, og der er ingen Releases-side at
+# skrive til. En delt fil ville være fire betingede led, der hver kun gælder ét
+# af de to steder.
+#
+# Og som i ci.yml: ingen `uses:`. Handlinger hentes fra github.com, så længe
+# DEFAULT_ACTIONS_URL ikke er sat — se den lange forklaring der.
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
@@ -14,54 +17,92 @@ on:
 jobs:
   image:
     name: Build and publish image
-    # `ubuntu-latest` betyder her det, runneren er sat op til at kalde det.
-    # Registreres runneren med en anden etiket, skal denne linje følge med.
+    # `ubuntu-latest` er runnerens egen etiket (`ovh-1`, docker-mode). Ingen
+    # `container:`: jobbet skal bruge docker-klienten og buildx, og dem har
+    # runnerens image.
     runs-on: ubuntu-latest
+    env:
+      REGISTRY: gitea.nolimit.dk
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        env:
+          TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          set -eu
+          git config --global --add safe.directory '*'
+          git init -q .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git -c http.extraheader="Authorization: Basic $(printf '%s:%s' "$GITHUB_ACTOR" "$TOKEN" | base64 | tr -d '\n')" \
+              fetch -q --depth=1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      # setup-qemu-action i rå form. Uden den bygger buildx kun værtens egen
+      # arkitektur, og arm64 er ikke valgfrit: et hjemmelab er lige så tit en
+      # Raspberry Pi eller en Apple silicon-VM som en x86-kasse.
+      - name: Emulation for the other architecture
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm64,amd64
+
+      - name: Builder
+        run: docker buildx create --use --name release-verdande 2>/dev/null || docker buildx use release-verdande
 
       # `GITEA_TOKEN` er automatisk til stede i et Actions-job og har lov at
       # skrive pakker for den, der ejer repoet. Ingen hemmelighed at sætte op.
-      - uses: docker/login-action@v3
-        with:
-          registry: gitea.nolimit.dk
-          username: ${{ gitea.actor }}
-          password: ${{ secrets.GITEA_TOKEN }}
+      # --password-stdin frem for --password: det sidste ville stå i processens
+      # kommandolinje, som enhver på maskinen kan læse.
+      - name: Log in to the registry
+        env:
+          TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: printf '%s' "$TOKEN" | docker login "$REGISTRY" -u "$GITHUB_ACTOR" --password-stdin
 
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: gitea.nolimit.dk/${{ gitea.repository }}
-          # v1.4.2 udgiver 1.4.2, 1.4 og 1 — så en rune, der er bundet til :1, får
-          # rettelser uden nogensinde at krydse et hovedversionsskifte.
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest
+      # metadata-action i rå form.
+      #
+      # v1.4.2 udgiver 1.4.2, 1.4, 1 og latest — så en rune, der er bundet til
+      # :1, får rettelser uden nogensinde at krydse et hovedversionsskifte.
+      #
+      # En forudgivelse (v1.4.2-rc1) får KUN sit eget nøjagtige mærkat. At lade
+      # en rc overskrive :latest eller :1 ville sende den ud til alle, der troede
+      # de fulgte det stabile spor — og mærkatmønsteret ovenfor lukker dem ind.
+      - name: Work out the tags
+        id: tags
+        run: |
+          set -eu
+          version=${GITHUB_REF_NAME#v}
+          image="$REGISTRY/$GITHUB_REPOSITORY"
+          args="--tag $image:$version"
+          case "$version" in
+            *-*) echo "Forudgivelse: kun $version." ;;
+            *)
+              minor=${version%.*}
+              major=${version%%.*}
+              args="$args --tag $image:$minor --tag $image:$major --tag $image:latest"
+              ;;
+          esac
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+          echo "Mærkater: $args"
 
-      # arm64 er ikke valgfrit: et hjemmelab er lige så tit en Raspberry Pi eller
-      # en Apple silicon-VM som en x86-kasse.
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ gitea.ref_name }}
-          # Ingen `cache-from: type=gha`. Den cache er GitHubs tjeneste, og den
-          # findes ikke her — bedt om den, fejler trinnet på noget, der ikke har
-          # med bygningen at gøre. Uden cache tager en kold bygning nogle minutter
-          # længere, og det er prisen, indtil runneren har en cache af sin egen.
+      - name: Build and push
+        run: |
+          set -eu
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --push \
+            ${{ steps.tags.outputs.args }} \
+            --build-arg "VERSION=$GITHUB_REF_NAME" \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.version=$GITHUB_REF_NAME" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            .
+          # Ingen `cache-from: type=gha`. act_runner har en cache-tjeneste, der
+          # svarer på det navn, men den er ikke prøvet her, og en kold bygning,
+          # der tager nogle minutter længere, er billigere end en udgivelse, der
+          # fejler på noget, som ikke har med bygningen at gøre.
+
     # Ingen Release oprettes.
     #
     # GitHub-workflowet laver en Release, fordi opdateringsnotitsen i appen læser
     # `releases/latest` derfra. Gitea har sit eget Releases-begreb, men notitsen
     # peger på GitHub — så en release her ville ingen læse. Skal notitsen flyttes
     # med, er det `internal/update`, der skal have en ny adresse, og det er en
-    # ændring for sig.
+    # ændring for sig. (Bemærk også, at GitHub-udgavens softprops-handling taler
+    # mod api.github.com og ikke kan genbruges her.)

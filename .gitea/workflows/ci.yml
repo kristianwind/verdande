@@ -1,0 +1,196 @@
+name: CI
+
+# Gitea-tvillingen til .github/workflows/ci.yml. Den prøver at nå samme resultat
+# ad en anden vej, og forskellen er hele pointen med filen:
+#
+# INGEN `uses:`. Gitea Actions kan læse GitHubs format, men `DEFAULT_ACTIONS_URL`
+# står ikke i app.ini på gitea.nolimit.dk, og standarden er github.com — så et
+# `uses: actions/checkout@v4` her ville blive hentet FRA GitHub, hver gang, også
+# selvom både koden, runneren og registret er vores egne. Et workflow, der bruger
+# markedspladsen, er derfor ikke uafhængigt af GitHub; det ser bare sådan ud.
+#
+# Prisen er, at værktøjskæden skal komme et sted fra. Den kommer fra jobbets
+# container, hvilket er billigere end det lyder: `container: golang:1.26` er
+# nøjagtig det, setup-go ellers ville bruge et trin på at installere.
+#
+# Alternativerne, hvis nogen senere vil skrive filen om: sæt DEFAULT_ACTIONS_URL
+# til gitea.com, som spejler de gængse handlinger — men det flytter kun
+# afhængigheden fra én andens server til en andens, og det er en indstilling for
+# HELE instansen, altså også for alt andet, der bygger der. Denne fil rører kun
+# dette repo.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Ingen `concurrency:`-blok. GitHub-udgaven aflyser en kørsel, når en nyere
+# kommer, og det er stadig det rigtige at gøre — men understøttelsen kom sent til
+# Gitea Actions, og et felt, runneren ikke kender, er en fejl ved oversættelsen
+# frem for en ignoreret linje. Den kan sættes på, når instansen er en version,
+# der kan.
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    # Containeren ER værktøjskæden. `-race` kræver en C-oversætter, og den er med
+    # i det officielle golang-image — et slankere ville koste et apt-trin.
+    container:
+      image: golang:1.26
+    steps:
+      - name: Checkout
+        env:
+          TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          set -eu
+          # Håndrullet, fordi actions/checkout ville blive hentet fra GitHub.
+          # Det er de samme fire greb, den handling tager: init, remote, en
+          # fetch af præcis den commit, der udløste kørslen, og et checkout.
+          #
+          # Legitimationen sættes med -c på selve fetch-kommandoen frem for i
+          # remotens adresse. En adresse med token i havner i .git/config, i
+          # `git remote -v` og i enhver fejlbesked, der citerer den; en header
+          # gør ikke.
+          git config --global --add safe.directory '*'
+          git init -q .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git -c http.extraheader="Authorization: Basic $(printf '%s:%s' "$GITHUB_ACTOR" "$TOKEN" | base64 | tr -d '\n')" \
+              fetch -q --depth=1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+
+      - name: Formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      # -race is the whole point of running tests in CI for a server with a
+      # WebSocket fan-out: a data race is exactly the bug that passes locally.
+      - name: Test
+        run: go test -race -count=1 ./...
+
+      - name: Build
+        run: CGO_ENABLED=0 go build ./...
+
+  spec:
+    name: OpenAPI is valid
+    runs-on: ubuntu-latest
+    container:
+      image: node:22
+    steps:
+      - name: Checkout
+        env:
+          TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          set -eu
+          git config --global --add safe.directory '*'
+          git init -q .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git -c http.extraheader="Authorization: Basic $(printf '%s:%s' "$GITHUB_ACTOR" "$TOKEN" | base64 | tr -d '\n')" \
+              fetch -q --depth=1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+
+      # Structural validity only. That the spec matches the *router* is checked by
+      # a Go test, which is the half that actually goes stale.
+      - run: npx --yes @redocly/cli@latest lint docs/openapi.yaml
+
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    # node frem for golang her: Playwrights browsere trækker et lag
+    # Debian-pakker, som npm-imaget er vant til at have, mens Go til gengæld er
+    # fire linjer at hælde ind. Den anden vej rundt er den dyre.
+    container:
+      image: node:22
+    steps:
+      - name: Checkout
+        env:
+          TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          set -eu
+          git config --global --add safe.directory '*'
+          git init -q .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git -c http.extraheader="Authorization: Basic $(printf '%s:%s' "$GITHUB_ACTOR" "$TOKEN" | base64 | tr -d '\n')" \
+              fetch -q --depth=1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+
+      - name: Go
+        run: |
+          set -eu
+          # Versionen læses ud af go.mod frem for at stå her. To steder at rette
+          # er ét for mange, og den slags glemmes lige indtil CI bygger med en
+          # anden Go end udviklerne.
+          version=$(awk '/^go /{print $2; exit}' go.mod)
+          arch=$(dpkg --print-architecture)
+          curl -fsSL "https://go.dev/dl/go${version}.linux-${arch}.tar.gz" | tar -xz -C /usr/local
+          echo /usr/local/go/bin >> "$GITHUB_PATH"
+
+      - name: Install
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      # Chromium for the suite, WebKit for one test.
+      #
+      # A smoke test exists to catch a build that does not work at all, and running
+      # the whole thing in three engines finds the same breakage three times for
+      # three times the cost. Focus is the exception, and it took a real report to
+      # learn it: Safari ignores `autofocus` on anything inserted after the page has
+      # loaded, so every inline form in the app opened with no cursor in it. WebKit
+      # here is the same engine Safari is, and `webkit-forms` in the Playwright
+      # config greps a single test out of the suite to run in it.
+      - name: Install browsers
+        working-directory: web
+        run: npx playwright install --with-deps chromium webkit
+
+      # The suite builds the frontend, embeds it and starts the real binary — see
+      # playwright.config.js. There is nothing to build here first.
+      - name: Test
+        working-directory: web
+        run: npm run test:e2e
+
+      # Ingen rapport at hente ned bagefter. GitHub-udgaven lægger
+      # web/playwright-report/ op som et artefakt, og det trin ER en handling fra
+      # markedspladsen — der er ikke en `run:`-form af det. Går suiten i stykker
+      # her, står grunden i loggen frem for i en zip. Skal rapporten tilbage, er
+      # det upload-artifact spejlet ind lokalt, ikke en linje mere i denne fil.
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    # Ingen `container:` her: jobbet skal bruge docker-klienten og buildx, og dem
+    # har runnerens eget ubuntu-image. En golang- eller node-container ville have
+    # sproget og mangle værktøjet.
+    steps:
+      - name: Checkout
+        env:
+          TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          set -eu
+          git config --global --add safe.directory '*'
+          git init -q .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git -c http.extraheader="Authorization: Basic $(printf '%s:%s' "$GITHUB_ACTOR" "$TOKEN" | base64 | tr -d '\n')" \
+              fetch -q --depth=1 origin "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+
+      # Build only — publishing happens on a tag, in release.yml. This job exists
+      # so a Dockerfile that no longer builds fails on the pull request rather
+      # than at release time.
+      #
+      # `type=cacheonly` frem for `--load`: resultatet skal ingen steder hen, og
+      # at hente et image ind i daemonen for straks at glemme det er et halvt
+      # minut hver kørsel. Én arkitektur er nok til at fange en Dockerfile, der
+      # ikke bygger; de to rigtige bygges på et mærkat.
+      - name: Build
+        run: |
+          set -eu
+          docker buildx create --use --name ci-verdande 2>/dev/null || docker buildx use ci-verdande
+          docker buildx build --platform linux/amd64 --output type=cacheonly .

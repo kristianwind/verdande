@@ -1,0 +1,46 @@
+name: Bug
+# Gitea kalder feltet `about`, hvor GitHub kalder det `description`, og Gitea
+# *kræver* det: en skabelon uden bliver afvist frem for at blive vist. Derfor
+# ligger skabelonerne her for sig frem for at være delt med `.github/`.
+about: Something does not work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce it
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The image tag, or the commit you built from.
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How are you running it
+      options:
+        - As a Rune in Yggdrasil Panel
+        - Docker directly
+        - From source
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Anything in the logs
+      description: Please remove tokens and email addresses first.
+      render: text
