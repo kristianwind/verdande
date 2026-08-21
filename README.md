@@ -171,7 +171,7 @@ docker run -d --name verdande \
   -p 8080:8080 \
   -v verdande-data:/data \
   -e VERDANDE_BASE_URL=https://todo.example.dk \
-  ghcr.io/kristianwind/verdande:latest
+  gitea.nolimit.dk/kw/verdande:latest
 ```
 
 ### From source

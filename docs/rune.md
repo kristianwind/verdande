@@ -7,14 +7,14 @@ verdande ships with a Rune manifest for
 
 ```
 create container: Error response from daemon:
-No such image: ghcr.io/kristianwind/verdande:latest
+No such image: gitea.nolimit.dk/kw/verdande:latest
 ```
 
 This message is a liar. It does not mean the tag is missing from the registry —
 it means the image is not on the host, and the panel's attempt to fetch it failed
 without saying so.
 
-The usual cause is a **private** GHCR package. Yggdrasil pulls anonymously: its
+The usual cause is a **private** package. Yggdrasil pulls anonymously: its
 `PullImage` calls the Docker SDK with no `RegistryAuth`, so a private image comes
 back 401. The pull error is discarded, and `ContainerCreate` — which only ever
 looks locally — then reports the image as missing.
@@ -24,10 +24,21 @@ looks locally — then reports the image as missing.
     sends them itself with each request. Yggdrasil is a different client and
     sends none, so logging in changes nothing for the panel.
 
-**Make the package public.** Under
-[Packages → verdande → Package settings](https://github.com/users/kristianwind/packages/container/package/verdande)
-→ *Change visibility*. The repository stays private; only the built image becomes
-readable, which is what the manifest and these pages have always assumed.
+**The package has to be readable without credentials.** On Gitea that does not
+mean making the source repository public: a container package is only tied to a
+repository when it is pushed with a repository link, and this one is not — so its
+visibility follows the account, which is public, while `kw/verdande` stays
+private.
+
+Check it the way a puller does, with no credentials at all:
+
+```bash
+docker --config /tmp/empty pull gitea.nolimit.dk/kw/verdande:latest
+```
+
+If that works, the panel can pull it. A plain `curl` against `/v2/…/manifests/…`
+answers 401 even for a readable image — the registry hands out an anonymous token
+first — so a bare curl is not the test.
 
 Once it is public, press **Start** on the server you already have. There is no
 need to delete it and make another: the image reference is read from the rune at
@@ -37,8 +48,8 @@ To keep the package private you have to put the image on the host yourself,
 before creating the server, and again after every release:
 
 ```bash
-sudo docker login ghcr.io -u kristianwind
-sudo docker pull ghcr.io/kristianwind/verdande:latest
+sudo docker login gitea.nolimit.dk -u kw
+sudo docker pull gitea.nolimit.dk/kw/verdande:latest
 ```
 
 Run it as the user the Docker daemon runs as — `sudo` if the panel does. The

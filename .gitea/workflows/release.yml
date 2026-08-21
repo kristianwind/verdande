@@ -1,0 +1,67 @@
+name: Release
+
+# Samme udløser som GitHub-workflowet: et semver-tag, og ikke andet.
+#
+# Gitea Actions læser samme format som GitHub Actions og kan bruge handlinger
+# derfra, men det er *ikke* det samme sted. Filen ligger derfor for sig i
+# `.gitea/workflows/` frem for at være delt: `secrets.GITHUB_TOKEN` findes ikke
+# her, registret er et andet, og der er ingen Releases-side at skrive til. En delt
+# fil ville være fire betingede led, der hver kun gælder ét af de to steder.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+jobs:
+  image:
+    name: Build and publish image
+    # `ubuntu-latest` betyder her det, runneren er sat op til at kalde det.
+    # Registreres runneren med en anden etiket, skal denne linje følge med.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      # `GITEA_TOKEN` er automatisk til stede i et Actions-job og har lov at
+      # skrive pakker for den, der ejer repoet. Ingen hemmelighed at sætte op.
+      - uses: docker/login-action@v3
+        with:
+          registry: gitea.nolimit.dk
+          username: ${{ gitea.actor }}
+          password: ${{ secrets.GITEA_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: gitea.nolimit.dk/${{ gitea.repository }}
+          # v1.4.2 udgiver 1.4.2, 1.4 og 1 — så en rune, der er bundet til :1, får
+          # rettelser uden nogensinde at krydse et hovedversionsskifte.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      # arm64 er ikke valgfrit: et hjemmelab er lige så tit en Raspberry Pi eller
+      # en Apple silicon-VM som en x86-kasse.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ gitea.ref_name }}
+          # Ingen `cache-from: type=gha`. Den cache er GitHubs tjeneste, og den
+          # findes ikke her — bedt om den, fejler trinnet på noget, der ikke har
+          # med bygningen at gøre. Uden cache tager en kold bygning nogle minutter
+          # længere, og det er prisen, indtil runneren har en cache af sin egen.
+    # Ingen Release oprettes.
+    #
+    # GitHub-workflowet laver en Release, fordi opdateringsnotitsen i appen læser
+    # `releases/latest` derfra. Gitea har sit eget Releases-begreb, men notitsen
+    # peger på GitHub — så en release her ville ingen læse. Skal notitsen flyttes
+    # med, er det `internal/update`, der skal have en ny adresse, og det er en
+    # ændring for sig.

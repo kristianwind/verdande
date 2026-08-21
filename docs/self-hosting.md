@@ -6,9 +6,10 @@ cache, no queue and no second process.
 ## Docker
 
 !!! note "If the pull is refused"
-    The GHCR package is public, so this needs no credentials. If it is ever set
-    back to private, `docker login ghcr.io` with a token carrying the
-    `read:packages` scope before pulling — and see
+    The image is published from a self-hosted Gitea and is readable without
+    credentials — the package is not linked to a repository, so its visibility
+    follows the account rather than the (private) source repo. If it is ever set
+    back to private, `docker login gitea.nolimit.dk` before pulling — and see
     [the Rune page](rune.md#if-the-image-will-not-pull), because a private image
     fails differently and much more confusingly under Yggdrasil.
 
@@ -18,7 +19,7 @@ docker run -d --name verdande \
   -p 8080:8080 \
   -v verdande-data:/data \
   -e VERDANDE_BASE_URL=https://todo.example.dk \
-  ghcr.io/kristianwind/verdande:latest
+  gitea.nolimit.dk/kw/verdande:latest
 ```
 
 `VERDANDE_BASE_URL` has to be the address you actually reach it on. Invite links,
@@ -30,7 +31,7 @@ means the links in your email point somewhere that does not answer.
 ```yaml
 services:
   verdande:
-    image: ghcr.io/kristianwind/verdande:latest
+    image: gitea.nolimit.dk/kw/verdande:latest
     restart: unless-stopped
     ports:
       - "8080:8080"
