@@ -3366,6 +3366,35 @@ test('notelisten grupperer favoritter og datoer, også i arkivet', async ({ page
 	await expect(page.locator('h3.group')).toHaveCount(0);
 	await page.getByPlaceholder('Søg i noter').fill('');
 
+	// Rækkerne skal kunne *ses*, ikke bare findes.
+	//
+	// Da listen blev delt i grupper, blev hver gruppe sit eget `<ul>` — og dermed
+	// sit eget flex-element med `overflow-y: auto`. Flex-elementer skrumper som
+	// udgangspunkt, og et element, der skrumper og klipper, viser ingenting: alle
+	// overskrifter stod med deres tal, og der var ikke en eneste note under nogen af
+	// dem. Med tre grupper og en høj skærm var der plads nok til at det ikke skete,
+	// hvilket er hvorfor prøven herover ikke fangede det.
+	//
+	// Et lavt vindue fremtvinger presset. Tolv hundrede noter i tyve måneder gør det
+	// samme i virkeligheden.
+	await page.setViewportSize({ width: 1100, height: 380 });
+	await page.waitForTimeout(300);
+	await expect(
+		page.locator('li').filter({ hasText: 'Gruppe to' }).first(),
+		'rækkerne blev klippet væk, da der ikke var plads'
+	).toBeVisible();
+	// Og rulningen ligger på kassen om grupperne, ikke på hver liste for sig.
+	const scroller = await page
+		.locator('.list')
+		.evaluate((el) => getComputedStyle(el).overflowY);
+	expect(scroller, 'kassen om grupperne ruller ikke').toBe('auto');
+	const inner = await page
+		.locator('.list ul')
+		.first()
+		.evaluate((el) => getComputedStyle(el).overflowY);
+	expect(inner, 'den enkelte liste ruller stadig for sig').toBe('visible');
+	await page.setViewportSize({ width: 1280, height: 720 });
+
 	// Arkivet grupperes på samme måde. Det er dér, det betyder mest.
 	await row.hover();
 	await row.getByRole('button', { name: /Arkivér/i }).click();

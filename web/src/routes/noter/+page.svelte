@@ -629,99 +629,108 @@
 				{query ? t('notes.noneFound') : showArchive ? t('notes.emptyArchive') : t('notes.noneYet')}
 			</p>
 		{:else}
-			{#each groups as group (group.key)}
-				<!-- Overskriften klæber, mens man ruller. Med tolv hundrede noter er det
-				     forskellen på at rulle og på at lede: man kan altid se, hvilken måned
-				     man er nede i. -->
-				{#if !group.plain}
-					<h3 class="group">
-						<!-- Ingen `aria-label`. Den ville erstatte knappens indhold som dens
-						     navn, og knappen *er* overskriften — så overskriften ville hedde
-						     "Fold I dag sammen" i stedet for "I dag". `aria-expanded` siger
-						     tilstanden, som den gør på gruppehovederne i sidebjælken. -->
-						<button onclick={() => toggleGroup(group.key)} aria-expanded={!folded.has(group.key)}>
-							{#if group.star}
-								<span class="mark favmark" aria-hidden="true">★</span>
-							{:else}
-								<span class="mark" class:closed={folded.has(group.key)} aria-hidden="true">▾</span>
-							{/if}
-							{group.label}
-							<span class="count">{group.notes.length}</span>
-						</button>
-					</h3>
-				{/if}
-				{#if !folded.has(group.key)}
-					<ul>
-						{#each group.notes as note (note.id)}
-						<li>
-							<div class="rowline">
-								<button
-									class="row"
-									class:on={selectedId === note.id}
-									class:picked={picked.has(note.id)}
-									onclick={(e) => rowClick(e, note)}
-									draggable="true"
-									ondragstart={(e) => onDragStart(e, note)}
-									ondragend={() => (dragging = null)}
-								>
-									<!-- Titel og projekt på linje ét, uddrag på linje to. Datoen står
-									     i gruppens overskrift og ikke her — undtagen når der er sorteret
-									     på navn, for så er der ingen overskrift, der siger den, og så er
-									     den det eneste tilbage, der gør. -->
-									<span class="head">
-										<strong>{note.title || t('notes.untitled')}</strong>
-										{#if order === 'title'}
-											<span class="when" title={stamp(note)}>{when(shownDate(note))}</span>
-										{/if}
-										{#if note.project_id}
-											<!-- Projektets egen farve, den samme som prikken i sidebjælken.
-											     Mærkaten sagde det samme som alle de andre i en grå, der var
-											     lysere end uddraget — og projektet er dét, man skanner efter,
-											     når man leder i tolv hundrede noter. Nu kan Hjem kendes fra
-											     Claude uden at læse ordet. -->
-											<span class="filed" style="--project: {projectColour(note.project_id)}">
-												<span class="dot" aria-hidden="true"></span>
-												{projectName(note.project_id)}
-											</span>
-										{/if}
-									</span>
-									<span class="preview">{preview(note)}</span>
-								</button>
-								<!-- De to knapper står oven på hinanden i en smal søjle.
-								     Ved siden af hinanden tog de toogfyrre pixels af en liste,
-								     der er tre hundrede bred — og de bruges sjældent, mens
-								     titlen og uddraget læses hele tiden. -->
-								<div class="rowactions">
-								<!-- Én note lagt væk, uden at markere den først. Markeringen er
-								     til flere; det her er til den ene, man står med — og i
-								     arkivet er det vejen tilbage. -->
-								<button
-									class="archive-one"
-									onclick={() => archiveOne(note)}
-									aria-label={note.archived_at ? t('notes.unarchive') : t('notes.archiveOne')}
-									title={note.archived_at ? t('notes.unarchive') : t('notes.archiveOne')}
-								>
-									<svg viewBox="0 0 24 24" aria-hidden="true">
-										<path d="M3 7h18v3H3zM5 10v9h14v-9M10 14h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
-									</svg>
-								</button>
-								<button
-									class="star"
-									class:on={note.pinned}
-									onclick={() => favourite(note)}
-									aria-pressed={note.pinned}
-									aria-label={note.pinned ? t('notes.unfavourite') : t('notes.favourite')}
-									title={note.pinned ? t('notes.unfavourite') : t('notes.favourite')}
-								>
-									{note.pinned ? '★' : '☆'}
-								</button>
+			<!-- Én rulleboks om alle grupperne.
+			     Før var der ét `<ul>`, og *det* rullede. Da listen blev delt i grupper,
+			     blev hver gruppe sit eget `<ul>` — og dermed sit eget flex-element med
+			     `overflow-y: auto`. Flex-elementer skrumper som udgangspunkt, og et
+			     element, der skrumper og klipper, viser ingenting: alle overskrifter
+			     stod med deres tal, og der var ikke en eneste note under nogen af dem.
+			     Rulningen hører til kassen om dem alle, ikke til hver af dem. -->
+			<div class="list">
+					{#each groups as group (group.key)}
+					<!-- Overskriften klæber, mens man ruller. Med tolv hundrede noter er det
+					     forskellen på at rulle og på at lede: man kan altid se, hvilken måned
+					     man er nede i. -->
+					{#if !group.plain}
+						<h3 class="group">
+							<!-- Ingen `aria-label`. Den ville erstatte knappens indhold som dens
+							     navn, og knappen *er* overskriften — så overskriften ville hedde
+							     "Fold I dag sammen" i stedet for "I dag". `aria-expanded` siger
+							     tilstanden, som den gør på gruppehovederne i sidebjælken. -->
+							<button onclick={() => toggleGroup(group.key)} aria-expanded={!folded.has(group.key)}>
+								{#if group.star}
+									<span class="mark favmark" aria-hidden="true">★</span>
+								{:else}
+									<span class="mark" class:closed={folded.has(group.key)} aria-hidden="true">▾</span>
+								{/if}
+								{group.label}
+								<span class="count">{group.notes.length}</span>
+							</button>
+						</h3>
+					{/if}
+					{#if !folded.has(group.key)}
+						<ul>
+							{#each group.notes as note (note.id)}
+							<li>
+								<div class="rowline">
+									<button
+										class="row"
+										class:on={selectedId === note.id}
+										class:picked={picked.has(note.id)}
+										onclick={(e) => rowClick(e, note)}
+										draggable="true"
+										ondragstart={(e) => onDragStart(e, note)}
+										ondragend={() => (dragging = null)}
+									>
+										<!-- Titel og projekt på linje ét, uddrag på linje to. Datoen står
+										     i gruppens overskrift og ikke her — undtagen når der er sorteret
+										     på navn, for så er der ingen overskrift, der siger den, og så er
+										     den det eneste tilbage, der gør. -->
+										<span class="head">
+											<strong>{note.title || t('notes.untitled')}</strong>
+											{#if order === 'title'}
+												<span class="when" title={stamp(note)}>{when(shownDate(note))}</span>
+											{/if}
+											{#if note.project_id}
+												<!-- Projektets egen farve, den samme som prikken i sidebjælken.
+												     Mærkaten sagde det samme som alle de andre i en grå, der var
+												     lysere end uddraget — og projektet er dét, man skanner efter,
+												     når man leder i tolv hundrede noter. Nu kan Hjem kendes fra
+												     Claude uden at læse ordet. -->
+												<span class="filed" style="--project: {projectColour(note.project_id)}">
+													<span class="dot" aria-hidden="true"></span>
+													{projectName(note.project_id)}
+												</span>
+											{/if}
+										</span>
+										<span class="preview">{preview(note)}</span>
+									</button>
+									<!-- De to knapper står oven på hinanden i en smal søjle.
+									     Ved siden af hinanden tog de toogfyrre pixels af en liste,
+									     der er tre hundrede bred — og de bruges sjældent, mens
+									     titlen og uddraget læses hele tiden. -->
+									<div class="rowactions">
+									<!-- Én note lagt væk, uden at markere den først. Markeringen er
+									     til flere; det her er til den ene, man står med — og i
+									     arkivet er det vejen tilbage. -->
+									<button
+										class="archive-one"
+										onclick={() => archiveOne(note)}
+										aria-label={note.archived_at ? t('notes.unarchive') : t('notes.archiveOne')}
+										title={note.archived_at ? t('notes.unarchive') : t('notes.archiveOne')}
+									>
+										<svg viewBox="0 0 24 24" aria-hidden="true">
+											<path d="M3 7h18v3H3zM5 10v9h14v-9M10 14h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+										</svg>
+									</button>
+									<button
+										class="star"
+										class:on={note.pinned}
+										onclick={() => favourite(note)}
+										aria-pressed={note.pinned}
+										aria-label={note.pinned ? t('notes.unfavourite') : t('notes.favourite')}
+										title={note.pinned ? t('notes.unfavourite') : t('notes.favourite')}
+									>
+										{note.pinned ? '★' : '☆'}
+									</button>
+									</div>
 								</div>
-							</div>
-						</li>
-						{/each}
+							</li>
+							{/each}
 					</ul>
 				{/if}
-			{/each}
+				{/each}
+			</div>
 		{/if}
 	</aside>
 
@@ -1007,12 +1016,18 @@
 		-webkit-appearance: none;
 	}
 
+	/* Kassen ruller. Listerne indeni gør ikke: de er mange nu, og et flex-element,
+	   der både skrumper og klipper, viser ingenting. */
+	.list {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
 	ul {
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		overflow-y: auto;
-		min-height: 0;
 	}
 
 	/* Rækker uden for skærmen koster ingenting.
