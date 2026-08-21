@@ -72,7 +72,7 @@ docker run -d --name verdande \
   -p 8080:8080 \
   -v verdande-data:/data \
   -e VERDANDE_BASE_URL=https://todo.example.dk \
-  gitea.nolimit.dk/kw/verdande:latest
+  ghcr.io/kristianwind/verdande:latest
 ```
 
 Open the address, create the first account — that account is the administrator.

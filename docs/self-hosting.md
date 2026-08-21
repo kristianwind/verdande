@@ -19,7 +19,7 @@ docker run -d --name verdande \
   -p 8080:8080 \
   -v verdande-data:/data \
   -e VERDANDE_BASE_URL=https://todo.example.dk \
-  gitea.nolimit.dk/kw/verdande:latest
+  ghcr.io/kristianwind/verdande:latest
 ```
 
 `VERDANDE_BASE_URL` has to be the address you actually reach it on. Invite links,
@@ -31,7 +31,7 @@ means the links in your email point somewhere that does not answer.
 ```yaml
 services:
   verdande:
-    image: gitea.nolimit.dk/kw/verdande:latest
+    image: ghcr.io/kristianwind/verdande:latest
     restart: unless-stopped
     ports:
       - "8080:8080"

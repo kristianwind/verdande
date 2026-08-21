@@ -24,21 +24,28 @@ looks locally — then reports the image as missing.
     sends them itself with each request. Yggdrasil is a different client and
     sends none, so logging in changes nothing for the panel.
 
-**The package has to be readable without credentials.** On Gitea that does not
-mean making the source repository public: a container package is only tied to a
-repository when it is pushed with a repository link, and this one is not — so its
-visibility follows the account, which is public, while `kw/verdande` stays
-private.
-
-Check it the way a puller does, with no credentials at all:
+**The package has to be readable without credentials**, and the only way to know
+is to ask the registry for a token as a stranger:
 
 ```bash
-docker --config /tmp/empty pull gitea.nolimit.dk/kw/verdande:latest
+curl -s "https://ghcr.io/token?scope=repository:kristianwind/verdande:pull&service=ghcr.io"
 ```
 
-If that works, the panel can pull it. A plain `curl` against `/v2/…/manifests/…`
-answers 401 even for a readable image — the registry hands out an anonymous token
-first — so a bare curl is not the test.
+A 200 with a `token` in it means anyone can pull, which means the panel can. A
+401 means it cannot, whatever the package page says.
+
+!!! danger "Do not test this with `docker --config /tmp/empty pull`"
+    It looks like the honest test and is not. An empty config directory does not
+    stop the machine's credential helper, so the pull is quietly authenticated
+    with credentials you forgot you had — and reports success for an image no
+    stranger can fetch. This cost a production instance an hour of downtime: the
+    image was declared public on that evidence, the rune was pointed at it, and
+    the host — which had never logged in — could not pull a thing.
+
+    A self-hosted Gitea is where this bites. An instance with `REQUIRE_SIGNIN_VIEW`
+    turned on refuses anonymous tokens for its registry too, and no per-package
+    setting overrides it. Making the source repository public does not change it
+    either; that was tried.
 
 Once it is public, press **Start** on the server you already have. There is no
 need to delete it and make another: the image reference is read from the rune at
