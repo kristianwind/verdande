@@ -32,8 +32,26 @@ jobs:
           git config --global --add safe.directory '*'
           git init -q .
           git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
-          git -c http.extraheader="Authorization: Basic $(printf '%s:%s' "$GITHUB_ACTOR" "$TOKEN" | base64 | tr -d '\n')" \
-              fetch -q --depth=1 origin "$GITHUB_SHA"
+          # To former for basic auth, fordi kun en kørende runner kan svare på,
+          # hvilken Gitea tager imod. actions/checkout bruger x-access-token, og
+          # det er den, økosystemet beviser virker; $GITHUB_ACTOR er reserven.
+          # Løkken skriver, hvilken der blev godkendt — så ÉN kørsel besvarer
+          # spørgsmålet, uanset om den ender grøn eller rød. Feedback-sløjfen her
+          # går gennem en kø og et andet menneske; at bruge en hel runde på at få
+          # ét bit at vide er for dyrt.
+          godkendt=
+          for bruger in x-access-token "$GITHUB_ACTOR"; do
+            header="Authorization: Basic $(printf '%s:%s' "$bruger" "$TOKEN" | base64 | tr -d '\n')"
+            if git -c http.extraheader="$header" fetch -q --depth=1 origin "$GITHUB_SHA"; then
+              godkendt=$bruger
+              break
+            fi
+          done
+          if [ -z "$godkendt" ]; then
+            echo "checkout: hverken x-access-token eller $GITHUB_ACTOR blev accepteret"
+            exit 1
+          fi
+          echo "checkout: godkendt som $godkendt"
           git checkout -q FETCH_HEAD
 
       # setup-qemu-action i rå form. Uden den bygger buildx kun værtens egen
