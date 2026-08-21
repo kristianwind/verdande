@@ -66,7 +66,7 @@ func TestAllowPrivateStillReaches(t *testing.T) {
 // op i prædikatet.
 func TestTailnetIsNotTheInside(t *testing.T) {
 	for _, s := range []string{
-		"100.64.0.0", "100.72.154.85", "100.127.255.255",
+		"100.64.0.0", "100.100.100.100", "100.127.255.255",
 		"fd7a:115c:a1e0::1", "fd7a:115c:a1e0:ab12:3456:7890:abcd:ef01",
 	} {
 		if Blocked(net.ParseIP(s)) {
