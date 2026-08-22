@@ -558,15 +558,35 @@ test('en opgave kan trækkes til en anden dag og videre til et projekt', async (
 	// browser is pinned to Europe/Copenhagen and this process is not, and for two
 	// hours of every day they disagree about what today is.
 	await page.goto('/upcoming');
+
+	// Taller than the default window, and it is not cosmetic: the month grid is
+	// six rows, and in 720 px the last one is cut off by the fold. A synthetic
+	// drag drops at the target's centre without the auto-scroll a real pointer
+	// gets from the browser — so a target below the fold is never hit.
+	//
+	// That made this test depend on the date. The task sits on tomorrow, and when
+	// tomorrow is a Sunday, the day after is the first cell of the next row, down
+	// in the cut-off part. It passed for months and failed the morning tomorrow
+	// happened to be a Sunday, on a commit that had touched nothing near a
+	// calendar.
+	await page.setViewportSize({ width: 1280, height: 1000 });
 	await page.getByRole('button', { name: 'Måned', exact: true }).click();
 
 	const chip = page.locator('.chip').filter({ hasText: 'hent pakken' });
 	await expect(chip).toBeVisible();
 
 	const from = await page.locator('.day').filter({ has: chip }).getAttribute('data-date');
-	const to = new Date(new Date(`${from}T12:00:00Z`).getTime() + 86400000)
-		.toISOString()
-		.slice(0, 10);
+
+	// The neighbouring cell is taken from the grid, not worked out from the date.
+	// The day after tomorrow is not always in the month on screen — at the end of
+	// a short month it falls outside it entirely — and the cell next door always
+	// is. Falls back to the cell before, for the one day a month when there is no
+	// cell after.
+	const dates = await page
+		.locator('.day[data-date]')
+		.evaluateAll((cells) => cells.map((cell) => cell.dataset.date));
+	const at = dates.indexOf(from);
+	const to = dates[at + 1] ?? dates[at - 1];
 
 	await chip.dragTo(page.locator(`[data-date="${to}"]`));
 	await expect(page.locator(`[data-date="${to}"]`).getByText('hent pakken')).toBeVisible();
