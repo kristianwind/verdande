@@ -202,8 +202,20 @@ func (s *Server) SyncMailbox(ctx context.Context, user *store.User, m *store.Mai
 			Description: msg.Snippet,
 			Priority:    4,
 			CreatedBy:   user.ID,
+			// Host and uid together: a uid is only unique within one mailbox on
+			// one server, and two accounts will hand out the same small numbers.
+			SourceKey: fmt.Sprintf("imap:%s:%s:%d", m.Host, m.Folder, msg.UID),
 		}
 		if err := s.db.CreateTask(ctx, task, nil); err != nil {
+			if errors.Is(err, store.ErrDuplicate) {
+				// Already a task. Still count it as read, or last_uid never moves
+				// past it and every sweep from here on stops at the same message.
+				done = append(done, msg.UID)
+				if msg.UID > highest {
+					highest = msg.UID
+				}
+				continue
+			}
 			s.log.Warn("mailbox create task", "err", err, "mailbox", m.ID)
 			continue
 		}

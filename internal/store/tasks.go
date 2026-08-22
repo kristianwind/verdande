@@ -32,6 +32,13 @@ type Task struct {
 	// CreatedBy is empty when the author's account has been deleted: `created_by`
 	// is ON DELETE SET NULL so the task survives the person who wrote it.
 	CreatedBy string
+	// SourceKey names the thing out there this task was made from, namespaced:
+	// `gmail:thread:18f2c…`. Empty for a task somebody typed.
+	//
+	// It exists so that the second reader of a mailbox — another assistant, a
+	// rerun, a person — can ask "has this already become a task?" and get an
+	// answer. CreateTask returns ErrDuplicate rather than making a second one.
+	SourceKey string
 	SortOrder float64
 	// SubtaskCount and SubtaskDone are what a row can say without being opened:
 	// that there is something underneath it, and how much of it is left. Counted
@@ -452,19 +459,46 @@ func (db *DB) CreateTask(ctx context.Context, t *Task, labelNames []string) erro
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO tasks (id, project_id, section_id, parent_id, content, description,
 			                   priority, due_date, due_datetime, due_timezone, duration_min,
-			                   recurrence_rule, assignee_id, created_by, sort_order,
+			                   recurrence_rule, assignee_id, created_by, source_key, sort_order,
 			                   created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			t.ID, t.ProjectID, nullString(t.SectionID), nullString(t.ParentID),
 			t.Content, t.Description, t.Priority, nullString(t.DueDate),
 			nullTime(t.DueDatetime), nullString(t.DueTimezone), nullInt(t.DurationMin),
 			nullString(t.RecurrenceRule), nullString(t.AssigneeID), nullString(t.CreatedBy),
-			t.SortOrder, now.Unix(), now.Unix())
+			t.SourceKey, t.SortOrder, now.Unix(), now.Unix())
 		if err != nil {
+			// The one broken constraint that is not a bug: this source has already
+			// become a task. The caller skips it rather than making a duplicate,
+			// which is the entire reason the index exists.
+			if isUniqueViolation(err) {
+				return ErrDuplicate
+			}
 			return err
 		}
 		return setTaskLabels(ctx, tx, t.ID, t.CreatedBy, labelNames)
 	})
+}
+
+// TaskIDBySource answers "has this mail already become a task?" — the question
+// nothing could answer before, and the one that stops two assistants reading the
+// same inbox from making two of everything. Empty id and no error means no.
+//
+// Deleted tasks count. A task that was made from a mail and then thrown away is
+// an answer — remaking it on the next sweep would be the same duplicate wearing
+// a different hat.
+func (db *DB) TaskIDBySource(ctx context.Context, userID, sourceKey string) (string, error) {
+	if sourceKey == "" {
+		return "", nil
+	}
+	var id string
+	err := db.QueryRowContext(ctx,
+		`SELECT id FROM tasks WHERE created_by = ? AND source_key = ?`,
+		userID, sourceKey).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
 }
 
 func (db *DB) nextTaskOrder(ctx context.Context, projectID, sectionID string) (float64, error) {

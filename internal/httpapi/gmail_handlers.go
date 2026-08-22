@@ -360,8 +360,19 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 			Description: msg.Snippet + "\n\n" + msg.Link,
 			Priority:    4,
 			CreatedBy:   user.ID,
+			// The thread, not the message: a reply arriving later is the same
+			// conversation, and a second task for it would be the duplicate this
+			// key exists to prevent.
+			SourceKey: "gmail:thread:" + msg.ThreadID,
 		}
 		if err := s.db.CreateTask(ctx, task, nil); err != nil {
+			if errors.Is(err, store.ErrDuplicate) {
+				// Somebody got there first — an earlier sweep, or another
+				// assistant reading the same mailbox. Mark it seen and move on;
+				// it is handled, which is all this loop wanted.
+				seen[id] = true
+				continue
+			}
 			s.log.Warn("gmail create task", "err", err)
 			continue
 		}
