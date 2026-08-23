@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base32"
 	"errors"
 	"fmt"
@@ -80,6 +81,40 @@ func VerifyTOTP(secret, code string, now time.Time) error {
 		return ErrInvalidCode
 	}
 	return nil
+}
+
+// TOTPStep verifies a code and returns the counter of the step it matched, so the
+// caller can refuse to accept the same step twice.
+//
+// ValidateCustom answers only yes or no, and "yes" for a code inside the skew
+// window is not enough to stop a replay: a code seen in flight stays valid for the
+// rest of its period, and the fix is to record which step was spent and never
+// accept that step or an earlier one again. That needs the number, so this walks
+// the same window ValidateCustom would — one step either side — and reports the
+// counter of the match. The comparison is constant time for the same reason the
+// password check is: a code is a secret being checked against a computed value.
+func TOTPStep(secret, code string, now time.Time) (int64, error) {
+	if secret == "" {
+		return 0, ErrNoTOTPSecret
+	}
+	code = strings.ReplaceAll(strings.TrimSpace(code), " ", "")
+
+	for offset := -int64(totpSkew); offset <= int64(totpSkew); offset++ {
+		at := now.Add(time.Duration(offset) * totpPeriod * time.Second)
+		want, err := totp.GenerateCodeCustom(secret, at, totp.ValidateOpts{
+			Period:    totpPeriod,
+			Skew:      0,
+			Digits:    totpDigits,
+			Algorithm: otp.AlgorithmSHA1,
+		})
+		if err != nil {
+			return 0, ErrInvalidCode
+		}
+		if subtle.ConstantTimeCompare([]byte(want), []byte(code)) == 1 {
+			return at.Unix() / totpPeriod, nil
+		}
+	}
+	return 0, ErrInvalidCode
 }
 
 // NewRecoveryCodes returns single-use codes for someone who has lost their phone,

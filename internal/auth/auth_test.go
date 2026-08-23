@@ -265,6 +265,39 @@ func TestRecoveryCodes(t *testing.T) {
 	}
 }
 
+// TOTPStep returns the step a code matched, and it must be the same step across
+// the tolerance window — that number is what makes a code single-use, so a code
+// entered a little early or late has to spend the same step, not a new one.
+func TestTOTPStepIsStableAcrossTheWindow(t *testing.T) {
+	secret, _, err := NewTOTPSecret("verdande", "k@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 3, 10, 10, 0, 15, 0, time.UTC)
+	code := codeAt(t, secret, now)
+
+	want, err := TOTPStep(secret, code, now)
+	if err != nil {
+		t.Fatalf("the current code did not match: %v", err)
+	}
+	// Verified one step late — the code is still valid, and must report the step it
+	// was issued at, not the step it was checked at.
+	got, err := TOTPStep(secret, code, now.Add(30*time.Second))
+	if err != nil {
+		t.Fatalf("code rejected one step late: %v", err)
+	}
+	if got != want {
+		t.Errorf("same code reported step %d then %d; a replay check keyed on that would not catch it", want, got)
+	}
+
+	if _, err := TOTPStep(secret, "000000", now); err == nil {
+		t.Error("a wrong code returned a step")
+	}
+	if _, err := TOTPStep("", code, now); err != ErrNoTOTPSecret {
+		t.Errorf("empty secret: %v, want ErrNoTOTPSecret", err)
+	}
+}
+
 // codeAt produces the code an authenticator app would display at that moment,
 // using the same settings VerifyTOTP checks against.
 func codeAt(t *testing.T, secret string, now time.Time) string {

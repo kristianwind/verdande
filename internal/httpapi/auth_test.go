@@ -372,6 +372,50 @@ func TestTOTPEnrolmentAndTwoStepLogin(t *testing.T) {
 	}
 }
 
+// A TOTP code works once. A code seen in flight and replayed inside its window
+// must be refused the second time, or the second factor is only as good as the
+// thirty seconds an attacker has to reuse what they captured.
+func TestTOTPCodeIsSingleUse(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, body := ts.do(t, "POST", "/api/v1/auth/totp/setup", map[string]string{
+		"password": "et langt kodeord",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("totp setup: %d %v", resp.StatusCode, body)
+	}
+	secret, _ := body["secret"].(string)
+	resp, body = ts.do(t, "POST", "/api/v1/auth/totp/confirm", map[string]string{
+		"code": codeFor(t, secret),
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("totp confirm: %d %v", resp.StatusCode, body)
+	}
+
+	// One code, captured once and presented twice.
+	code := codeFor(t, secret)
+
+	ts.do(t, "POST", "/api/v1/auth/logout", nil)
+	ts.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": "kristian@example.dk", "password": "et langt kodeord",
+	})
+	resp, body = ts.do(t, "POST", "/api/v1/auth/login/totp", map[string]string{"code": code})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first use of the code failed: %d %v", resp.StatusCode, body)
+	}
+
+	// A second login, same code, same window.
+	ts.do(t, "POST", "/api/v1/auth/logout", nil)
+	ts.do(t, "POST", "/api/v1/auth/login", map[string]string{
+		"email": "kristian@example.dk", "password": "et langt kodeord",
+	})
+	resp, body = ts.do(t, "POST", "/api/v1/auth/login/totp", map[string]string{"code": code})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("the same code was accepted twice: %d %v", resp.StatusCode, body)
+	}
+}
+
 // A recovery code is accepted in the same field as a TOTP code, and works once.
 func TestRecoveryCodeCompletesLoginOnce(t *testing.T) {
 	ts := newTestServer(t)

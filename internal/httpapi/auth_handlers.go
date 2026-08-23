@@ -218,7 +218,24 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := auth.VerifyTOTP(user.TOTPSecret, req.Code, time.Now())
+	step, err := auth.TOTPStep(user.TOTPSecret, req.Code, time.Now())
+	if err == nil {
+		// The code is right; now it must also be unused. A TOTP code stays valid for
+		// its whole window, so one observed in flight — a phishing page, a proxy,
+		// over the shoulder — could otherwise be replayed until it expires. Spending
+		// the step here makes it single-use: a second presentation of the same code,
+		// or an earlier one, finds the step already gone.
+		fresh, cerr := s.db.ConsumeTOTPStep(r.Context(), user.ID, step)
+		if cerr != nil {
+			s.internal(w, r, "consume totp step", cerr)
+			return
+		}
+		if !fresh {
+			writeError(w, http.StatusUnauthorized, CodeUnauthorized,
+				"that verification code has already been used")
+			return
+		}
+	}
 	if err != nil {
 		// A recovery code is accepted in the same field. Making somebody find a
 		// different form while locked out of their account is a poor time to
