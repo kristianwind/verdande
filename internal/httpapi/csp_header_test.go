@@ -3,6 +3,8 @@ package httpapi
 import (
 	"strings"
 	"testing"
+
+	"github.com/kristianwind/verdande/internal/config"
 )
 
 // Politikken skal stå i svaret, og den skal stadig være stram.
@@ -47,6 +49,39 @@ func TestEveryResponseCarriesAStrictCSP(t *testing.T) {
 		if !strings.Contains(policy, want) {
 			t.Errorf("politikken mangler %q", want)
 		}
+	}
+}
+
+// HSTS følger med, når instansen kører over HTTPS — og kun der.
+//
+// Sessionen bor i en __Host-cookie, der kun findes over TLS, så hele modellen
+// forudsætter allerede HTTPS. HSTS er det, der holder den forudsætning mod en
+// netværksangriber; men bedt om over ren HTTP ville den bede en browser om at
+// kræve et certifikat, en dev-instans ikke har. Begge halvdele skal stå prøven.
+func TestHSTSTracksHTTPS(t *testing.T) {
+	overHTTP := newTestServer(t) // BaseURL er http://localhost
+	resp, _ := overHTTP.do(t, "GET", "/api/v1/ping", nil)
+	if got := resp.Header.Get("Strict-Transport-Security"); got != "" {
+		t.Errorf("HSTS sat over ren HTTP: %q", got)
+	}
+
+	overHTTPS := newTestServerWith(t, func(c *config.Config) {
+		c.BaseURL = "https://todo.example.dk"
+	})
+	resp, _ = overHTTPS.do(t, "GET", "/api/v1/ping", nil)
+	if got := resp.Header.Get("Strict-Transport-Security"); got == "" {
+		t.Error("ingen HSTS over HTTPS")
+	} else if !strings.Contains(got, "includeSubDomains") {
+		t.Errorf("HSTS uden includeSubDomains: %q", got)
+	}
+	// Permissions-Policy står på hvert svar, uanset skema: den lukker for kamera,
+	// mikrofon og placering, som appen aldrig beder om.
+	if got := resp.Header.Get("Permissions-Policy"); !strings.Contains(got, "camera=()") {
+		t.Errorf("Permissions-Policy lukker ikke for kameraet: %q", got)
+	}
+	// COOP isolerer browserkonteksten og står på hvert svar.
+	if got := resp.Header.Get("Cross-Origin-Opener-Policy"); got != "same-origin" {
+		t.Errorf("Cross-Origin-Opener-Policy er ikke same-origin: %q", got)
 	}
 }
 

@@ -1,0 +1,11 @@
+-- A TOTP code is meant to be usable once. RFC 6238 says so in as many words: the
+-- verifier must reject a code that has already been accepted, or a code observed in
+-- flight — over the shoulder, off a phishing page, out of a proxy — can be replayed
+-- for the rest of its thirty-second window.
+--
+-- totp_last_step records the counter of the most recently accepted code (Unix time
+-- divided by the period). A login accepts a code only when its step is strictly
+-- greater, so the same code cannot be spent twice and time cannot run backwards.
+-- Null means no code has been accepted yet, which is every account until its owner
+-- next signs in with one.
+ALTER TABLE users ADD COLUMN totp_last_step INTEGER;

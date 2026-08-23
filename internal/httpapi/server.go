@@ -110,7 +110,10 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	// Not middleware.RealIP: that believes a forwarded header from anyone, which
+	// lets a caller pick the address the rate limiter and audit log key on. This
+	// one reads the header only from a trusted proxy — see realip.go.
+	r.Use(realIP(cfg))
 	r.Use(requestLogger(log))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
@@ -665,6 +668,31 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "same-origin")
 		h.Set("Content-Security-Policy", s.csp)
+		// The session lives in a __Host- cookie that only exists over HTTPS, so the
+		// whole security model already assumes TLS. HSTS is what makes that
+		// assumption hold against a network attacker: without it, the very first
+		// navigation can be stripped to http:// and the cookie handed over in the
+		// clear. Gated on the same condition as the cookie's Secure flag, so a
+		// plain-HTTP dev instance is never told to demand a certificate it cannot
+		// present. Two years, subdomains included; no preload directive, because
+		// asking to be hard-coded into browsers is a decision the operator makes
+		// for their domain, not one a self-hosted app makes for them.
+		if s.secureCookies() {
+			h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		}
+		// verdande uses none of the powerful browser features, so the safest policy
+		// is to turn them all off: an injected element cannot ask for the camera,
+		// the microphone or the location if the page itself has already declined
+		// them. Named explicitly rather than with a wildcard because the wildcard
+		// form of this header is not universally understood, and a directive a
+		// browser ignores is not a control.
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), "+
+			"payment=(), usb=(), interest-cohort=()")
+		// Isolate the browsing context: a window this page opened, or one that
+		// opened it, cannot keep a handle across the origin boundary. verdande
+		// never scripts another window, so there is nothing to lose and a whole
+		// class of cross-window attacks to close.
+		h.Set("Cross-Origin-Opener-Policy", "same-origin")
 		next.ServeHTTP(w, r)
 	})
 }

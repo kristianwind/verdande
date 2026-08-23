@@ -466,6 +466,26 @@ func (db *DB) SetTOTPSecret(ctx context.Context, userID, secret string, enabled 
 	return err
 }
 
+// ConsumeTOTPStep records a just-accepted TOTP step and reports whether it was
+// fresh. It answers false when the step has already been spent — the same code, or
+// an earlier one, being presented a second time.
+//
+// The guard is in the statement, not in a read-then-write: two logins racing with
+// the same stolen code must not both find the old value and both proceed. The row
+// moves forward only when the new step is strictly greater, so exactly one of them
+// updates a row and the other sees nothing change.
+func (db *DB) ConsumeTOTPStep(ctx context.Context, userID string, step int64) (bool, error) {
+	res, err := db.ExecContext(ctx,
+		`UPDATE users SET totp_last_step = ? WHERE id = ?
+		   AND (totp_last_step IS NULL OR totp_last_step < ?)`,
+		step, userID, step)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
 // InboxID returns the user's Inbox project.
 func (db *DB) InboxID(ctx context.Context, userID string) (string, error) {
 	var id string
