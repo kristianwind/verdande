@@ -7,6 +7,7 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -80,6 +81,26 @@ type Config struct {
 	// TrashRetention is how long a soft-deleted task or project stays recoverable.
 	TrashRetention time.Duration
 
+	// TrustedProxies are the peers whose forwarded-for header may be believed.
+	//
+	// The rate limiter and the audit log key on the caller's address, and that
+	// address is only as honest as wherever it was read. Read it from a header that
+	// anybody can set, and an attacker rotates it to get a fresh guess-bucket for
+	// every request and to write someone else's IP into the log. So the header is
+	// believed only when the machine that *connected* is one of these — a reverse
+	// proxy or tunnel the operator put there — and ignored when the connection came
+	// straight off the internet.
+	//
+	// The default is "the peer is on a private network", which is exactly the shape
+	// of a homelab behind Caddy, nginx or a Cloudflare Tunnel: the proxy shares the
+	// host or the docker bridge, so its address is loopback or RFC1918. A directly
+	// exposed instance sees a public peer, trusts nothing, and keys on the real
+	// connection. Override with VERDANDE_TRUSTED_PROXIES (comma-separated CIDRs),
+	// or "none" to trust no proxy at all.
+	TrustedProxies []netip.Prefix
+	// RealIPHeader is where the client address is read from, for a trusted peer.
+	RealIPHeader string
+
 	Dev bool
 }
 
@@ -149,7 +170,68 @@ func Load() (*Config, error) {
 	if c.DataDir, err = filepath.Abs(c.DataDir); err != nil {
 		return nil, fmt.Errorf("VERDANDE_DATA_DIR: %w", err)
 	}
+
+	c.RealIPHeader = env("VERDANDE_REAL_IP_HEADER", "X-Forwarded-For")
+	if c.TrustedProxies, err = parseTrustedProxies(env("VERDANDE_TRUSTED_PROXIES", "")); err != nil {
+		return nil, err
+	}
 	return c, nil
+}
+
+// defaultTrustedProxies is "the peer is not on the public internet": loopback,
+// the three RFC1918 ranges, Tailscale's CGNAT borrow, IPv6 unique-local and both
+// families' link-local. A proxy an operator stands up in front of this server is
+// on one of these; a stranger connecting directly is on none.
+var defaultTrustedProxies = mustPrefixes(
+	"127.0.0.0/8", "::1/128",
+	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+	"100.64.0.0/10",
+	"fc00::/7",
+	"169.254.0.0/16", "fe80::/10",
+)
+
+// parseTrustedProxies reads the override. Empty keeps the private-network default;
+// the literal "none" trusts no proxy at all, for an instance that is exposed
+// directly and must never believe a forwarded header.
+func parseTrustedProxies(raw string) ([]netip.Prefix, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultTrustedProxies, nil
+	}
+	if strings.EqualFold(raw, "none") {
+		return nil, nil
+	}
+	var out []netip.Prefix
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// A bare address is a host route: 10.0.0.5 means 10.0.0.5/32, so an operator
+		// naming one proxy does not have to know CIDR notation to do it.
+		if !strings.Contains(part, "/") {
+			addr, err := netip.ParseAddr(part)
+			if err != nil {
+				return nil, fmt.Errorf("VERDANDE_TRUSTED_PROXIES: %q is not an address or CIDR", part)
+			}
+			out = append(out, netip.PrefixFrom(addr, addr.BitLen()))
+			continue
+		}
+		p, err := netip.ParsePrefix(part)
+		if err != nil {
+			return nil, fmt.Errorf("VERDANDE_TRUSTED_PROXIES: %q is not a CIDR", part)
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
+}
+
+func mustPrefixes(cidrs ...string) []netip.Prefix {
+	out := make([]netip.Prefix, 0, len(cidrs))
+	for _, c := range cidrs {
+		out = append(out, netip.MustParsePrefix(c))
+	}
+	return out
 }
 
 // DBPath, FilesDir and BackupsDir are the three things that live on the /data volume.

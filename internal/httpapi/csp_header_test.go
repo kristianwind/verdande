@@ -79,6 +79,10 @@ func TestHSTSTracksHTTPS(t *testing.T) {
 	if got := resp.Header.Get("Permissions-Policy"); !strings.Contains(got, "camera=()") {
 		t.Errorf("Permissions-Policy lukker ikke for kameraet: %q", got)
 	}
+	// COOP isolerer browserkonteksten og står på hvert svar.
+	if got := resp.Header.Get("Cross-Origin-Opener-Policy"); got != "same-origin" {
+		t.Errorf("Cross-Origin-Opener-Policy er ikke same-origin: %q", got)
+	}
 }
 
 // Et bilag må ikke kunne blive læst som et dokument.

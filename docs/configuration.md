@@ -12,6 +12,25 @@ nowhere to put one that the operator would ever see.
 | `VERDANDE_DATA_DIR` | `/data` | Database, uploaded files and backups. |
 | `VERDANDE_DEV` | `false` | Human-readable logs at debug level, and a relaxed origin check so a Vite dev server can connect. Never in production. |
 
+## Behind a proxy
+
+verdande keys its login rate limit and its audit log on the caller's address, so
+that address has to be one the caller cannot forge. A forwarded-for header is
+believed only when the machine that connected is a trusted proxy; a connection
+straight off the internet is keyed on the address it really came from.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `VERDANDE_TRUSTED_PROXIES` | private networks | Whose `X-Forwarded-For` to believe, as comma-separated CIDRs. The default trusts loopback and the private ranges — the shape of a reverse proxy or tunnel sharing the host or the docker bridge. Set to `none` for an instance exposed directly with no proxy, so no forwarded header is ever believed. |
+| `VERDANDE_REAL_IP_HEADER` | `X-Forwarded-For` | The header the client address is read from, for a trusted proxy. |
+
+!!! warning "A proxy that does not overwrite the header"
+    The default is safe when your proxy replaces a client-supplied
+    `X-Forwarded-For` with the real address — nginx, Caddy and Cloudflare Tunnel all
+    do. If yours passes the client's own header through, narrow
+    `VERDANDE_TRUSTED_PROXIES` to just your proxy's address so a visitor cannot
+    choose the address they are rate-limited and logged as.
+
 ## Sessions and links
 
 | Variable | Default | What it does |
