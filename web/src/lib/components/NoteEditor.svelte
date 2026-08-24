@@ -120,9 +120,97 @@
 
 	function setStyle(style) {
 		stylesOpen = false;
+		editor?.focus();
 		if (style.key === 'bullet') return apply('insertUnorderedList');
 		if (style.key === 'numbered') return apply('insertOrderedList');
+
+		// formatBlock is unreliable around <pre>. Asked to turn a monospace line back
+		// into body, Chromium and WebKit nest a <p> *inside* the <pre> —
+		// `<pre>…<p>body</p></pre>` — so the text stays monospace and there is no way
+		// out of the block from the menu. Do any conversion that touches a <pre> by
+		// hand, replacing the element rather than reformatting inside it.
+		const block = currentBlock();
+		if (block && (block.tagName === 'PRE' || style.tag === 'pre')) {
+			replaceBlock(block, style.tag);
+			return;
+		}
 		apply('formatBlock', style.tag);
+	}
+
+	/**
+	 * Replaces a block element with one of another tag, keeping its contents and the
+	 * caret. Used where execCommand cannot be trusted — converting to or from a
+	 * <pre>, which it either nests or ignores.
+	 */
+	function replaceBlock(block, tag) {
+		// The copy button lives inside the <pre> so it can sit in its corner; it is
+		// not text and must not travel into a paragraph. addCopyButtons puts it back
+		// on the next render for any <pre> that still needs one.
+		block.querySelectorAll?.('.copy').forEach((b) => b.remove());
+
+		const el = document.createElement(tag);
+		while (block.firstChild) el.appendChild(block.firstChild);
+		if (!el.firstChild) el.appendChild(document.createElement('br'));
+		block.replaceWith(el);
+
+		const range = document.createRange();
+		range.selectNodeContents(el);
+		range.collapse(false);
+		const selection = window.getSelection();
+		selection.removeAllRanges();
+		selection.addRange(range);
+
+		readState();
+		changed();
+	}
+
+	/**
+	 * Steps out of a code block on Enter.
+	 *
+	 * A <pre> is preformatted, so the browser answers Enter by inserting a <br> and
+	 * staying inside it — which means a monospace last line makes every line after
+	 * it monospace too, with no way back to body by typing. Plain Enter now leaves
+	 * the block: the tail after the caret becomes a paragraph below the <pre>, and
+	 * that is where the caret lands. Shift+Enter is left untouched, so a soft line
+	 * break still writes multi-line code inside the block.
+	 */
+	function exitPre(pre) {
+		pre.querySelectorAll('.copy').forEach((b) => b.remove());
+
+		const selection = window.getSelection();
+		const range = selection.getRangeAt(0);
+
+		// Everything from the caret to the end of the block leaves with the new line.
+		const tail = document.createRange();
+		tail.setStart(range.endContainer, range.endOffset);
+		tail.setEnd(pre, pre.childNodes.length);
+		const frag = tail.extractContents();
+
+		// A break at the head of what we carried is the empty line return was pressed
+		// on; it should not open the paragraph with a blank row.
+		while (frag.firstChild && frag.firstChild.nodeName === 'BR') frag.removeChild(frag.firstChild);
+
+		const p = document.createElement('p');
+		if (frag.childNodes.length) p.appendChild(frag);
+		// The split can leave an empty text node behind, and a block with no element
+		// and no text is not a caret host in Chromium — the next keystroke falls back
+		// into the block above. An empty paragraph needs a <br> to be stood in.
+		if (!p.textContent && !p.querySelector('br, img')) {
+			p.replaceChildren(document.createElement('br'));
+		}
+
+		// And the same break seen from the other side, left dangling in the <pre>.
+		while (pre.lastChild && pre.lastChild.nodeName === 'BR') pre.removeChild(pre.lastChild);
+
+		// Leaving an empty block behind is leaving nothing: the <pre> itself goes.
+		if (!pre.textContent.trim()) pre.replaceWith(p);
+		else pre.after(p);
+
+		const caret = document.createRange();
+		caret.setStart(p, 0);
+		caret.collapse(true);
+		selection.removeAllRanges();
+		selection.addRange(caret);
 	}
 
 	/** What the caret is standing in, for the toolbar's pressed states. */
@@ -470,6 +558,16 @@
 		}
 
 		if (event.key === 'Enter' && !event.shiftKey) {
+			// A code block is the one place the browser keeps the caret inside on
+			// Enter rather than starting a new block. Step out of it ourselves, or a
+			// monospace last line traps everything typed after it in monospace.
+			const block = currentBlock();
+			if (block && block.tagName === 'PRE') {
+				event.preventDefault();
+				exitPre(block);
+				changed();
+				return;
+			}
 			// After the split, not before it.
 			setTimeout(() => {
 				keepTitleFirst();

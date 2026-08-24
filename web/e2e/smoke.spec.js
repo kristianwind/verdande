@@ -3049,6 +3049,68 @@ test('en note kan trækkes hen på et projekt i sidebjælken', async ({ page }) 
 	expect(trouble).toEqual([]);
 });
 
+test('en monospace-linje kan forlades — på retur og gennem menuen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await ed.click();
+	await page.keyboard.type('Titel');
+	await page.keyboard.press('Enter');
+
+	// En monospace-linje, og så retur: linjen efter skal være brødtekst, ikke mere
+	// monospace. Før rettelsen holdt en <pre> på markøren, og alt derefter blev ved
+	// med at være kode.
+	await page.getByRole('button', { name: 'Formatér' }).click();
+	await page.getByRole('menuitem', { name: 'Monotype' }).click();
+	await page.keyboard.type('kode linje');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('almindelig tekst');
+
+	// Koden står i sin blok; teksten efter står uden for den.
+	await expect(ed.locator('pre')).toHaveText('kode linje');
+	await expect(ed.locator('p').filter({ hasText: 'almindelig tekst' })).toBeVisible();
+	await expect(ed.locator('pre').filter({ hasText: 'almindelig tekst' })).toHaveCount(0);
+
+	// Shift+retur bliver derimod i blokken, så flerlinjet kode stadig kan skrives.
+	await page.getByRole('button', { name: 'Formatér' }).click();
+	await page.getByRole('menuitem', { name: 'Monotype' }).click();
+	await page.keyboard.type('linje et');
+	await page.keyboard.press('Shift+Enter');
+	await page.keyboard.type('linje to');
+	await expect(ed.locator('pre').filter({ hasText: 'linje et' })).toContainText('linje to');
+
+	// Og menuen kan føre en monospace-linje tilbage til brødtekst — dét, der før
+	// lagde et <p> inde i <pre> og ikke kom nogen vegne.
+	await page.getByRole('button', { name: 'Formatér' }).click();
+	await page.getByRole('menuitem', { name: 'Brødtekst' }).click();
+	// Den blok er nu brødtekst, ikke kode: den står som <p>, ikke i en <pre>.
+	await expect(ed.locator('p').filter({ hasText: 'linje et' })).toBeVisible();
+	await expect(ed.locator('pre').filter({ hasText: 'linje et' })).toHaveCount(0);
+
+	// Det overlever turen gennem Markdown. En ren note for sig, så prøven ikke
+	// afhænger af alt det ovenfor: kode, retur, brødtekst — gem, hent igen.
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	await ed.click();
+	await page.keyboard.type('Rundtur');
+	await page.keyboard.press('Enter');
+	await page.getByRole('button', { name: 'Formatér' }).click();
+	await page.getByRole('menuitem', { name: 'Monotype' }).click();
+	await page.keyboard.type('docker pull');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('og så videre i almindelig skrift');
+	await ed.blur();
+	await page.waitForTimeout(1200);
+	await page.reload();
+	await page.getByRole('button', { name: /Rundtur/ }).click();
+	await expect(ed.locator('pre')).toContainText('docker pull');
+	await expect(ed.locator('p').filter({ hasText: 'almindelig skrift' })).toBeVisible();
+	await expect(ed.locator('pre').filter({ hasText: 'almindelig skrift' })).toHaveCount(0);
+
+	expect(trouble).toEqual([]);
+});
+
 test('kodeblokken har en kopiér-knap, og knappen havner ikke i filen', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 	await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
