@@ -205,9 +205,50 @@ func (db *DB) SetSidebarCollapsed(ctx context.Context, userID string, sections [
 // Person is the public half of a user: what somebody else is allowed to see when
 // their name has to appear next to a task. No address, no hash, no timezone.
 type Person struct {
-	ID          string
-	Name        string
-	AvatarColor string
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	AvatarColor string `json:"avatar_color"`
+}
+
+// PersonByID resolves one user to a name and colour, or ErrNotFound. Used to check
+// that somebody a note is about to be shared with actually exists, without loading
+// the whole account.
+func (db *DB) PersonByID(ctx context.Context, id string) (Person, error) {
+	var p Person
+	err := db.QueryRowContext(ctx,
+		`SELECT id, name, avatar_color FROM users WHERE id = ?`, id).Scan(&p.ID, &p.Name, &p.AvatarColor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Person{}, ErrNotFound
+	}
+	return p, err
+}
+
+// UsersForSharing is everyone on the instance except the caller — the people a note
+// can be handed to.
+//
+// Deliberately wider than ListPeople, which is the project collaborators. The whole
+// point of sharing a note directly is to do it without first standing up a shared
+// project, so the picker cannot be limited to people you already share a project
+// with. An instance's accounts are a closed, invited set to begin with — there is
+// no open signup — so listing them to each other is not disclosure, it is the
+// address book the feature needs.
+func (db *DB) UsersForSharing(ctx context.Context, meID string) ([]Person, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT id, name, avatar_color FROM users WHERE id <> ? ORDER BY lower(name)`, meID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	people := []Person{}
+	for rows.Next() {
+		var p Person
+		if err := rows.Scan(&p.ID, &p.Name, &p.AvatarColor); err != nil {
+			return nil, err
+		}
+		people = append(people, p)
+	}
+	return people, rows.Err()
 }
 
 // PeopleByIDs looks up several users at once.

@@ -12,10 +12,23 @@
  */
 export const en = {
 	// --- the shell ---------------------------------------------------------------
-	'notes.shareWith': 'Share in',
-	'notes.private': 'Only me',
+	'notes.shareWith': 'File in project',
+	'notes.private': 'No project',
 	'notes.shared': "The note is shared with the project's people.",
 	'notes.unshared': 'The note is yours again.',
+	// Sharing with individual people, alongside the project.
+	'notes.groupSharedWithMe': 'Shared with me',
+	'notes.sharedBy': 'Shared by {name}',
+	'notes.sharePeople': 'Share with people',
+	'notes.sharePick': 'Choose someone …',
+	'notes.shareAdd': 'Share',
+	'notes.shareRoleViewer': 'Can view',
+	'notes.shareRoleEditor': 'Can edit',
+	'notes.shareRemove': 'Remove access',
+	'notes.shareNobody': 'Not shared with anyone yet.',
+	'notes.sharedToast': 'Shared with {name}.',
+	'notes.unsharedPerson': '{name} can no longer see the note.',
+	'notes.shareOwnerOnly': 'Only the owner can share the note.',
 	'notes.save': 'Save',
 	'notes.format': 'Format',
 	'notes.bold': 'Bold',

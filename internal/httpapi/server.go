@@ -348,6 +348,11 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Post("/", s.handleCreateNote)
 				r.Post("/import", s.handleImportNotes)
 				r.Get("/linking/{kind}/{targetID}", s.handleNotesLinking)
+				// Sharing a note with a person directly — its own access list, beside
+				// the project path. Owner only; see notes_share_handlers.go.
+				r.Get("/{noteID}/shares", s.handleListNoteShares)
+				r.Post("/{noteID}/shares", s.handleShareNote)
+				r.Delete("/{noteID}/shares/{userID}", s.handleUnshareNote)
 				r.Get("/{noteID}", s.handleGetNote)
 				r.Patch("/{noteID}", s.handleUpdateNote)
 				r.Delete("/{noteID}", s.handleDeleteNote)

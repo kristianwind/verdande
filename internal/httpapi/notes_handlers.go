@@ -19,21 +19,38 @@ import (
 
 // Notes.
 //
-// Access follows the project, because that is where a note lives: a note in a
-// shared project is readable by everybody who can read the project and writable
-// by an editor. A note with no project is its author's alone — the same answer a
-// task in the inbox gets, arrived at the same way rather than by a rule of its own.
+// Access has three ways in, and a note may have any of them at once. A note with
+// no project is its author's alone — the same answer a task in the inbox gets. A
+// note in a project is readable by everyone who can read the project and writable
+// by an editor. And a note can be shared with a person directly, which grants that
+// person a role of its own. The effective role is the most any of the three allow.
 
-// mayReadNote reports whether this person may see the note, and mayWriteNote
-// whether they may change it. Split, because a viewer on a shared project can do
-// the first and not the second.
+// mayTouchNote reports whether this person may act on the note at the given role —
+// RoleViewer to read, RoleEditor to change. Split by role because a viewer, whether
+// on a shared project or a shared note, may do the first and not the second.
 func (s *Server) mayTouchNote(r *http.Request, n *store.Note, role store.Role) bool {
 	user := userFrom(r.Context())
+	// The owner and the project path, exactly as before.
 	if n.ProjectID == "" {
-		return n.CreatedBy == user.ID
+		if n.CreatedBy == user.ID {
+			return true
+		}
+	} else if _, err := store.RequireProjectRole(r.Context(), s.db, n.ProjectID, user.ID, role); err == nil {
+		return true
 	}
-	_, err := store.RequireProjectRole(r.Context(), s.db, n.ProjectID, user.ID, role)
-	return err == nil
+	// A direct share grants its role on top of whatever the above allow.
+	if shareRole, ok, err := s.db.NoteShareRole(r.Context(), n.ID, user.ID); err == nil && ok {
+		return shareRole.AtLeast(role)
+	}
+	return false
+}
+
+// ownsNote reports whether this person is the note's owner — its created_by — which
+// is who, and only who, may hand it to other people. An editor on a shared note can
+// change its text; giving away access is the owner's alone, the same shape a
+// project takes where members edit but only the owner invites.
+func (s *Server) ownsNote(r *http.Request, n *store.Note) bool {
+	return n != nil && n.CreatedBy == userFrom(r.Context()).ID
 }
 
 func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +65,7 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 			s.internal(w, r, "search notes", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"notes": briefly(s.readable(r, found))})
+		writeJSON(w, http.StatusOK, map[string]any{"notes": s.markShared(r, briefly(s.readable(r, found)))})
 		return
 	}
 
@@ -62,7 +79,7 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 			s.internal(w, r, "notes in project", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"notes": briefly(found)})
+		writeJSON(w, http.StatusOK, map[string]any{"notes": s.markShared(r, briefly(found))})
 		return
 	}
 
@@ -75,7 +92,7 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 			s.internal(w, r, "list archived notes", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"notes": briefly(found)})
+		writeJSON(w, http.StatusOK, map[string]any{"notes": s.markShared(r, briefly(found))})
 		return
 	}
 
@@ -87,7 +104,7 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, "list notes", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"notes": briefly(found)})
+	writeJSON(w, http.StatusOK, map[string]any{"notes": s.markShared(r, briefly(found))})
 }
 
 // briefly replaces each note's body with the first of it.
@@ -206,9 +223,16 @@ func (s *Server) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if body.ProjectID != nil {
-		// Moving it means being allowed on both sides: you cannot file somebody
-		// else's note into your project, nor yours into theirs.
+	if body.ProjectID != nil && *body.ProjectID != n.ProjectID {
+		// Filing a note is the owner's call, not an editor's. A shared editor may
+		// change the text; letting them also move the note would let them file
+		// somebody else's note into a project the owner is not in — and the owner,
+		// who is not a member there, would lose their own note. So the move is
+		// owner-only, and then only into a project the owner may write to.
+		if !s.ownsNote(r, n) {
+			writeError(w, http.StatusForbidden, CodeForbidden, "only the note's owner can move it")
+			return
+		}
 		if *body.ProjectID != "" {
 			if _, err := store.RequireProjectRole(r.Context(), s.db, *body.ProjectID,
 				userFrom(r.Context()).ID, store.RoleEditor); err != nil {
@@ -238,7 +262,16 @@ func (s *Server) handleDeleteNote(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, "delete note", err)
 		return
 	}
-	if n == nil || !s.mayTouchNote(r, n, store.RoleEditor) {
+	// Deleting is not editing. Someone the note was shared with — even as an editor
+	// — may change its text, but throwing away the owner's note is the owner's to
+	// do. A project editor keeps the reach they have always had over a project's
+	// notes; a direct share does not extend that far.
+	mayDelete := s.ownsNote(r, n)
+	if !mayDelete && n != nil && n.ProjectID != "" {
+		_, perr := store.RequireProjectRole(r.Context(), s.db, n.ProjectID, userFrom(r.Context()).ID, store.RoleEditor)
+		mayDelete = perr == nil
+	}
+	if n == nil || !mayDelete {
 		writeError(w, http.StatusNotFound, CodeNotFound, "no such note")
 		return
 	}

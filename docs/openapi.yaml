@@ -3072,6 +3072,69 @@ paths:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/notes/{noteID}/shares:
+    parameters:
+      - name: noteID
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [notes]
+      summary: Who a note is shared with, and who it can be shared with.
+      description: >
+        Owner only. Returns the people the note is already shared with, each with
+        their role, and the candidates the owner may add — everyone on the instance
+        who is not already on the note.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shares:
+                    type: array
+                    items: { $ref: "#/components/schemas/NoteShare" }
+                  candidates:
+                    type: array
+                    items: { $ref: "#/components/schemas/Person" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [notes]
+      summary: Share a note with a person, or change the role they hold.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id: { type: string }
+                role: { type: string, enum: [viewer, editor] }
+      responses:
+        "204": { description: Shared }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /api/v1/notes/{noteID}/shares/{userID}:
+    delete:
+      tags: [notes]
+      summary: Take a person's access to a note away again.
+      parameters:
+        - name: noteID
+          in: path
+          required: true
+          schema: { type: string }
+        - name: userID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Unshared }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/v1/notes/linking/{kind}/{targetID}:
     get:
       tags: [notes]
@@ -3907,6 +3970,14 @@ components:
         pinned: { type: boolean }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        shared_with_me:
+          type: boolean
+          description: >
+            True when the reader reached this note through a direct share rather
+            than by owning it or its project. What puts it in the Delt med mig group.
+        owner:
+          allOf: [{ $ref: "#/components/schemas/Person" }]
+          description: Who the note belongs to, present on a note shared with the reader.
         links:
           type: array
           description: What the body points at, read out of the text on the way in.
@@ -3922,6 +3993,21 @@ components:
         project_id: { type: string, description: "Empty files it under no project." }
         body: { type: string, description: "Markdown. Its first line becomes the title." }
         pinned: { type: boolean }
+
+    Person:
+      type: object
+      description: A user, as much of one as a name and a colour.
+      properties:
+        id: { type: string }
+        name: { type: string }
+        avatar_color: { type: string }
+
+    NoteShare:
+      type: object
+      description: One person's direct grant on a note.
+      properties:
+        user: { $ref: "#/components/schemas/Person" }
+        role: { type: string, enum: [viewer, editor] }
 
     Mailbox:
       type: object
