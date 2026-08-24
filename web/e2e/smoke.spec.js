@@ -3158,6 +3158,34 @@ test('en note kan trækkes hen på et projekt i sidebjælken', async ({ page }) 
 	expect(trouble).toEqual([]);
 });
 
+test('en note kan arkiveres fra sin egen fod, og hentes frem igen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await ed.click();
+	await page.keyboard.type('Kvartalsplan');
+	await ed.blur();
+	await page.waitForTimeout(700);
+
+	// The Arkivér button in the note's footer puts it away: it leaves the list.
+	await page.locator('footer .actions .button', { hasText: 'Arkivér' }).click();
+	await expect(page.locator('.notes button.row', { hasText: 'Kvartalsplan' })).toHaveCount(0);
+
+	// It is in the archive, where the same button now offers to bring it back.
+	await page.getByRole('button', { name: 'Vis arkivet' }).click();
+	await page.locator('.notes button.row', { hasText: 'Kvartalsplan' }).click();
+	await page.locator('footer .actions .button', { hasText: 'Tag frem igen' }).click();
+	await expect(page.locator('.notes button.row', { hasText: 'Kvartalsplan' })).toHaveCount(0);
+
+	// And back in the ordinary list.
+	await page.getByRole('button', { name: 'Vis arkivet' }).click();
+	await expect(page.locator('.notes button.row', { hasText: 'Kvartalsplan' })).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
 test('en monospace-linje kan forlades — på retur og gennem menuen', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 	await page.goto('/noter');
@@ -3293,7 +3321,8 @@ test('flere noter kan markeres, arkiveres og hentes frem igen', async ({ page })
 	await rows.filter({ hasText: 'Bravo' }).click({ modifiers: ['Meta'] });
 	await expect(page.getByText('2 markeret')).toBeVisible();
 
-	await page.getByRole('button', { name: 'Arkivér', exact: true }).click();
+	// The selection bar's Arkivér, not the open note's own in the footer.
+	await page.locator('.picked-bar').getByRole('button', { name: 'Arkivér', exact: true }).click();
 	await page.waitForTimeout(900);
 
 	// Væk fra listen, og ikke i papirkurven: arkivering er ikke sletning.
