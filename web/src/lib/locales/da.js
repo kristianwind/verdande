@@ -597,6 +597,8 @@ export const da = {
 	'detail.none': 'Ingen',
 	'detail.due': 'Forfalder',
 	'detail.dueTime': 'Klokkeslæt',
+	'detail.duration': 'Længde i minutter',
+	'detail.durationShort': 'min',
 	'detail.labels': 'Etiketter',
 	'detail.labelsPlaceholder': 'adskilt af komma',
 	'detail.project': 'Projekt',
@@ -749,6 +751,7 @@ export const da = {
 	'cal.settings': 'Indstillinger',
 	'cal.noneChosen': 'Ingen af kontoens kalendere er valgt endnu.',
 	'cal.allDay': 'Hele dagen',
+	'cal.resize': 'Træk for at ændre længden',
 	'cal.openInGoogle': 'Åbn i Google Kalender',
 	'cal.beyondWindow':
 		'Begivenheder gemmes fra {from} til {to}. Uden for det viser gitteret kun dine egne opgaver.',

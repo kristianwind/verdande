@@ -403,6 +403,19 @@ class AppState {
 		await this.update(id, { due_date: date, due_time: clock });
 	}
 
+	/**
+	 * Sets how long a task is, in minutes. Nothing else about it moves — the date
+	 * and time are left alone, so making a task longer on the calendar does not
+	 * also reschedule it.
+	 */
+	async resize(id, minutes) {
+		const previous = this.get(id);
+		if (!previous) return;
+		const rounded = Math.max(15, Math.round(minutes / 15) * 15);
+		if (previous.duration_min === rounded) return;
+		await this.update(id, { duration_min: rounded });
+	}
+
 	async remove(id) {
 		const previous = [...this.tasks];
 		this.tasks = this.tasks.filter((t) => t.id !== id);

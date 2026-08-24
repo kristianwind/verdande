@@ -23,6 +23,9 @@
 	let priority = $state(4);
 	let dueDate = $state('');
 	let dueTime = $state('');
+	// Length in minutes, as a string for the field. Only meaningful with a time —
+	// see the field below — so it is seeded and shown alongside the clock.
+	let duration = $state('');
 	let labels = $state('');
 	let projectId = $state('');
 	let recurrence = $state('');
@@ -57,6 +60,7 @@
 		priority = task.priority;
 		dueDate = task.due_date ?? '';
 		dueTime = task.due_datetime ? clockOf(task.due_datetime) : '';
+		duration = task.duration_min ? String(task.duration_min) : '';
 		labels = (task.labels ?? []).join(', ');
 		projectId = task.project_id;
 		recurrence = task.recurrence_rule ?? '';
@@ -436,6 +440,21 @@
 						disabled={!dueDate}
 						onchange={() => save({ due_date: dueDate, due_time: dueTime })}
 					/>
+					<!-- Length in minutes, and only with a time to hang it on: a duration
+					     without a start is a length of nothing, and the calendar has
+					     nowhere to draw it. Empty clears it. -->
+					<input
+						type="number"
+						class="dur"
+						min="0"
+						step="15"
+						aria-label={t('detail.duration')}
+						placeholder={t('detail.durationShort')}
+						bind:value={duration}
+						disabled={!dueTime}
+						onchange={() =>
+							save({ duration_min: duration === '' ? 0 : Math.max(0, Math.round(Number(duration))) })}
+					/>
 				</div>
 			</div>
 		</div>
@@ -729,6 +748,11 @@
 	.due input[type='time'] {
 		flex: none;
 		width: 7.5rem;
+	}
+
+	.due input.dur {
+		flex: none;
+		width: 5rem;
 	}
 
 	.due input:disabled {
