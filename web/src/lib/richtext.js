@@ -70,19 +70,39 @@ const attr = (s) => escapeHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;')
  * det overlever hverken en contenteditable eller en Markdown-fil.
  */
 const IMAGE = /!\[([^\]]*)\]\((\/api\/v1\/attachments\/[0-9a-f-]+)\)/g;
+// [[a note by title]], the spelling every note app settled on. Non-greedy, so two
+// links on one line stay two.
+const NOTELINK = /\[\[([^\]\n]+?)\]\]/g;
 const MARK = "\u0000";
 
 /** Inline marks, innermost first so a bold word inside italics survives both. */
 function inlineToHtml(text) {
+	// Lifted out before anything escapes or marks the text, and dropped back in
+	// whole at the end — the same placeholder trick the image already used, now for
+	// two kinds of thing the surrounding markup must not touch.
+	const pieces = [];
+	const lift = (html) => {
+		pieces.push(html);
+		return `${MARK}${pieces.length - 1}${MARK}`;
+	};
+
 	// Kun vores egen adresse bliver til et billede. Et `![](http://…)` fra en
 	// indsat tekst ville ellers hente fra en fremmed vært, når noten åbnes, og
 	// fortælle den, at den er blevet læst — og en note er det sidste sted, man vil
 	// have en sporingspixel. Alt andet står som den tekst, det er.
-	const images = [];
-	const lifted = (text ?? '').replace(IMAGE, (_, alt, src) => {
-		images.push(`<img src="${src}" alt="${attr(alt)}">`);
-		return `${MARK}${images.length - 1}${MARK}`;
-	});
+	let lifted = (text ?? '').replace(IMAGE, (_, alt, src) => lift(`<img src="${src}" alt="${attr(alt)}">`));
+
+	// A [[note]] is a link you can follow, not the brackets it was typed as. Made an
+	// atomic token — contenteditable="false" — so it moves and deletes as one thing,
+	// and it carries the title it points at in data-note; the editor reads that on a
+	// click. htmlToMarkdown turns it back into [[title]] exactly.
+	lifted = lifted.replace(
+		NOTELINK,
+		(_, title) =>
+			lift(
+				`<a class="notelink" data-note="${attr(title)}" contenteditable="false">${escapeHtml(title)}</a>`
+			)
+	);
 
 	const marked = escapeHtml(lifted)
 		.replace(/&lt;u&gt;(.+?)&lt;\/u&gt;/g, '<u>$1</u>')
@@ -91,7 +111,7 @@ function inlineToHtml(text) {
 		.replace(/~~(.+?)~~/g, '<s>$1</s>')
 		.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
 
-	return marked.replace(new RegExp(MARK + '(\\d+)' + MARK, 'g'), (_, i) => images[Number(i)] ?? '');
+	return marked.replace(new RegExp(MARK + '(\\d+)' + MARK, 'g'), (_, i) => pieces[Number(i)] ?? '');
 }
 
 /**
@@ -233,6 +253,13 @@ export function markdownToHtml(markdown) {
 function inlineToMarkdown(node) {
 	if (node.nodeType === Node.TEXT_NODE) return node.textContent;
 	if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+	// A note link goes back to the brackets it came from, by the title it carries
+	// rather than by the text it shows — the two are the same today, but the title
+	// is the thing that must survive the round trip.
+	if (node.tagName === 'A' && node.classList?.contains('notelink')) {
+		return `[[${node.getAttribute('data-note') ?? node.textContent}]]`;
+	}
 
 	const inner = [...node.childNodes].map(inlineToMarkdown).join('');
 	switch (node.tagName) {

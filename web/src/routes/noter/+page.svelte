@@ -916,6 +916,7 @@
 			<NoteEditor
 				note={selected}
 				notes={notes}
+				onopennote={(title) => openLink({ kind: 'note', target_id: title })}
 				onchange={(body) => {
 					draft = body;
 					typed();
