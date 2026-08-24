@@ -313,6 +313,18 @@ func (s *Server) handleExportNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Oldest first, and the id to break a tie. AllNotes comes back newest-first by
+	// the second, so two notes made in the same second have no order between them —
+	// and then which of two same-titled notes gets the plain name and which gets
+	// "(2)" is a coin toss that lands differently each export. Ordering the whole
+	// thing by when it was made settles it: the first note of a name keeps the name.
+	sort.SliceStable(notes, func(i, j int) bool {
+		if notes[i].CreatedAt.Equal(notes[j].CreatedAt) {
+			return notes[i].ID < notes[j].ID
+		}
+		return notes[i].CreatedAt.Before(notes[j].CreatedAt)
+	})
+
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition",
 		`attachment; filename="verdande-noter-`+time.Now().Format("2006-01-02")+`.zip"`)
