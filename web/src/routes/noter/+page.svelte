@@ -193,6 +193,26 @@
 	let shareBusy = $state(false);
 	const ownsSelected = $derived(!!selected && selected.created_by === app.user?.id);
 
+	// The whole of sharing — a project and named people — lives in a popover behind
+	// one button, so the note's footer stays a status and three buttons rather than
+	// a row that runs off its own width.
+	let shareOpen = $state(false);
+	let shareWrap = $state(null);
+	// Closing on a switch of note, and only then: the panel belongs to the note it
+	// was opened on. Tracked by id rather than by the object, so a save that returns
+	// a fresh copy of the same note does not slam the panel shut mid-use.
+	let sharePanelFor = $state(null);
+	$effect(() => {
+		const id = selected?.id ?? null;
+		if (id !== sharePanelFor) {
+			shareOpen = false;
+			sharePanelFor = id;
+		}
+	});
+	function onShareOutside(event) {
+		if (shareOpen && shareWrap && !shareWrap.contains(event.target)) shareOpen = false;
+	}
+
 	$effect(() => {
 		const id = selected?.id;
 		// Nulstil ved hvert skift, så den forrige notes folk ikke står et øjeblik
@@ -638,6 +658,13 @@
 
 <svelte:head><title>{t('notes.title')} · verdande</title></svelte:head>
 
+<svelte:window
+	onclick={onShareOutside}
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && shareOpen) shareOpen = false;
+	}}
+/>
+
 <div class="notes">
 	<aside>
 		<div class="head">
@@ -865,73 +892,105 @@
 						{/each}
 					</span>
 				{/if}
-				<!-- Filing a note in a project is one way to share it: everybody who can
-				     read the project reads the note. Owner only, because moving a note
-				     the owner is not in would take it away from them. -->
-				{#if ownsSelected}
-					<label class="share">
-						<span class="hint">{t('notes.shareWith')}</span>
-						<select value={selected.project_id ?? ''} onchange={(e) => share(e.currentTarget.value)}>
-							<option value="">{t('notes.private')}</option>
-							{#each app.projects.filter((p) => !p.is_inbox) as project (project.id)}
-								<option value={project.id}>{project.name}</option>
-							{/each}
-						</select>
-					</label>
-
-					<!-- The other way: hand the note to named people, without a project
-					     between. The owner picks who and at what role; the list below is
-					     who can already see it. -->
-					<div class="people-share">
-						<span class="hint">{t('notes.sharePeople')}</span>
-						{#if shares.length}
-							<ul class="sharelist">
-								{#each shares as sh (sh.user.id)}
-									<li>
-										<span class="who">
-											<span class="avatar" style="--who: {sh.user.avatar_color}" aria-hidden="true"></span>
-											{sh.user.name}
-										</span>
-										<select
-											value={sh.role}
-											onchange={(e) => changeShareRole(sh.user.id, e.currentTarget.value)}
-										>
-											<option value="viewer">{t('notes.shareRoleViewer')}</option>
-											<option value="editor">{t('notes.shareRoleEditor')}</option>
-										</select>
-										<button
-											class="unshare"
-											onclick={() => removeShare(sh.user.id)}
-											title={t('notes.shareRemove')}
-											aria-label={t('notes.shareRemove')}>×</button
-										>
-									</li>
-								{/each}
-							</ul>
-						{:else}
-							<span class="none">{t('notes.shareNobody')}</span>
-						{/if}
-						{#if shareCandidates.length}
-							<div class="addshare">
-								<select bind:value={sharePick}>
-									<option value="">{t('notes.sharePick')}</option>
-									{#each shareCandidates as person (person.id)}
-										<option value={person.id}>{person.name}</option>
-									{/each}
-								</select>
-								<select bind:value={shareRole}>
-									<option value="viewer">{t('notes.shareRoleViewer')}</option>
-									<option value="editor">{t('notes.shareRoleEditor')}</option>
-								</select>
-								<button class="button" disabled={!sharePick || shareBusy} onclick={addShare}>
-									{t('notes.shareAdd')}
-								</button>
-							</div>
-						{/if}
-					</div>
-				{/if}
 
 				<div class="actions">
+					<!-- All of sharing behind one button. A note has two ways in — a
+					     project and named people — and both belong to the owner; the
+					     panel gathers them rather than lining them up across the footer. -->
+					{#if ownsSelected}
+						<div class="sharewrap" bind:this={shareWrap}>
+							<button
+								class="button"
+								class:on={shareOpen}
+								aria-expanded={shareOpen}
+								aria-haspopup="dialog"
+								onclick={() => (shareOpen = !shareOpen)}
+							>
+								{t('notes.shareButton')}{#if shares.length}<span class="count">{shares.length}</span>{/if}
+							</button>
+
+							{#if shareOpen}
+								<div class="sharepanel" role="dialog" aria-label={t('notes.shareButton')}>
+									<!-- Filing it in a project: everybody who can read the project
+									     reads the note. A real <label> around the select, so it is
+									     named for a screen reader and not only for the eye. -->
+									<section>
+										<label class="field">
+											<span class="phead">{t('notes.shareWith')}</span>
+											<select
+												aria-label={t('notes.shareWith')}
+												value={selected.project_id ?? ''}
+												onchange={(e) => share(e.currentTarget.value)}
+											>
+												<option value="">{t('notes.private')}</option>
+												{#each app.projects.filter((p) => !p.is_inbox) as project (project.id)}
+													<option value={project.id}>{project.name}</option>
+												{/each}
+											</select>
+										</label>
+									</section>
+
+									<!-- Handing it to named people, without a project between. -->
+									<section>
+										<span class="phead">{t('notes.sharePeople')}</span>
+										{#if shares.length}
+											<ul class="sharelist">
+												{#each shares as sh (sh.user.id)}
+													<li>
+														<span class="who">
+															<span
+																class="avatar"
+																style="--who: {sh.user.avatar_color}"
+																aria-hidden="true"
+															></span>
+															{sh.user.name}
+														</span>
+														<select
+															value={sh.role}
+															onchange={(e) => changeShareRole(sh.user.id, e.currentTarget.value)}
+														>
+															<option value="viewer">{t('notes.shareRoleViewer')}</option>
+															<option value="editor">{t('notes.shareRoleEditor')}</option>
+														</select>
+														<button
+															class="unshare"
+															onclick={() => removeShare(sh.user.id)}
+															title={t('notes.shareRemove')}
+															aria-label={t('notes.shareRemove')}>×</button
+														>
+													</li>
+												{/each}
+											</ul>
+										{:else}
+											<span class="none">{t('notes.shareNobody')}</span>
+										{/if}
+										{#if shareCandidates.length}
+											<div class="addshare">
+												<select bind:value={sharePick}>
+													<option value="">{t('notes.sharePick')}</option>
+													{#each shareCandidates as person (person.id)}
+														<option value={person.id}>{person.name}</option>
+													{/each}
+												</select>
+												<select bind:value={shareRole}>
+													<option value="viewer">{t('notes.shareRoleViewer')}</option>
+													<option value="editor">{t('notes.shareRoleEditor')}</option>
+												</select>
+												<button
+													class="button"
+													disabled={!sharePick || shareBusy}
+													onclick={addShare}
+												>
+													{t('notes.shareAdd')}
+												</button>
+											</div>
+										{/if}
+									</section>
+								</div>
+							{/if}
+						</div>
+					{/if}
+
 					<button class="button" onclick={save}>{t('notes.save')}</button>
 					{#if ownsSelected}
 						<button class="button danger" onclick={() => remove(selected)}>{t('notes.delete')}</button>
@@ -1560,13 +1619,58 @@
 		font-family: var(--mono, ui-monospace, monospace);
 	}
 
-	.share {
+	/* Sharing lives in a popover above the Del button, so the footer stays a status
+	   and a few buttons rather than a row that runs off its own width. */
+	.sharewrap {
+		position: relative;
+		display: inline-flex;
+	}
+
+	.button.on {
+		background: var(--surface-raised);
+	}
+
+	.sharewrap .count {
+		margin-left: 0.4em;
+		padding: 0 0.45em;
+		border-radius: var(--radius-full);
+		background: var(--line-strong);
+		font-size: 0.85em;
+	}
+
+	.sharepanel {
+		position: absolute;
+		bottom: calc(100% + var(--s2));
+		right: 0;
+		z-index: 20;
+		width: 20rem;
+		max-width: 80vw;
 		display: flex;
-		align-items: center;
+		flex-direction: column;
+		gap: var(--s3);
+		padding: var(--s3);
+		background: var(--surface-raised);
+		border: 1px solid var(--line-strong);
+		border-radius: var(--radius);
+		box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+		text-align: left;
+		cursor: default;
+	}
+
+	.sharepanel section,
+	.sharepanel .field {
+		display: flex;
+		flex-direction: column;
 		gap: var(--s1);
 	}
 
-	.share select {
+	.sharepanel .phead {
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
+	}
+
+	.sharepanel select {
 		font-size: var(--text-xs);
 		padding: 2px var(--s1);
 	}
@@ -1597,15 +1701,7 @@
 		content: none;
 	}
 
-	/* Del med personer, under the note. */
-	.people-share {
-		display: flex;
-		flex-direction: column;
-		gap: var(--s1);
-		width: 100%;
-	}
-
-	.people-share .none {
+	.sharepanel .none {
 		font-size: var(--text-xs);
 		color: var(--ink-faint);
 	}
@@ -1673,6 +1769,15 @@
 		align-items: center;
 		gap: var(--s1);
 		flex-wrap: wrap;
+		margin-top: var(--s1);
+	}
+	/* The person picker takes its own row, so the role and the button below it never
+	   get squeezed to nothing in the panel's width. */
+	.addshare select:first-child {
+		flex: 1 1 100%;
+	}
+	.addshare .button {
+		margin-left: auto;
 	}
 	.addshare select {
 		font-size: var(--text-xs);
