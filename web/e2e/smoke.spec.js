@@ -1202,8 +1202,18 @@ test('kalenderen viser Googles begivenheder over egne opgaver, og kun opgaven ka
 	await expect(page.locator(`[data-date="${next}"] .tevent`).getByText('vande blomster')).toBeVisible();
 	await expect(band.getByText('vande blomster')).toBeHidden();
 	// The events stayed where they were; a rescheduled task moves nothing else.
-	await expect(cell.locator('.tevent')).toHaveCount(1);
-	await expect(band.locator('.event')).toHaveCount(1);
+	//
+	// Named, not counted. A raw `.tevent` count here assumes this day holds nothing
+	// but this test's own events — and it does not: the suite shares one database,
+	// so an earlier test that drags a task across a month boundary can leave a timed
+	// task on this very day, and a timed task is a `.tevent` too. Counting them all
+	// made this pass alone and fail in the full run, on whatever date the arithmetic
+	// happened to land the two tests on the same cell. Asserting the meeting stayed
+	// and the task left is the thing the test actually means, and it is true however
+	// full somebody else left the day.
+	await expect(cell.locator('.tevent').filter({ hasText: 'Bestyrelsesmøde' })).toHaveCount(1);
+	await expect(cell.locator('.tevent').filter({ hasText: 'vande blomster' })).toHaveCount(0);
+	await expect(band.locator('.event').filter({ hasText: 'Feriedag' })).toHaveCount(1);
 
 	expect(trouble).toEqual([]);
 });
