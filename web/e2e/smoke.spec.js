@@ -2638,21 +2638,28 @@ test('[[ foreslår en note, og linket lander i noten', async ({ page }) => {
 
 	await page.getByRole('button', { name: 'Ny note' }).click();
 	await ed.click();
+	await page.keyboard.type('Mine planer');
+	await page.keyboard.press('Enter');
 	await page.keyboard.type('Se ');
 	await page.keyboard.type('[[Rejse');
 
-	// The picker offers the note by title, and choosing it closes the brackets.
+	// The picker offers the note by title, and choosing it turns the text into a
+	// real inline link — the title, not the brackets.
 	const option = page.locator('.suggestions button', { hasText: 'Rejseplan til Berlin' });
 	await expect(option).toBeVisible();
 	await option.click();
-	await expect(ed).toContainText('[[Rejseplan til Berlin]]');
+	const inline = ed.locator('a.notelink', { hasText: 'Rejseplan til Berlin' });
+	await expect(inline).toBeVisible();
 
-	// And the link is real: it turns up in the note's links, not just as text.
+	// It survives the round-trip through Markdown and a reload.
 	await ed.blur();
-	await expect(page.locator('.links')).toContainText('Rejseplan til Berlin');
+	await page.waitForTimeout(900);
+	await page.reload();
+	await page.getByRole('button', { name: /Mine planer/ }).click();
+	await expect(ed.locator('a.notelink', { hasText: 'Rejseplan til Berlin' })).toBeVisible();
 
-	// And it is a link you can follow: clicking the chip opens the note it names.
-	await page.locator('.links .link', { hasText: 'Rejseplan til Berlin' }).click();
+	// And it is a link you can follow: clicking it opens the note it names.
+	await ed.locator('a.notelink', { hasText: 'Rejseplan til Berlin' }).click();
 	await expect(ed.locator('h1')).toHaveText('Rejseplan til Berlin');
 
 	expect(trouble).toEqual([]);

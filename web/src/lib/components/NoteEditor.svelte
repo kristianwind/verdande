@@ -20,7 +20,7 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { colorVar } from '$lib/colors.js';
 
-	let { note, notes = [], onchange, onsave } = $props();
+	let { note, notes = [], onchange, onsave, onopennote } = $props();
 
 	let editor;
 	// Forslagslisten, så tastaturvalget kan rulle den frem.
@@ -486,23 +486,54 @@
 		return al.localeCompare(bl, 'da');
 	}
 
-	/** Replaces the half-typed tag with the whole name, and closes a note link. */
+	const escHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const escAttr = (s) => escHtml(s).replace(/"/g, '&quot;');
+
+	// A click on a note link follows it; a click anywhere else re-colours the code,
+	// as it did before. The link is contenteditable="false", so the click is a click
+	// and not a caret landing in the middle of a word.
+	function onEditorClick(event) {
+		const link = event.target.closest?.('.notelink');
+		if (link) {
+			event.preventDefault();
+			onopennote?.(link.getAttribute('data-note') ?? link.textContent);
+			return;
+		}
+		colourCode();
+	}
+
+	/** Replaces the half-typed tag with the whole thing. */
 	function accept(item) {
 		const partial = partialTag();
 		if (!partial) return;
 
 		const range = document.createRange();
-		range.setStart(partial.node, partial.start);
-		range.setEnd(partial.node, partial.start + partial.term.length);
 		const selection = window.getSelection();
-		selection.removeAllRanges();
-		selection.addRange(range);
 
-		// A note link closes its own brackets — the opener is already in the text —
-		// and both end in a space, because the next thing typed is a word and not
-		// more of the tag, and without it the suggestions come straight back.
-		const inserted = item.kind === 'note' ? `${item.label}]] ` : `${item.label} `;
-		document.execCommand('insertText', false, inserted);
+		if (item.kind === 'note') {
+			// Swallow the opening [[ as well and drop the finished link in its place,
+			// so it is a link the moment it is chosen — not the brackets, waiting to
+			// become one when the note is next opened. A space after, as its own text,
+			// so the caret leaves the atomic link and the next word is a word.
+			range.setStart(partial.node, partial.start - 2);
+			range.setEnd(partial.node, partial.start + partial.term.length);
+			selection.removeAllRanges();
+			selection.addRange(range);
+			document.execCommand(
+				'insertHTML',
+				false,
+				`<a class="notelink" data-note="${escAttr(item.label)}" contenteditable="false">${escHtml(item.label)}</a>`
+			);
+			document.execCommand('insertText', false, ' ');
+		} else {
+			range.setStart(partial.node, partial.start);
+			range.setEnd(partial.node, partial.start + partial.term.length);
+			selection.removeAllRanges();
+			selection.addRange(range);
+			// A trailing space, or the suggestions come straight back for the tag.
+			document.execCommand('insertText', false, `${item.label} `);
+		}
+
 		suggestions = [];
 		onchange?.(htmlToMarkdown(editor));
 	}
@@ -803,7 +834,7 @@
 			readState();
 			readSuggestions();
 		}}
-		onclick={colourCode}
+		onclick={onEditorClick}
 		onmouseup={readState}
 		{onkeydown}
 		{onpaste}
@@ -1163,6 +1194,18 @@
 		border-radius: var(--radius-sm);
 		display: block;
 		margin: var(--s2) 0;
+	}
+
+	/* A note link reads as a link: the accent colour, underlined on hover, and a
+	   pointer so it is plainly something to click rather than to edit. */
+	.page :global(a.notelink) {
+		color: var(--accent);
+		text-decoration: none;
+		cursor: pointer;
+		border-radius: var(--radius-sm);
+	}
+	.page :global(a.notelink:hover) {
+		text-decoration: underline;
 	}
 
 	.page :global(blockquote) {
