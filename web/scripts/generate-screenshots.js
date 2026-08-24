@@ -73,6 +73,11 @@ const SHOTS = [
 	{ name: 'detail', path: (ids) => `/opgave/${ids.detail}`, theme: 'dark' },
 	{ name: 'notes', path: '/noter', theme: 'dark', prepare: openMeetingNote },
 	{ name: 'notes-source', path: '/noter', theme: 'dark', prepare: showNoteSource },
+	// The new work, and in the light theme, which is what most people want to look
+	// at a landing page in. The calendar drawing tasks to their length, and a note
+	// somebody shared into the "Shared with me" group.
+	{ name: 'calendar-light', path: '/kalender', theme: 'light', prepare: showWeek },
+	{ name: 'notes-shared-light', path: '/noter', theme: 'light', prepare: openSharedNote },
 	{ name: 'delegated', path: '/uddelegeret', theme: 'dark' },
 	{ name: 'settings', path: '/indstillinger/integrationer', theme: 'dark' },
 	// Scrolled, because the themes are the second panel on the page and a picture
@@ -111,6 +116,13 @@ async function openMeetingNote(page) {
 async function showNoteSource(page) {
 	await openMeetingNote(page);
 	await page.getByRole('button', { name: 'Show as code' }).click();
+	await page.waitForTimeout(600);
+}
+
+async function openSharedNote(page) {
+	// The note Mette shared in, so the "Shared with me" group and its owner chip are
+	// what the picture is of rather than something the group happens to sit above.
+	await page.locator('button.row', { hasText: 'Packaging quotes' }).first().click();
 	await page.waitForTimeout(600);
 }
 
@@ -340,6 +352,23 @@ async function handOver(ids) {
 	await api(`/tasks/${ids.detail}/comments`, {
 		body: 'Room is booked for ten. Summer numbers are in the shared folder — the labels are still with the printer, I chase them Thursday.'
 	});
+
+	// A note of Mette's own, handed to the owner — so their Notes page has a
+	// "Shared with me" group with a real note in it, marked as hers. This is the
+	// other half of sharing: not the project path, but a page passed to a person.
+	const note = await api('/notes', {
+		body: `# Packaging quotes
+
+Three back, one still to come:
+
+- **Nordfelt** — 79 øre a bag at 2,000, plates included
+- **Kolding Karton** — 84 øre, faster, kinder about small runs
+- Bruun still owes me a number
+
+I'd lean Kolding for the first run and revisit at volume. #Autumn launch`
+	});
+	await api(`/notes/${note.id}/shares`, { user_id: ids.owner, role: 'editor' });
+
 	return { colleague: me.id };
 }
 
@@ -372,6 +401,8 @@ async function seed({ colleague, noteTitle }) {
 			d.getDate()
 		).padStart(2, '0')}`;
 	};
+
+	const me = await api('/auth/me', null, 'GET');
 
 	// Two headings over the projects, which is what the sidebar grew for.
 	const work = await api('/project-groups', { name: 'Work' });
@@ -419,6 +450,17 @@ async function seed({ colleague, noteTitle }) {
 		{ content: 'Drop the bike off for its service', due_date: day(0), priority: 3, labels: ['errands'] },
 		{ content: 'Water the greenhouse', due_date: day(0), recurrence_rule: 'FREQ=DAILY', project_id: garden.id },
 		{ content: 'Collect the parcel from the post office', due_date: day(0), labels: ['errands'] },
+
+		// A handful given a time and a length, so the calendar's week draws them to
+		// scale rather than as a row of identical blocks — a stand-up, a long
+		// planning block, a call, a review. Spread across the day and the days, so
+		// the picture is a week that has a shape.
+		{ content: 'Stand-up', due_date: day(0), due_time: '09:00', duration_min: 15, project_id: launch.id, section_id: inFlight.id },
+		{ content: 'Planning block', due_date: day(0), due_time: '10:00', duration_min: 90, priority: 2, project_id: launch.id, section_id: planning.id, labels: ['meeting'] },
+		{ content: 'Call with the printer', due_date: day(0), due_time: '13:30', duration_min: 30, project_id: launch.id, labels: ['waiting'] },
+		{ content: 'Interview: designer', due_date: day(1), due_time: '11:00', duration_min: 60, priority: 1, project_id: launch.id, section_id: inFlight.id },
+		{ content: 'Budget review', due_date: day(2), due_time: '14:00', duration_min: 45, priority: 1, project_id: launch.id, section_id: inFlight.id },
+		{ content: 'One-to-one with Mette', due_date: day(3), due_time: '15:30', duration_min: 30, project_id: launch.id },
 
 		// The next couple of weeks, so Upcoming and the month grid have something in
 		// them rather than a row of empty cells.
@@ -560,6 +602,7 @@ The opening notes are a task, so they can be ticked off: task:${detail.id}`
 	await api('/users', { email: 'anders@example.dk' });
 
 	return {
+		owner: me.id,
 		work: launch.id,
 		detail: detail.id,
 		invite: invite.link,
