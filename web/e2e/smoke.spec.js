@@ -2651,6 +2651,10 @@ test('[[ foreslår en note, og linket lander i noten', async ({ page }) => {
 	await ed.blur();
 	await expect(page.locator('.links')).toContainText('Rejseplan til Berlin');
 
+	// And it is a link you can follow: clicking the chip opens the note it names.
+	await page.locator('.links .link', { hasText: 'Rejseplan til Berlin' }).click();
+	await expect(ed.locator('h1')).toHaveText('Rejseplan til Berlin');
+
 	expect(trouble).toEqual([]);
 });
 

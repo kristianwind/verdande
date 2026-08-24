@@ -22,6 +22,8 @@ export const da = {
 	'notes.unshared': 'Noten er din igen.',
 	// Deling med enkeltpersoner, ved siden af projektet.
 	'notes.groupSharedWithMe': 'Delt med mig',
+	'notes.linkOpen': 'Åbn',
+	'notes.linkMissing': 'Noten blev ikke fundet.',
 	'notes.sharedBy': 'Delt af {name}',
 	'notes.sharePeople': 'Del med personer',
 	'notes.sharePick': 'Vælg en person …',

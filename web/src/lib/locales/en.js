@@ -18,6 +18,8 @@ export const en = {
 	'notes.unshared': 'The note is yours again.',
 	// Sharing with individual people, alongside the project.
 	'notes.groupSharedWithMe': 'Shared with me',
+	'notes.linkOpen': 'Open',
+	'notes.linkMissing': 'That note could not be found.',
 	'notes.sharedBy': 'Shared by {name}',
 	'notes.sharePeople': 'Share with people',
 	'notes.sharePick': 'Choose someone …',
