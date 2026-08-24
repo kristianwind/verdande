@@ -2431,7 +2431,7 @@ test('en note kan deles med et projekts folk, og tages tilbage igen', async ({ p
 	await page.getByRole('textbox', { name: 'Notens tekst' }).blur();
 
 	// Shared by being filed in a project. Not an access list of its own.
-	await page.getByLabel('Del i').selectOption({ label: 'Delenoter' });
+	await page.getByLabel('Læg i projekt').selectOption({ label: 'Delenoter' });
 	await expect(page.getByText('delt med projektets folk')).toBeVisible();
 
 	// And it is really there, not merely labelled: the project's own page shows it.
@@ -2441,12 +2441,72 @@ test('en note kan deles med et projekts folk, og tages tilbage igen', async ({ p
 	// Taken back out, it is the author's alone again.
 	await sidebar.getByRole('link', { name: 'Noter', exact: true }).click();
 	await page.getByRole('button', { name: /Fælles aftale/ }).click();
-	await page.getByLabel('Del i').selectOption({ label: 'Kun mig' });
+	await page.getByLabel('Læg i projekt').selectOption({ label: 'Intet projekt' });
 	await expect(page.getByText('din igen')).toBeVisible();
 
 	await sidebar.getByRole('link', { name: 'Delenoter' }).click();
 	await expect(page.locator('.notes').getByRole('link', { name: /Fælles aftale/ })).toBeHidden();
 
+	expect(trouble).toEqual([]);
+});
+
+test('en note kan deles med en person direkte, og dukker op hos dem', async ({ browser, page }) => {
+	const trouble = watchForTrouble(page);
+
+	// Somebody to share with: a second account on the instance, made the ordinary
+	// way. The candidate list is drawn when the note opens, so they must exist
+	// before it does.
+	await page.goto('/indstillinger/brugere');
+	await page.getByLabel('E-mailadresse').fill('sofie@example.dk');
+	await page.getByRole('button', { name: 'Send invitation' }).click();
+	const link = await page.locator('.link-out').textContent();
+
+	const sofieCtx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const sofie = await sofieCtx.newPage();
+	await sofie.goto(link);
+	await sofie.getByLabel('Navn', { exact: true }).fill('Sofie');
+	await sofie.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
+	await sofie.getByRole('button', { name: 'Opret konto' }).click();
+	await expect(sofie.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+
+	// The owner writes a note and hands it to Sofie, as a reader.
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('link', { name: 'Noter', exact: true }).click();
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	await page.getByRole('textbox', { name: 'Notens tekst' }).click();
+	await page.keyboard.type('Ferieplan for hele holdet');
+	await page.getByRole('textbox', { name: 'Notens tekst' }).blur();
+
+	const share = page.locator('.people-share');
+	await expect(share).toBeVisible();
+	await share.locator('.addshare select').first().selectOption({ label: 'Sofie' });
+	await page.getByRole('button', { name: 'Del', exact: true }).click();
+
+	// She is on the note now, with the role she was given.
+	const row = share.locator('.sharelist li').filter({ hasText: 'Sofie' });
+	await expect(row).toBeVisible();
+	await expect(row.locator('select')).toHaveValue('viewer');
+
+	// And it reaches her: her own notes list grows a Delt med mig group with it in.
+	//
+	// Navigated on the origin the invite signed her in on. VERDANDE_BASE_URL is
+	// localhost while the suite drives 127.0.0.1, and a session cookie set on one
+	// host is not sent to the other — a bare "/noter" would land her logged out.
+	const noterURL = new URL('/noter', link).href;
+	await sofie.goto(noterURL);
+	await expect(sofie.getByRole('button', { name: /Delt med mig/ })).toBeVisible();
+	await expect(sofie.getByRole('button', { name: /Ferieplan for hele holdet/ })).toBeVisible();
+	// A viewer's note carries no star or archive control — it is not hers to put away.
+	const sofieRow = sofie.locator('.notes li').filter({ hasText: 'Ferieplan for hele holdet' });
+	await expect(sofieRow.locator('.star')).toHaveCount(0);
+
+	// Taken back, it leaves her list.
+	await row.getByRole('button', { name: 'Fjern adgang' }).click();
+	await expect(row).toBeHidden();
+	await sofie.goto(noterURL);
+	await expect(sofie.getByRole('button', { name: /Ferieplan for hele holdet/ })).toBeHidden();
+
+	await sofieCtx.close();
 	expect(trouble).toEqual([]);
 });
 
@@ -2910,10 +2970,10 @@ test('en note kan oprettes inde fra et projekt og hører til det med det samme',
 	await page.keyboard.type('Tagsten og lægter');
 	await page.waitForTimeout(1200);
 
-	// Den hører til projektet med det samme: "Del i" står på projektet, uden at
-	// nogen har valgt det bagefter.
-	await expect(page.getByLabel('Del i')).toHaveValue(/.+/);
-	const shared = await page.getByLabel('Del i').evaluate((el) => el.selectedOptions[0].textContent);
+	// Den hører til projektet med det samme: "Læg i projekt" står på projektet,
+	// uden at nogen har valgt det bagefter.
+	await expect(page.getByLabel('Læg i projekt')).toHaveValue(/.+/);
+	const shared = await page.getByLabel('Læg i projekt').evaluate((el) => el.selectedOptions[0].textContent);
 	expect(shared).toContain('Tagprojekt');
 
 	// Og den står på projektets egen side.
