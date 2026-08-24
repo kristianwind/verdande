@@ -2440,7 +2440,8 @@ test('en note kan deles med et projekts folk, og tages tilbage igen', async ({ p
 	await page.keyboard.type('Fælles aftale om leveringen');
 	await page.getByRole('textbox', { name: 'Notens tekst' }).blur();
 
-	// Shared by being filed in a project. Not an access list of its own.
+	// Filing it in a project — the controls live in the Del popover in the footer.
+	await page.locator('.sharewrap > button').click();
 	await page.getByLabel('Læg i projekt').selectOption({ label: 'Delenoter' });
 	await expect(page.getByText('delt med projektets folk')).toBeVisible();
 
@@ -2451,6 +2452,7 @@ test('en note kan deles med et projekts folk, og tages tilbage igen', async ({ p
 	// Taken back out, it is the author's alone again.
 	await sidebar.getByRole('link', { name: 'Noter', exact: true }).click();
 	await page.getByRole('button', { name: /Fælles aftale/ }).click();
+	await page.locator('.sharewrap > button').click();
 	await page.getByLabel('Læg i projekt').selectOption({ label: 'Intet projekt' });
 	await expect(page.getByText('din igen')).toBeVisible();
 
@@ -2487,10 +2489,12 @@ test('en note kan deles med en person direkte, og dukker op hos dem', async ({ b
 	await page.keyboard.type('Ferieplan for hele holdet');
 	await page.getByRole('textbox', { name: 'Notens tekst' }).blur();
 
-	const share = page.locator('.people-share');
+	// Sharing lives in a popover behind the Del button in the footer.
+	await page.locator('.sharewrap > button').click();
+	const share = page.locator('.sharepanel');
 	await expect(share).toBeVisible();
 	await share.locator('.addshare select').first().selectOption({ label: 'Sofie' });
-	await page.getByRole('button', { name: 'Del', exact: true }).click();
+	await share.getByRole('button', { name: 'Tilføj' }).click();
 
 	// She is on the note now, with the role she was given.
 	const row = share.locator('.sharelist li').filter({ hasText: 'Sofie' });
@@ -2981,7 +2985,8 @@ test('en note kan oprettes inde fra et projekt og hører til det med det samme',
 	await page.waitForTimeout(1200);
 
 	// Den hører til projektet med det samme: "Læg i projekt" står på projektet,
-	// uden at nogen har valgt det bagefter.
+	// uden at nogen har valgt det bagefter. Kontrollen ligger i Del-popoveren.
+	await page.locator('.sharewrap > button').click();
 	await expect(page.getByLabel('Læg i projekt')).toHaveValue(/.+/);
 	const shared = await page.getByLabel('Læg i projekt').evaluate((el) => el.selectedOptions[0].textContent);
 	expect(shared).toContain('Tagprojekt');
