@@ -405,6 +405,12 @@ export const api = {
 	deleteNote: (id) => del(`/notes/${id}`),
 	notesLinking: (kind, targetId) => get(`/notes/linking/${kind}/${encodeURIComponent(targetId)}`),
 
+	// Sharing a note with people directly — its own access list, beside the project
+	// path. Owner only; the list call also returns who it can still be shared with.
+	noteShares: (id) => get(`/notes/${id}/shares`),
+	shareNote: (id, userId, role) => post(`/notes/${id}/shares`, { user_id: userId, role }),
+	unshareNote: (id, userId) => del(`/notes/${id}/shares/${userId}`),
+
 	// Mailboxes read over IMAP. Each belongs to the person who connected it, so
 	// there is no instance-wide registration behind these the way Gmail has one.
 	mailboxes: () => get('/mailboxes'),

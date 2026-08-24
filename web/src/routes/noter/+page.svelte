@@ -146,14 +146,28 @@
 		if (query.trim()) return [{ key: 'fundet', label: '', notes: ordered, plain: true }];
 
 		const out = [];
-		const favourites = ordered.filter((n) => n.pinned);
+
+		// Andres noter først, samlet. Som Favoritter-gruppen vises den kun, når der
+		// er noget i den — har man ingen delte noter, findes overskriften ikke og
+		// tager ingen plads. En delt note bor kun her, ikke også nede i en tidsbunke.
+		const sharedWithMe = ordered.filter((n) => n.shared_with_me);
+		if (sharedWithMe.length) {
+			out.push({
+				key: 'delt-med-mig',
+				label: t('notes.groupSharedWithMe'),
+				notes: sharedWithMe,
+				people: true
+			});
+		}
+
+		const favourites = ordered.filter((n) => n.pinned && !n.shared_with_me);
 		if (favourites.length) {
 			out.push({ key: 'favoritter', label: t('notes.groupFavourites'), notes: favourites, star: true });
 		}
 
 		let current = null;
 		for (const note of ordered) {
-			if (note.pinned) continue;
+			if (note.pinned || note.shared_with_me) continue;
 			const bucket = bucketOf(note);
 			if (!current || current.key !== bucket.key) {
 				current = { key: bucket.key, label: bucket.label, notes: [] };
@@ -169,6 +183,77 @@
 	let selected = $state(null);
 	// Hvilken række der er valgt. Se open(): editoren venter på hele noten.
 	let selectedId = $state(null);
+
+	// Deling af den åbne note med enkeltpersoner. Kun ejeren ser panelet, så det
+	// hentes kun for en note, man selv har lavet.
+	let shares = $state([]);
+	let shareCandidates = $state([]);
+	let sharePick = $state('');
+	let shareRole = $state('viewer');
+	let shareBusy = $state(false);
+	const ownsSelected = $derived(!!selected && selected.created_by === app.user?.id);
+
+	$effect(() => {
+		const id = selected?.id;
+		// Nulstil ved hvert skift, så den forrige notes folk ikke står et øjeblik
+		// under den nye.
+		shares = [];
+		shareCandidates = [];
+		sharePick = '';
+		if (!id || selected.created_by !== app.user?.id) return;
+		let alive = true;
+		api
+			.noteShares(id)
+			.then((r) => {
+				if (!alive || selected?.id !== id) return;
+				shares = r.shares ?? [];
+				shareCandidates = r.candidates ?? [];
+			})
+			.catch(() => {});
+		return () => {
+			alive = false;
+		};
+	});
+
+	const byName = (a, b) => (a.name ?? '').localeCompare(b.name ?? '');
+
+	async function addShare() {
+		if (!selected || !sharePick || shareBusy) return;
+		const person = shareCandidates.find((p) => p.id === sharePick);
+		shareBusy = true;
+		try {
+			await api.shareNote(selected.id, sharePick, shareRole);
+			shares = [...shares, { user: person, role: shareRole }].sort((a, b) => byName(a.user, b.user));
+			shareCandidates = shareCandidates.filter((p) => p.id !== sharePick);
+			app.toast(t('notes.sharedToast', { name: person?.name ?? '' }));
+			sharePick = '';
+		} catch (e) {
+			app.toast(humanMessage(e));
+		} finally {
+			shareBusy = false;
+		}
+	}
+
+	async function changeShareRole(userId, role) {
+		try {
+			await api.shareNote(selected.id, userId, role);
+			shares = shares.map((s) => (s.user.id === userId ? { ...s, role } : s));
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
+	async function removeShare(userId) {
+		const person = shares.find((s) => s.user.id === userId)?.user;
+		try {
+			await api.unshareNote(selected.id, userId);
+			shares = shares.filter((s) => s.user.id !== userId);
+			if (person) shareCandidates = [...shareCandidates, person].sort(byName);
+			app.toast(t('notes.unsharedPerson', { name: person?.name ?? '' }));
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
 
 	/**
 	 * Flere ad gangen.
@@ -650,6 +735,14 @@
 							<button onclick={() => toggleGroup(group.key)} aria-expanded={!folded.has(group.key)}>
 								{#if group.star}
 									<span class="mark favmark" aria-hidden="true">★</span>
+								{:else if group.people}
+									<span class="mark peoplemark" aria-hidden="true">
+										<svg viewBox="0 0 24 24" aria-hidden="true">
+											<circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="2" />
+											<path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+											<path d="M16 6.2a3 3 0 0 1 0 5.6M17.5 19c0-2.2-1-3.9-2.6-4.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+										</svg>
+									</span>
 								{:else}
 									<span class="mark" class:closed={folded.has(group.key)} aria-hidden="true">▾</span>
 								{/if}
@@ -692,6 +785,19 @@
 													{projectName(note.project_id)}
 												</span>
 											{/if}
+											{#if note.shared_with_me && note.owner}
+												<!-- Hvis note delt med mig: hvem den kom fra, i personens egen
+												     avatar-farve. Samme form som projekt-mærkaten, så listen har
+												     ét sprog for "det her hører til nogen". -->
+												<span
+													class="filed person"
+													style="--project: {note.owner.avatar_color}"
+													title={t('notes.sharedBy', { name: note.owner.name })}
+												>
+													<span class="dot" aria-hidden="true"></span>
+													{note.owner.name}
+												</span>
+											{/if}
 										</span>
 										<span class="preview">{preview(note)}</span>
 									</button>
@@ -699,6 +805,10 @@
 									     Ved siden af hinanden tog de toogfyrre pixels af en liste,
 									     der er tre hundrede bred — og de bruges sjældent, mens
 									     titlen og uddraget læses hele tiden. -->
+									<!-- Ingen knapper på en note, en anden ejer: at arkivere eller
+									     stjernemarkere ændrer selve noten, og den er ikke min at lægge
+									     væk eller pinne. Rækken læses og åbnes; resten er ejerens. -->
+									{#if !note.shared_with_me}
 									<div class="rowactions">
 									<!-- Én note lagt væk, uden at markere den først. Markeringen er
 									     til flere; det her er til den ene, man står med — og i
@@ -724,6 +834,7 @@
 										{note.pinned ? '★' : '☆'}
 									</button>
 									</div>
+									{/if}
 								</div>
 							</li>
 							{/each}
@@ -754,25 +865,77 @@
 						{/each}
 					</span>
 				{/if}
-				<!-- Sharing a note is filing it in a project.
-				     Not an access list of its own: projects already have members, roles
-				     and invitations, all of them tested and all of them things people
-				     have already learnt here. A second way to give somebody access is a
-				     second place to get it wrong, and the two would disagree on the day
-				     one of them was changed. -->
-				<label class="share">
-					<span class="hint">{t('notes.shareWith')}</span>
-					<select value={selected.project_id ?? ''} onchange={(e) => share(e.currentTarget.value)}>
-						<option value="">{t('notes.private')}</option>
-						{#each app.projects.filter((p) => !p.is_inbox) as project (project.id)}
-							<option value={project.id}>{project.name}</option>
-						{/each}
-					</select>
-				</label>
+				<!-- Filing a note in a project is one way to share it: everybody who can
+				     read the project reads the note. Owner only, because moving a note
+				     the owner is not in would take it away from them. -->
+				{#if ownsSelected}
+					<label class="share">
+						<span class="hint">{t('notes.shareWith')}</span>
+						<select value={selected.project_id ?? ''} onchange={(e) => share(e.currentTarget.value)}>
+							<option value="">{t('notes.private')}</option>
+							{#each app.projects.filter((p) => !p.is_inbox) as project (project.id)}
+								<option value={project.id}>{project.name}</option>
+							{/each}
+						</select>
+					</label>
+
+					<!-- The other way: hand the note to named people, without a project
+					     between. The owner picks who and at what role; the list below is
+					     who can already see it. -->
+					<div class="people-share">
+						<span class="hint">{t('notes.sharePeople')}</span>
+						{#if shares.length}
+							<ul class="sharelist">
+								{#each shares as sh (sh.user.id)}
+									<li>
+										<span class="who">
+											<span class="avatar" style="--who: {sh.user.avatar_color}" aria-hidden="true"></span>
+											{sh.user.name}
+										</span>
+										<select
+											value={sh.role}
+											onchange={(e) => changeShareRole(sh.user.id, e.currentTarget.value)}
+										>
+											<option value="viewer">{t('notes.shareRoleViewer')}</option>
+											<option value="editor">{t('notes.shareRoleEditor')}</option>
+										</select>
+										<button
+											class="unshare"
+											onclick={() => removeShare(sh.user.id)}
+											title={t('notes.shareRemove')}
+											aria-label={t('notes.shareRemove')}>×</button
+										>
+									</li>
+								{/each}
+							</ul>
+						{:else}
+							<span class="none">{t('notes.shareNobody')}</span>
+						{/if}
+						{#if shareCandidates.length}
+							<div class="addshare">
+								<select bind:value={sharePick}>
+									<option value="">{t('notes.sharePick')}</option>
+									{#each shareCandidates as person (person.id)}
+										<option value={person.id}>{person.name}</option>
+									{/each}
+								</select>
+								<select bind:value={shareRole}>
+									<option value="viewer">{t('notes.shareRoleViewer')}</option>
+									<option value="editor">{t('notes.shareRoleEditor')}</option>
+								</select>
+								<button class="button" disabled={!sharePick || shareBusy} onclick={addShare}>
+									{t('notes.shareAdd')}
+								</button>
+							</div>
+						{/if}
+					</div>
+				{/if}
 
 				<div class="actions">
 					<button class="button" onclick={save}>{t('notes.save')}</button>
-					<button class="button danger" onclick={() => remove(selected)}>{t('notes.delete')}</button>
+					{#if ownsSelected}
+						<button class="button danger" onclick={() => remove(selected)}>{t('notes.delete')}</button>
+					{/if}
 				</div>
 			</footer>
 		{:else}
@@ -1404,6 +1567,114 @@
 	}
 
 	.share select {
+		font-size: var(--text-xs);
+		padding: 2px var(--s1);
+	}
+
+	/* The person icon on the Delt med mig heading, sized to the row of text it
+	   sits in rather than to a fixed pixel. */
+	h3.group .peoplemark {
+		flex: none;
+		width: 1em;
+		height: 1em;
+		color: var(--ink-faint);
+	}
+	h3.group .peoplemark svg {
+		width: 100%;
+		height: 100%;
+		display: block;
+	}
+
+	/* The person chip: the project mark's shape in a person's own colour. No ▸
+	   before it — the coloured dot already says "belongs to", and two markers on
+	   one short chip is noise. It sits next to the title rather than pushed to the
+	   right, so in the Delt med mig group it reads as "Ferieplan — Sofie". */
+	.filed.person {
+		margin-left: 0.5em;
+		max-width: 40%;
+	}
+	.filed.person::before {
+		content: none;
+	}
+
+	/* Del med personer, under the note. */
+	.people-share {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s1);
+		width: 100%;
+	}
+
+	.people-share .none {
+		font-size: var(--text-xs);
+		color: var(--ink-faint);
+	}
+
+	.sharelist {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.sharelist li {
+		display: flex;
+		align-items: center;
+		gap: var(--s1);
+		font-size: var(--text-xs);
+	}
+
+	.sharelist .who {
+		display: flex;
+		align-items: center;
+		gap: 0.375em;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.sharelist .avatar {
+		width: 8px;
+		height: 8px;
+		flex: none;
+		border-radius: var(--radius-full);
+		background: var(--who, var(--line-strong));
+	}
+
+	.sharelist select {
+		font-size: var(--text-xs);
+		padding: 1px var(--s1);
+		margin-left: auto;
+	}
+
+	/* The × that takes access away. A word would crowd the row; the mark is enough
+	   beside a name and a role. */
+	.unshare {
+		flex: none;
+		width: 1.3em;
+		height: 1.3em;
+		line-height: 1;
+		border: none;
+		background: transparent;
+		color: var(--ink-faint);
+		cursor: pointer;
+		border-radius: var(--radius);
+	}
+	.unshare:hover {
+		color: var(--danger, var(--ink));
+		background: var(--surface-raised);
+	}
+
+	.addshare {
+		display: flex;
+		align-items: center;
+		gap: var(--s1);
+		flex-wrap: wrap;
+	}
+	.addshare select {
 		font-size: var(--text-xs);
 		padding: 2px var(--s1);
 	}

@@ -37,6 +37,17 @@ type Note struct {
 	// set by a caller: it is derived, and a caller that set it would be describing
 	// a note whose text says something else.
 	Links []NoteLink `json:"links,omitempty"`
+
+	// SharedWithMe is true when the person reading the list reached this note
+	// through a direct share rather than by owning it or being in its project. It
+	// is what puts the note in the Delt med mig group and shows whose note it is.
+	// Derived per request, so it is never stored and never set by a caller.
+	SharedWithMe bool `json:"shared_with_me,omitempty"`
+
+	// Owner is who the note belongs to — its created_by — as a name and a colour,
+	// for the chip on a note shared with the reader. Set only when it helps the
+	// list say something; nil the rest of the time.
+	Owner *Person `json:"owner,omitempty"`
 }
 
 // NoteLink is one reference from a note to something else.
@@ -263,8 +274,9 @@ func (db *DB) allNotes(ctx context.Context, userID string, archived bool) ([]Not
 		      UNION
 		      SELECT project_id FROM project_members WHERE user_id = ?
 		    )
+		    OR notes.id IN (SELECT note_id FROM note_shares WHERE user_id = ?)
 		  )
-		ORDER BY pinned DESC, updated_at DESC`, userID, userID, userID)
+		ORDER BY pinned DESC, updated_at DESC`, userID, userID, userID, userID)
 }
 
 // NotesLinking answers the backwards question: what points at this thing.

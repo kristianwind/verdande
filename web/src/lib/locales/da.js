@@ -16,10 +16,23 @@
  */
 export const da = {
 	// --- the shell ---------------------------------------------------------------
-	'notes.shareWith': 'Del i',
-	'notes.private': 'Kun mig',
+	'notes.shareWith': 'Læg i projekt',
+	'notes.private': 'Intet projekt',
 	'notes.shared': 'Noten er delt med projektets folk.',
 	'notes.unshared': 'Noten er din igen.',
+	// Deling med enkeltpersoner, ved siden af projektet.
+	'notes.groupSharedWithMe': 'Delt med mig',
+	'notes.sharedBy': 'Delt af {name}',
+	'notes.sharePeople': 'Del med personer',
+	'notes.sharePick': 'Vælg en person …',
+	'notes.shareAdd': 'Del',
+	'notes.shareRoleViewer': 'Kan læse',
+	'notes.shareRoleEditor': 'Kan rette',
+	'notes.shareRemove': 'Fjern adgang',
+	'notes.shareNobody': 'Ikke delt med nogen endnu.',
+	'notes.sharedToast': 'Delt med {name}.',
+	'notes.unsharedPerson': '{name} kan ikke længere se noten.',
+	'notes.shareOwnerOnly': 'Kun ejeren kan dele noten.',
 	'notes.save': 'Gem',
 	'notes.format': 'Formatér',
 	'notes.bold': 'Fed',
