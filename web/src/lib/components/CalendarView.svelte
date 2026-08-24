@@ -286,6 +286,48 @@
 	/** The cell lit up under the pointer. */
 	let over = $state(null);
 
+	// A resize in progress: which task, and where its foot is being dragged to, in
+	// minutes since midnight. Kept apart from the stored length so the task can
+	// follow the handle live and only be written when the drag ends.
+	let resizing = $state(null);
+
+	/**
+	 * Dragging the foot of a timed task changes how long it is.
+	 *
+	 * Pointer events rather than the HTML5 drag the body uses: the two must not be
+	 * the same gesture, or every attempt to make a task longer would instead pick it
+	 * up and move it. stopPropagation keeps the handle's press from starting the
+	 * move, and the column it lives in is what the minutes are measured against —
+	 * the same box onDropAt reads a drop time from.
+	 */
+	function startResize(event, task, date) {
+		event.stopPropagation();
+		event.preventDefault();
+		const col = event.currentTarget.closest('.daycol');
+		if (!col || !task.due_datetime) return;
+		const at = new Date(task.due_datetime);
+		const from = at.getHours() * 60 + at.getMinutes();
+		resizing = { id: task.id, from, to: from + (task.duration_min || 30), date: iso(date) };
+
+		const onMove = (e) => {
+			const box = col.getBoundingClientRect();
+			const share = Math.min(Math.max((e.clientY - box.top) / box.height, 0), 1);
+			const minutes = hours.from * 60 + share * hours.minutes;
+			// Quarter-hour steps, at least a quarter long, never past midnight.
+			const snapped = Math.min(Math.max(Math.round(minutes / 15) * 15, from + 15), 24 * 60);
+			resizing = { ...resizing, to: snapped };
+		};
+		const onUp = async () => {
+			window.removeEventListener('pointermove', onMove);
+			window.removeEventListener('pointerup', onUp);
+			const current = resizing;
+			resizing = null;
+			if (current) await app.resize(current.id, current.to - current.from);
+		};
+		window.addEventListener('pointermove', onMove);
+		window.addEventListener('pointerup', onUp);
+	}
+
 	function onDragOver(event, date) {
 		if (!carries(event, TASK)) return;
 		accept(event);
@@ -394,7 +436,16 @@
 			if (!task.due_datetime) continue;
 			const at = new Date(task.due_datetime);
 			const from = at.getHours() * 60 + at.getMinutes();
-			out.push({ kind: 'task', ref: task, from, to: from + 30 });
+			// The task's own length, not a fixed half hour. A quarter-hour floor so a
+			// zero-minute task is still something to see and grab, and the end of the
+			// day is the ceiling. While a resize is in flight this task follows the
+			// handle instead of its stored length.
+			let to =
+				resizing && resizing.id === task.id
+					? resizing.to
+					: from + (task.duration_min || 30);
+			to = Math.min(Math.max(to, from + 15), 24 * 60);
+			out.push({ kind: 'task', ref: task, from, to });
 		}
 
 		return out.toSorted((a, b) => a.from - b.from || a.to - b.to);
@@ -547,12 +598,13 @@
 		</svelte:element>
 	{/snippet}
 
-	{#snippet taskChip(task, kind, extra = '', at = '')}
+	{#snippet taskChip(task, kind, extra = '', at = '', date = null)}
 		<!-- Draggable as well as clickable: moving something to another day is the
 		     whole reason to be looking at a calendar. The browser needs a few pixels
 		     of movement before it calls a press a drag, so the click survives. -->
 		<button
 			class={kind}
+			class:resizing={resizing?.id === task.id}
 			data-priority={task.priority}
 			draggable="true"
 			ondragstart={(e) => startDrag(e, TASK, task.id)}
@@ -562,6 +614,16 @@
 		>
 			{#if at}<span class="at">{at}</span>{/if}
 			{task.content}
+			<!-- Only a task standing at a time can be made longer, and only where the
+			     grid has room to show it — the timed column, which passes the date. -->
+			{#if date && task.due_datetime}
+				<span
+					class="resize"
+					title={t('cal.resize')}
+					aria-hidden="true"
+					onpointerdown={(e) => startResize(e, task, date)}
+				></span>
+			{/if}
 		</button>
 	{/snippet}
 
@@ -632,7 +694,7 @@
 							{#if item.kind === 'event'}
 								{@render eventChip(item.ref, date, 'tevent', place(item))}
 							{:else}
-								{@render taskChip(item.ref, 'tevent task', place(item), clock(item.from))}
+								{@render taskChip(item.ref, 'tevent task', place(item), clock(item.from), date)}
 							{/if}
 						{/each}
 					</div>
@@ -935,6 +997,29 @@
 		border-left-color: var(--line-strong);
 		color: var(--ink);
 		cursor: grab;
+	}
+
+	/* The grip along the foot of a task, for dragging its length. Out of the way
+	   until the task is hovered or being resized, so it never competes with the
+	   words above it. */
+	.tevent.task .resize {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: 7px;
+		cursor: ns-resize;
+		opacity: 0;
+		touch-action: none;
+	}
+	.tevent.task:hover .resize,
+	.tevent.task.resizing .resize {
+		opacity: 1;
+		background: linear-gradient(to bottom, transparent, var(--line-strong));
+	}
+	.tevent.task.resizing {
+		cursor: ns-resize;
+		z-index: 5;
 	}
 
 	.tevent.task[data-priority='1'] {

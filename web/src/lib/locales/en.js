@@ -593,6 +593,8 @@ export const en = {
 	'detail.none': 'None',
 	'detail.due': 'Due',
 	'detail.dueTime': 'Time',
+	'detail.duration': 'Length in minutes',
+	'detail.durationShort': 'min',
 	'detail.labels': 'Labels',
 	'detail.labelsPlaceholder': 'separated by commas',
 	'detail.project': 'Project',
@@ -742,6 +744,7 @@ export const en = {
 	'cal.settings': 'Settings',
 	'cal.noneChosen': 'None of the account’s calendars are chosen yet.',
 	'cal.allDay': 'All day',
+	'cal.resize': 'Drag to change the length',
 	'cal.openInGoogle': 'Open in Google Calendar',
 	'cal.beyondWindow':
 		'Events are kept from {from} to {to}. Outside that the grid shows only your own tasks.',

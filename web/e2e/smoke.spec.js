@@ -1225,6 +1225,69 @@ test('kalenderen viser Googles begivenheder over egne opgaver, og kun opgaven ka
  * thing this view was before anything was laid over it — and a Google account that
  * is not there must not take it down with it.
  */
+test('en opgaves længde kan trækkes længere på kalenderen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	// A timed task today at ten, half an hour long. Today, so the week opens on it
+	// without paging, and ten is inside the hours the grid draws by default.
+	const today = await page.evaluate(() => {
+		const d = new Date();
+		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+	});
+	const id = await page.evaluate(async (day) => {
+		const r = await fetch('/api/v1/tasks', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+			body: JSON.stringify({
+				content: 'Møde med Anders',
+				due_date: day,
+				due_time: '10:00',
+				duration_min: 30
+			})
+		});
+		return (await r.json()).id;
+	}, today);
+
+	await page.goto('/kalender');
+	await page.getByRole('button', { name: 'Uge', exact: true }).click();
+
+	const chip = page
+		.locator(`[data-date="${today}"] .tevent.task`)
+		.filter({ hasText: 'Møde med Anders' });
+	await expect(chip).toBeVisible();
+	const before = await chip.evaluate((el) => el.getBoundingClientRect().height);
+
+	// Drag the foot of the task down a good stretch. It should grow, both on screen
+	// and in what the server stores — a resize is a change of length, not of time.
+	const box = await chip.boundingBox();
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height - 2);
+	await page.mouse.down();
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height + 130, { steps: 6 });
+	await page.mouse.up();
+
+	await expect
+		.poll(async () =>
+			page.evaluate(async (tid) => {
+				const r = await fetch('/api/v1/tasks/' + tid, {
+					credentials: 'include',
+					headers: { 'Sec-Fetch-Site': 'same-origin' }
+				});
+				return (await r.json()).duration_min;
+			}, id)
+		)
+		.toBeGreaterThan(30);
+
+	// And the chip is taller than it was, so the length is something you can see.
+	await expect.poll(async () => chip.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThan(before);
+
+	// The time did not move: it is still a ten o'clock task.
+	await expect(chip.locator('.at')).toHaveText('10:00');
+
+	expect(trouble).toEqual([]);
+});
+
 test('kalenderen virker uden en forbundet Google-konto', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 	await page.goto('/kalender');
