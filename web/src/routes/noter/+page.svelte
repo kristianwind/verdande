@@ -1036,6 +1036,12 @@
 
 					<button class="button" onclick={save}>{t('notes.save')}</button>
 					{#if ownsSelected}
+						<!-- Laid away, not thrown away: archive is the note leaving the list
+						     without leaving the account, and it reads "bring it back" once it
+						     already has. Owner only, like delete. -->
+						<button class="button" onclick={() => archiveOne(selected)}>
+							{selected.archived_at ? t('notes.unarchive') : t('notes.archive')}
+						</button>
 						<button class="button danger" onclick={() => remove(selected)}>{t('notes.delete')}</button>
 					{/if}
 				</div>
