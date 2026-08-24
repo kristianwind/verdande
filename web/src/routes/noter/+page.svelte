@@ -14,6 +14,7 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { t, tag } from '$lib/i18n.svelte.js';
 	import { NOTE, startDrag } from '$lib/dnd.js';
 	import { colorVar } from '$lib/colors.js';
@@ -653,6 +654,44 @@
 	// What the note points at, for the panel under the editor.
 	let links = $derived(selected?.links ?? []);
 
+	/**
+	 * Follows a link from the panel to the thing it names.
+	 *
+	 * A [[note]] resolves by its title to a note — the one on the list if it is
+	 * there, otherwise looked up — and opens it in place. A #project and a task go
+	 * to their own pages. Until now these were text and nothing else: the note said
+	 * it pointed somewhere and there was no way to go.
+	 */
+	async function openLink(link) {
+		if (link.kind === 'note') {
+			const wanted = link.target_id.toLowerCase();
+			const here = notes.find((n) => (n.title ?? '').toLowerCase() === wanted);
+			if (here) {
+				open(here);
+				return;
+			}
+			try {
+				const found = (await api.notes({ q: link.target_id })).notes ?? [];
+				const hit = found.find((n) => (n.title ?? '').toLowerCase() === wanted) ?? found[0];
+				if (hit) open(hit);
+				else app.toast(t('notes.linkMissing'));
+			} catch (e) {
+				app.toast(humanMessage(e));
+			}
+			return;
+		}
+		if (link.kind === 'project') {
+			const project = app.projects.find(
+				(p) => p.name.toLowerCase() === link.target_id.toLowerCase()
+			);
+			if (project) goto(`/projekt/${project.id}`);
+			return;
+		}
+		if (link.kind === 'task') {
+			goto(`/opgave/${link.target_id}`);
+		}
+	}
+
 
 </script>
 
@@ -889,7 +928,9 @@
 				{#if links.length}
 					<span class="links">
 						{#each links as link}
-							<span class="link">{label(link)}</span>
+							<button class="link" onclick={() => openLink(link)} title={t('notes.linkOpen')}>
+								{label(link)}
+							</button>
 						{/each}
 					</span>
 				{/if}
@@ -1615,9 +1656,17 @@
 	.link {
 		color: var(--ink-muted);
 		background: var(--surface);
+		border: 1px solid var(--line);
 		border-radius: var(--radius-sm);
 		padding: 0 var(--s1);
 		font-family: var(--mono, ui-monospace, monospace);
+		font-size: inherit;
+		cursor: pointer;
+	}
+	.link:hover {
+		color: var(--ink);
+		background: var(--surface-raised);
+		border-color: var(--line-strong);
 	}
 
 	/* Sharing lives in a popover above the Del button, so the footer stays a status
