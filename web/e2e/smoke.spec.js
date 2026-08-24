@@ -2624,6 +2624,36 @@ test('udseendet kan skiftes uafhængigt af temaet, og overlever en genindlæsnin
 	expect(trouble).toEqual([]);
 });
 
+test('[[ foreslår en note, og linket lander i noten', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	// One note to point at, then another to write the link in.
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await ed.click();
+	await page.keyboard.type('Rejseplan til Berlin');
+	await ed.blur();
+	await page.waitForTimeout(600);
+
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	await ed.click();
+	await page.keyboard.type('Se ');
+	await page.keyboard.type('[[Rejse');
+
+	// The picker offers the note by title, and choosing it closes the brackets.
+	const option = page.locator('.suggestions button', { hasText: 'Rejseplan til Berlin' });
+	await expect(option).toBeVisible();
+	await option.click();
+	await expect(ed).toContainText('[[Rejseplan til Berlin]]');
+
+	// And the link is real: it turns up in the note's links, not just as text.
+	await ed.blur();
+	await expect(page.locator('.links')).toContainText('Rejseplan til Berlin');
+
+	expect(trouble).toEqual([]);
+});
+
 test('en ny note begynder som titel, og linjen efter er brødtekst', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 	await page.goto('/noter');
