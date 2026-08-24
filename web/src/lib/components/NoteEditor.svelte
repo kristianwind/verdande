@@ -20,7 +20,7 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { colorVar } from '$lib/colors.js';
 
-	let { note, onchange, onsave } = $props();
+	let { note, notes = [], onchange, onsave } = $props();
 
 	let editor;
 	// Forslagslisten, så tastaturvalget kan rulle den frem.
@@ -390,9 +390,26 @@
 		if (!node || node.nodeType !== Node.TEXT_NODE || !selection.isCollapsed) return null;
 
 		const before = node.textContent.slice(0, selection.anchorOffset);
-		const match = /(?:^|\s)#([\p{L}\p{N}_-]*)$/u.exec(before);
-		if (!match) return null;
-		return { node, start: selection.anchorOffset - match[1].length, term: match[1] };
+
+		// A note link, [[, is the same idea as a project tag and gets the same
+		// completion — checked first because it is the longer opener. The term runs
+		// to the caret and is anything up to the closing bracket, which has not been
+		// typed yet.
+		const note = /\[\[([^\]\n]*)$/u.exec(before);
+		if (note) {
+			return { kind: 'note', node, start: selection.anchorOffset - note[1].length, term: note[1] };
+		}
+
+		const project = /(?:^|\s)#([\p{L}\p{N}_-]*)$/u.exec(before);
+		if (project) {
+			return {
+				kind: 'project',
+				node,
+				start: selection.anchorOffset - project[1].length,
+				term: project[1]
+			};
+		}
+		return null;
 	}
 
 	/**
@@ -436,33 +453,41 @@
 		// pixels for hvert bogstav, mens listen snævres ind.
 		if (!suggestions.length) menuAt = tagPosition(partial);
 
-		// Alle der passer, ikke de seks første.
-		//
-		// Loftet på seks var sat, dengang listen ikke kunne rulle, og det gjorde
-		// noget værre end at skjule: med tyve projekter og et blot tastet `#` viste
-		// den seks vilkårlige og så færdig ud. Man kunne ikke se, at der manglede
-		// noget — kun at ens eget projekt ikke var der.
-		//
-		// Rækkefølgen bærer nu det, loftet gjorde forkert: det, der begynder med
-		// det tastede, står øverst, resten alfabetisk. Skriver man "ga", er
-		// GarageRisteriet den første, ikke den, der tilfældigvis lå først.
-		const matches = app.projects.filter(
-			(p) => !p.is_inbox && p.name.toLowerCase().includes(term)
-		);
-		matches.sort((a, b) => {
-			const an = a.name.toLowerCase();
-			const bn = b.name.toLowerCase();
-			const ap = an.startsWith(term);
-			const bp = bn.startsWith(term);
-			if (ap !== bp) return ap ? -1 : 1;
-			return an.localeCompare(bn, 'da');
-		});
-		suggestions = matches;
+		suggestions = partial.kind === 'note' ? noteMatches(term) : projectMatches(term);
 		chosen = 0;
 	}
 
-	/** Replaces the half-typed tag with the whole name. */
-	function accept(project) {
+	// Alle der passer, ikke de seks første. Rækkefølgen bærer det: det, der begynder
+	// med det tastede, står øverst, resten alfabetisk. Skriver man "ga", er
+	// GarageRisteriet den første, ikke den, der tilfældigvis lå først.
+	function projectMatches(term) {
+		return app.projects
+			.filter((p) => !p.is_inbox && p.name.toLowerCase().includes(term))
+			.map((p) => ({ id: p.id, kind: 'project', label: p.name, color: p.color }))
+			.sort((a, b) => rank(a.label, b.label, term));
+	}
+
+	// The same completion for [[ as for #, over the notes the page has loaded. The
+	// current note is left out — a note that links to itself is a loop nobody meant
+	// — and a note with no title yet cannot be pointed at, so it is skipped too.
+	function noteMatches(term) {
+		return notes
+			.filter((n) => n.id !== note?.id && n.title && n.title.toLowerCase().includes(term))
+			.map((n) => ({ id: n.id, kind: 'note', label: n.title }))
+			.sort((a, b) => rank(a.label, b.label, term));
+	}
+
+	function rank(a, b, term) {
+		const al = a.toLowerCase();
+		const bl = b.toLowerCase();
+		const ap = al.startsWith(term);
+		const bp = bl.startsWith(term);
+		if (ap !== bp) return ap ? -1 : 1;
+		return al.localeCompare(bl, 'da');
+	}
+
+	/** Replaces the half-typed tag with the whole name, and closes a note link. */
+	function accept(item) {
 		const partial = partialTag();
 		if (!partial) return;
 
@@ -473,9 +498,11 @@
 		selection.removeAllRanges();
 		selection.addRange(range);
 
-		// A trailing space, because the next thing typed is a word and not more of
-		// the tag — and without it the suggestions come straight back.
-		document.execCommand('insertText', false, project.name + ' ');
+		// A note link closes its own brackets — the opener is already in the text —
+		// and both end in a space, because the next thing typed is a word and not
+		// more of the tag, and without it the suggestions come straight back.
+		const inserted = item.kind === 'note' ? `${item.label}]] ` : `${item.label} `;
+		document.execCommand('insertText', false, inserted);
 		suggestions = [];
 		onchange?.(htmlToMarkdown(editor));
 	}
@@ -796,7 +823,7 @@
 			style:top={menuAt ? `${menuAt.top}px` : null}
 			style:left={menuAt ? `${menuAt.left}px` : null}
 		>
-			{#each suggestions as project, i (project.id)}
+			{#each suggestions as item, i (item.kind + item.id)}
 				<li>
 					<button
 						class:on={i === chosen}
@@ -804,12 +831,17 @@
 						aria-selected={i === chosen}
 						onmousedown={(e) => {
 							e.preventDefault();
-							accept(project);
+							accept(item);
 						}}
 					>
-						<span class="dot" style="background: {colorVar(project.color)}" aria-hidden="true"
-						></span>
-						#{project.name}
+						{#if item.kind === 'note'}
+							<span class="dot note" aria-hidden="true">[[</span>
+							{item.label}
+						{:else}
+							<span class="dot" style="background: {colorVar(item.color)}" aria-hidden="true"
+							></span>
+							#{item.label}
+						{/if}
 					</button>
 				</li>
 			{/each}
@@ -960,6 +992,18 @@
 		border-radius: var(--radius-sm);
 		color: var(--ink-muted);
 		font-size: var(--text-sm);
+	}
+
+	/* A note suggestion wears the brackets that open it where a project wears its
+	   colour, so the two kinds are told apart at a glance in the same list. */
+	.suggestions .dot.note {
+		width: auto;
+		height: auto;
+		background: none;
+		color: var(--ink-faint);
+		font-family: var(--mono, ui-monospace, monospace);
+		font-size: 0.85em;
+		line-height: 1;
 	}
 
 	.suggestions button.on {

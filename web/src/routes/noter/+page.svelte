@@ -876,6 +876,7 @@
 		{#if selected}
 			<NoteEditor
 				note={selected}
+				notes={notes}
 				onchange={(body) => {
 					draft = body;
 					typed();
