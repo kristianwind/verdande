@@ -102,19 +102,28 @@ func TestWholeDayDueDatesAreDates(t *testing.T) {
 
 // Google Calendar ignores VTODO. Timed tasks are therefore also emitted as events,
 // or a feed is useless in the calendar most people actually keep.
-func TestTimedTasksAlsoBecomeEvents(t *testing.T) {
+func TestDatedTasksBecomeEvents(t *testing.T) {
 	out := Render(sample())
 
-	if strings.Count(out, "BEGIN:VEVENT") != 1 {
-		t.Fatalf("got %d VEVENTs, want one for the single timed task",
-			strings.Count(out, "BEGIN:VEVENT"))
+	// Every dated, unfinished task becomes an event, so it shows in a calendar app
+	// that ignores VTODO — timed t1, and date-only t2 and t3. The finished t4 has no
+	// date and no event.
+	if got := strings.Count(out, "BEGIN:VEVENT"); got != 3 {
+		t.Fatalf("got %d VEVENTs, want 3 (one timed, two all-day)", got)
 	}
-	if !strings.Contains(out, "DTSTART:20260310T090000Z") {
-		t.Error("the event has no start")
+
+	// The timed one keeps its clock and its 45-minute duration.
+	if !strings.Contains(out, "DTSTART:20260310T090000Z") || !strings.Contains(out, "DTEND:20260310T094500Z") {
+		t.Error("the timed event's start or duration is wrong")
 	}
-	// 45 minutes of stated duration.
-	if !strings.Contains(out, "DTEND:20260310T094500Z") {
-		t.Error("the event's end does not reflect the task's duration")
+	// The date-only ones are all-day: a DATE start and an exclusive next-day end, so
+	// they sit on their own day rather than bleeding into the next.
+	if !strings.Contains(out, "DTSTART;VALUE=DATE:20260312") || !strings.Contains(out, "DTEND;VALUE=DATE:20260313") {
+		t.Error("the date-only event is not a single all-day event")
+	}
+	// A recurring date-only task carries its rule onto the event.
+	if !strings.Contains(out, "RRULE:FREQ=WEEKLY;BYDAY=MO") {
+		t.Error("the recurring task's event has no RRULE")
 	}
 	// The event must not share the to-do's UID, or clients treat them as one item.
 	if !strings.Contains(out, "UID:t1-event@todo.example.dk") {
