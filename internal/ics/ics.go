@@ -62,8 +62,13 @@ func Render(cal Calendar) string {
 
 	for _, t := range cal.Tasks {
 		writeTodo(&b, t, cal.Domain)
-		// A dated task also goes out as an event, for clients that ignore VTODO.
-		if t.DueDatetime != nil && !t.Completed {
+		// A dated task also goes out as an event, for the calendar apps that ignore
+		// VTODO — which is all of them: Apple Calendar and Google both drop a
+		// subscribed to-do on the floor and show only events. A task with a clock
+		// time becomes a timed event; one with only a date, an all-day event. Once
+		// this was limited to timed tasks, so a date-only task — most of them —
+		// simply never appeared in the calendar it was subscribed into.
+		if !t.Completed && (t.DueDatetime != nil || t.DueDate != "") {
 			writeEvent(&b, t, cal.Domain)
 		}
 	}
@@ -128,22 +133,31 @@ func writeTodo(b *strings.Builder, t Task, domain string) {
 }
 
 func writeEvent(b *strings.Builder, t Task, domain string) {
-	start := *t.DueDatetime
-	// Without a stated duration a task is shown as half an hour. A zero-length
-	// event collapses to an invisible sliver in most calendar grids.
-	minutes := 30
-	if t.DurationMin != nil && *t.DurationMin > 0 {
-		minutes = *t.DurationMin
-	}
-	end := start.Add(time.Duration(minutes) * time.Minute)
-
 	b.WriteString("BEGIN:VEVENT\r\n")
 	// A distinct UID suffix: the event and the to-do describe the same task, and
 	// sharing a UID would make a client treat them as two versions of one item.
 	writeLine(b, "UID:"+t.ID+"-event@"+domain)
 	writeLine(b, "DTSTAMP:"+utc(t.UpdatedAt))
-	writeLine(b, "DTSTART:"+utc(start))
-	writeLine(b, "DTEND:"+utc(end))
+
+	if t.DueDatetime != nil {
+		start := *t.DueDatetime
+		// Without a stated duration a task is shown as half an hour. A zero-length
+		// event collapses to an invisible sliver in most calendar grids.
+		minutes := 30
+		if t.DurationMin != nil && *t.DurationMin > 0 {
+			minutes = *t.DurationMin
+		}
+		writeLine(b, "DTSTART:"+utc(start))
+		writeLine(b, "DTEND:"+utc(start.Add(time.Duration(minutes)*time.Minute)))
+	} else {
+		// A date with no time is an all-day event. DTEND is exclusive — a one-day
+		// event ends on the following date — which is what keeps it a single day in
+		// the grid rather than bleeding into the next.
+		day := strings.ReplaceAll(t.DueDate, "-", "")
+		writeLine(b, "DTSTART;VALUE=DATE:"+day)
+		writeLine(b, "DTEND;VALUE=DATE:"+nextDay(t.DueDate))
+	}
+
 	writeLine(b, "SUMMARY:"+escape(t.Content))
 	if t.Description != "" {
 		writeLine(b, "DESCRIPTION:"+escape(t.Description))
@@ -156,6 +170,17 @@ func writeEvent(b *strings.Builder, t Task, domain string) {
 }
 
 func utc(t time.Time) string { return t.UTC().Format("20060102T150405Z") }
+
+// nextDay is the YYYYMMDD after a YYYY-MM-DD date, for an all-day event's exclusive
+// DTEND. A malformed date is returned as its own compacted form rather than
+// dropped, so a task never loses its event over a bad string.
+func nextDay(date string) string {
+	d, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return strings.ReplaceAll(date, "-", "")
+	}
+	return d.AddDate(0, 0, 1).Format("20060102")
+}
 
 // escape applies RFC 5545 text escaping. A comma or semicolon in a task title is
 // a value separator in iCalendar, so an unescaped one silently truncates the
