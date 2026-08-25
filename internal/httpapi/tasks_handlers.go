@@ -16,23 +16,24 @@ import (
 )
 
 type taskJSON struct {
-	ID          string   `json:"id"`
-	ProjectID   string   `json:"project_id"`
-	SectionID   string   `json:"section_id,omitempty"`
-	ParentID    string   `json:"parent_id,omitempty"`
-	Content     string   `json:"content"`
-	Description string   `json:"description,omitempty"`
-	Priority    int      `json:"priority"`
-	DueDate     string   `json:"due_date,omitempty"`
-	DueDatetime string   `json:"due_datetime,omitempty"`
-	DurationMin *int     `json:"duration_min,omitempty"`
-	Recurrence  string   `json:"recurrence_rule,omitempty"`
-	RepeatText  string   `json:"recurrence_text,omitempty"`
-	AssigneeID  string   `json:"assignee_id,omitempty"`
-	Labels      []string `json:"labels"`
-	Completed   bool     `json:"completed"`
-	CompletedAt string   `json:"completed_at,omitempty"`
-	CreatedBy   string   `json:"created_by"`
+	ID           string   `json:"id"`
+	ProjectID    string   `json:"project_id"`
+	SectionID    string   `json:"section_id,omitempty"`
+	ParentID     string   `json:"parent_id,omitempty"`
+	Content      string   `json:"content"`
+	Description  string   `json:"description,omitempty"`
+	Priority     int      `json:"priority"`
+	DueDate      string   `json:"due_date,omitempty"`
+	DueDatetime  string   `json:"due_datetime,omitempty"`
+	DurationMin  *int     `json:"duration_min,omitempty"`
+	Recurrence   string   `json:"recurrence_rule,omitempty"`
+	RepeatText   string   `json:"recurrence_text,omitempty"`
+	AssigneeID   string   `json:"assignee_id,omitempty"`
+	Labels       []string `json:"labels"`
+	Completed    bool     `json:"completed"`
+	CompletedAt  string   `json:"completed_at,omitempty"`
+	SnoozedUntil string   `json:"snoozed_until,omitempty"`
+	CreatedBy    string   `json:"created_by"`
 	// What the row can say without being opened. Sent with every task rather than
 	// fetched when one is opened, because the point is that you see it in the list.
 	SubtaskCount    int     `json:"subtask_count,omitempty"`
@@ -66,6 +67,9 @@ func toTaskJSON(t store.Task) taskJSON {
 	}
 	if t.CompletedAt != nil {
 		j.CompletedAt = t.CompletedAt.Format(time.RFC3339)
+	}
+	if t.SnoozedUntil != nil {
+		j.SnoozedUntil = t.SnoozedUntil.Format(time.RFC3339)
 	}
 	return j
 }
@@ -697,4 +701,53 @@ func parseLimit(raw string, def, max int) int {
 		return max
 	}
 	return n
+}
+
+type snoozeRequest struct {
+	// Until is an RFC3339 time to snooze to, or empty to wake the task now.
+	Until string `json:"until"`
+}
+
+// handleSnoozeTask parks a task until a time, or wakes it. Snooze changes nothing
+// but when the task wants to be seen — its due date and everything else stay put.
+func (s *Server) handleSnoozeTask(w http.ResponseWriter, r *http.Request) {
+	var req snoozeRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	taskID := chi.URLParam(r, "taskID")
+	user := userFrom(r.Context())
+
+	role, err := store.TaskRole(r.Context(), s.db, taskID, user.ID)
+	if err != nil || !role.CanEdit() {
+		writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+		return
+	}
+
+	var until *time.Time
+	if strings.TrimSpace(req.Until) != "" {
+		parsed, perr := time.Parse(time.RFC3339, req.Until)
+		if perr != nil {
+			writeFieldErrors(w, map[string]string{"until": "must be an RFC3339 time"})
+			return
+		}
+		until = &parsed
+	}
+	if err := s.db.SnoozeTask(r.Context(), taskID, until); err != nil {
+		s.storeError(w, r, "snooze task", err)
+		return
+	}
+
+	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
+	if err != nil {
+		s.storeError(w, r, "get task", err)
+		return
+	}
+	verb := "task.snoozed"
+	if until == nil {
+		verb = "task.unsnoozed"
+	}
+	s.activity(r, t.ProjectID, t.ID, verb, nil)
+	s.publish(t.ProjectID, "task.updated", toTaskJSON(*t))
+	writeJSON(w, http.StatusOK, toTaskJSON(*t))
 }

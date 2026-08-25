@@ -1817,3 +1817,50 @@ func TestATaskIsFoundByAWordInsideAWord(t *testing.T) {
 		}
 	}
 }
+
+// A snoozed task sinks to the bottom of the list and greys until its time; waking
+// it puts it back. The list order is what the row's dimming rides on.
+func TestSnoozeSinksAndWakes(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, a := ts.do(t, "POST", "/api/v1/tasks", map[string]any{"content": "Alfa"})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{"content": "Bravo"})
+	aID, _ := a["id"].(string)
+
+	// Snooze Alfa two days out.
+	future := time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339)
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/"+aID+"/snooze", map[string]any{"until": future})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("snooze: %d %v", resp.StatusCode, body)
+	}
+	if body["snoozed_until"] == "" || body["snoozed_until"] == nil {
+		t.Error("the response does not carry snoozed_until")
+	}
+
+	// Alfa now sorts after Bravo, though it was created first.
+	order := func() []string {
+		_, list := ts.do(t, "GET", "/api/v1/tasks", nil)
+		var out []string
+		for _, raw := range list["tasks"].([]any) {
+			out = append(out, raw.(map[string]any)["content"].(string))
+		}
+		return out
+	}
+	got := order()
+	if len(got) != 2 || got[0] != "Bravo" || got[1] != "Alfa" {
+		t.Errorf("snoozed task did not sink: order = %v", got)
+	}
+
+	// Wake it, and it comes back above Bravo.
+	resp, body = ts.do(t, "POST", "/api/v1/tasks/"+aID+"/snooze", map[string]any{"until": ""})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("wake: %d %v", resp.StatusCode, body)
+	}
+	if s, _ := body["snoozed_until"].(string); s != "" {
+		t.Errorf("waking left snoozed_until set: %q", s)
+	}
+	if got := order(); got[0] != "Alfa" {
+		t.Errorf("woken task did not return: order = %v", got)
+	}
+}

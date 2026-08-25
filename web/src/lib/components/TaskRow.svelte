@@ -63,9 +63,30 @@
 				})
 			: null
 	);
+
+	// Snoozed while its time is still ahead. Greys the row and adds a "slumret til"
+	// mark, so a parked task reads as set-aside rather than forgotten.
+	let snoozed = $derived(task.snoozed_until && new Date(task.snoozed_until) > new Date());
+	let snoozedLabel = $derived.by(() => {
+		if (!snoozed) return null;
+		const at = new Date(task.snoozed_until);
+		const midnight = new Date();
+		midnight.setHours(0, 0, 0, 0);
+		const days = Math.round((new Date(at.toDateString()) - midnight) / 86400000);
+		const clock = at.toLocaleTimeString(tag(), { hour: '2-digit', minute: '2-digit' });
+		if (days <= 0) return clock;
+		if (days === 1) return t('task.tomorrow') + ' ' + clock;
+		return at.toLocaleDateString(tag(), { day: 'numeric', month: 'short' }) + ' ' + clock;
+	});
 </script>
 
-<div class="row" class:leaving class:completed={task.completed} data-priority={task.priority}>
+<div
+	class="row"
+	class:leaving
+	class:completed={task.completed}
+	class:snoozed
+	data-priority={task.priority}
+>
 	<button
 		class="check"
 		class:checked={task.completed || leaving}
@@ -98,6 +119,14 @@
 							{assignee.name[0]?.toUpperCase() ?? '?'}
 						</span>
 						{assignee.name}
+					</span>
+				{/if}
+				{#if snoozed}
+					<span class="snooze-mark" title={t('task.snoozedUntil', { when: snoozedLabel })}>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M4 6h8l-8 8h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+						</svg>
+						{snoozedLabel}
 					</span>
 				{/if}
 				{#if due}
@@ -181,6 +210,26 @@
 		color: var(--ink-faint);
 		text-decoration: line-through;
 		text-decoration-color: var(--ink-faint);
+	}
+
+	/* Parked, not gone: dimmed so it reads as set aside, but still there and still
+	   readable. The checkbox and the snooze mark keep their weight, so it can be
+	   woken or ticked off without peering at it. */
+	.row.snoozed .content,
+	.row.snoozed .description,
+	.row.snoozed .meta {
+		opacity: 0.5;
+	}
+	.snooze-mark {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		color: var(--ink-muted);
+		opacity: 1;
+	}
+	.snooze-mark svg {
+		width: 12px;
+		height: 12px;
 	}
 
 	.check {

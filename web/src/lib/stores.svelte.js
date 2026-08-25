@@ -408,6 +408,19 @@ class AppState {
 	 * and time are left alone, so making a task longer on the calendar does not
 	 * also reschedule it.
 	 */
+	/**
+	 * Snoozes a task until an ISO time, or wakes it when `until` is empty. Nothing
+	 * else about the task moves — a snooze is about when you want to see it, not when
+	 * it is due. Optimistic, so it greys and sinks at once.
+	 */
+	async snooze(id, until) {
+		await this.#optimistic(
+			id,
+			{ snoozed_until: until || undefined },
+			() => api.snoozeTask(id, until || '')
+		);
+	}
+
 	async resize(id, minutes) {
 		const previous = this.get(id);
 		if (!previous) return;

@@ -551,6 +551,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 					r.Post("/complete", s.handleCompleteTask)
 					r.Post("/reopen", s.handleReopenTask)
 					r.Post("/move", s.handleMoveTask)
+					r.Post("/snooze", s.handleSnoozeTask)
 				})
 			})
 		})

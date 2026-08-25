@@ -29,6 +29,9 @@ type Task struct {
 	AssigneeID     string
 	CompletedAt    *time.Time
 	CompletedBy    string
+	// SnoozedUntil, when set and still in the future, parks the task at the bottom
+	// of its list, greyed, until it passes. Nil means the task is not snoozed.
+	SnoozedUntil *time.Time
 	// CreatedBy is empty when the author's account has been deleted: `created_by`
 	// is ON DELETE SET NULL so the task survives the person who wrote it.
 	CreatedBy string
@@ -219,7 +222,7 @@ func (db *DB) ListTasks(ctx context.Context, userID string, f TaskFilter) ([]Tas
 		SELECT t.id, t.project_id, t.section_id, t.parent_id, t.content, t.description,
 		       t.priority, t.due_date, t.due_datetime, t.due_timezone, t.duration_min,
 		       t.recurrence_rule, t.assignee_id, t.completed_at, t.completed_by,
-		       t.created_by, t.sort_order, t.created_at, t.updated_at,` + taskCounts + `
+		       t.created_by, t.sort_order, t.created_at, t.updated_at, t.snoozed_until,` + taskCounts + `
 		FROM tasks t
 		JOIN projects p ON p.id = t.project_id
 		WHERE ` + strings.Join(where, " AND ") + `
@@ -313,7 +316,7 @@ func (db *DB) GetTask(ctx context.Context, taskID, userID string) (*Task, error)
 		SELECT t.id, t.project_id, t.section_id, t.parent_id, t.content, t.description,
 		       t.priority, t.due_date, t.due_datetime, t.due_timezone, t.duration_min,
 		       t.recurrence_rule, t.assignee_id, t.completed_at, t.completed_by,
-		       t.created_by, t.sort_order, t.created_at, t.updated_at,`+taskCounts+`
+		       t.created_by, t.sort_order, t.created_at, t.updated_at, t.snoozed_until,`+taskCounts+`
 		FROM tasks t WHERE t.id = ? AND t.deleted_at IS NULL`, taskID)
 	if err != nil {
 		return nil, err
@@ -390,7 +393,32 @@ func order(f TaskFilter) string {
 	if f.CompletedOnly {
 		return "t.completed_at DESC, t.id DESC"
 	}
-	return "t.due_date IS NULL, t.due_date, t.priority, t.sort_order, t.created_at"
+	// A snoozed task sinks below everything else — the CASE is 1 while it is still
+	// snoozed and 0 the moment its time passes, so it rejoins the list in its proper
+	// place by the clock, with nothing to run. Compared as an integer, or the TEXT
+	// strftime returns would sort under every number.
+	snoozed := "(CASE WHEN t.snoozed_until > CAST(strftime('%s','now') AS INTEGER) THEN 1 ELSE 0 END)"
+	return snoozed + ", t.due_date IS NULL, t.due_date, t.priority, t.sort_order, t.created_at"
+}
+
+// SnoozeTask parks a task until a moment, or wakes it when until is nil. Only the
+// snooze changes; the due date, the time, everything else is left alone — a snooze
+// is about when you want to see it, not when it is due.
+func (db *DB) SnoozeTask(ctx context.Context, id string, until *time.Time) error {
+	var v any
+	if until != nil {
+		v = until.Unix()
+	}
+	res, err := db.ExecContext(ctx,
+		`UPDATE tasks SET snoozed_until = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+		v, time.Now().Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func scanTask(rows *sql.Rows) (Task, error) {
@@ -400,13 +428,13 @@ func scanTask(rows *sql.Rows) (Task, error) {
 	// stays; it loses its author.
 	var createdBy sql.NullString
 	var dueDatetime, completedAt sql.NullInt64
-	var duration sql.NullInt64
+	var duration, snoozedUntil sql.NullInt64
 	var created, updated int64
 
 	err := rows.Scan(&t.ID, &t.ProjectID, &sectionID, &parentID, &t.Content, &t.Description,
 		&t.Priority, &dueDate, &dueDatetime, &dueTZ, &duration,
 		&recurrence, &assignee, &completedAt, &completedBy,
-		&createdBy, &t.SortOrder, &created, &updated,
+		&createdBy, &t.SortOrder, &created, &updated, &snoozedUntil,
 		&t.SubtaskCount, &t.SubtaskDone, &t.AttachmentCount)
 	if err != nil {
 		return t, err
@@ -431,6 +459,10 @@ func scanTask(rows *sql.Rows) (Task, error) {
 	if duration.Valid {
 		v := int(duration.Int64)
 		t.DurationMin = &v
+	}
+	if snoozedUntil.Valid {
+		v := time.Unix(snoozedUntil.Int64, 0).UTC()
+		t.SnoozedUntil = &v
 	}
 	t.CreatedAt = time.Unix(created, 0).UTC()
 	t.UpdatedAt = time.Unix(updated, 0).UTC()
