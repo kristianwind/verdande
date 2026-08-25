@@ -204,6 +204,17 @@ func (db *DB) dropPushEndpoint(ctx context.Context, endpoint string) error {
 // has failed enough times. A push service says 404 or 410 when an endpoint is gone,
 // but it also has bad days — forgiving a few failures keeps a flaky network from
 // silently unsubscribing somebody's phone.
+// MarkPushDelivered records that a push went through: the failure count goes back
+// to zero and last_used_at moves forward. Without it a subscription that failed a
+// few times and then recovered would keep those failures on its record and be one
+// flaky night away from the ten that delete it — even though it is working.
+func (db *DB) MarkPushDelivered(ctx context.Context, endpoint string) error {
+	_, err := db.ExecContext(ctx,
+		`UPDATE push_subscriptions SET failures = 0, last_used_at = ? WHERE endpoint = ?`,
+		time.Now().Unix(), endpoint)
+	return err
+}
+
 func (db *DB) RecordPushFailure(ctx context.Context, endpoint string, permanent bool) error {
 	if permanent {
 		// Not scoped by user, and that is right here: this is the push service

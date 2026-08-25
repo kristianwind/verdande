@@ -148,15 +148,23 @@ func (s *Server) pushToUser(userID, title, body, projectID string) pushOutcome {
 		return out
 	}
 
-	payload := push.Payload{Title: title, Body: body, URL: "/projekt/" + projectID}
+	target := "/projekt/" + projectID
+	if projectID == "" {
+		target = "/"
+	}
+	payload := push.Payload{Title: title, Body: body, URL: target}
+	subject := s.vapidSubject()
 	for _, sub := range subs {
 		err := push.Send(ctx, push.Subscription{
 			Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth,
 		}, payload, push.VAPID{
-			Public: public, Private: private, Subject: "mailto:" + s.cfg.SMTP.From,
+			Public: public, Private: private, Subject: subject,
 		})
 		if err == nil {
 			out.Sent++
+			if delErr := s.db.MarkPushDelivered(ctx, sub.Endpoint); delErr != nil {
+				s.log.Warn("mark push delivered", "err", delErr)
+			}
 			continue
 		}
 		// Warn, not Debug.
@@ -255,6 +263,29 @@ func (s *Server) handlePushTest(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) vapidKeys(ctx contextLike) (string, string, error) {
 	return s.db.InstanceKeys(ctx, push.GenerateVAPIDKeys)
+}
+
+// vapidSubject is the "sub" claim a push service is told to reach the sender at.
+//
+// It has to be one the service will actually accept, and Apple is the strict one:
+// it answers 403 Forbidden to a mailto whose domain is made up — which is exactly
+// what the old fallback, mailto:verdande@example.invalid, was on an instance with
+// no mail set up. Every push to an iPhone or a Mac was rejected, silently as far as
+// the person waiting for the notification could tell.
+//
+// So a real address is used when there is one, and otherwise the instance's own
+// https address — which is a valid VAPID subject, points at something that exists,
+// and Apple accepts. Verified against web.push.apple.com: the mailto gets a 403,
+// the https URL a 201.
+func (s *Server) vapidSubject() string {
+	from := strings.TrimSpace(s.cfg.SMTP.From)
+	if from != "" && strings.Contains(from, "@") && !strings.HasSuffix(from, "@localhost") {
+		return "mailto:" + from
+	}
+	if strings.HasPrefix(s.cfg.BaseURL, "https://") || strings.HasPrefix(s.cfg.BaseURL, "http://") {
+		return s.cfg.BaseURL
+	}
+	return "mailto:verdande@example.invalid"
 }
 
 // --- subscription endpoints -----------------------------------------------------------
