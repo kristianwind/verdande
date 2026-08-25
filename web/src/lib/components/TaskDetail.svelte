@@ -13,7 +13,7 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app, projectName, clockOf } from '$lib/stores.svelte.js';
 	import { focusOnMount } from '$lib/focus.js';
-	import { t } from '$lib/i18n.svelte.js';
+	import { t, tag } from '$lib/i18n.svelte.js';
 	import { REPEATS } from '$lib/when.js';
 
 	let { task, onclose } = $props();
@@ -26,6 +26,46 @@
 	// Length in minutes, as a string for the field. Only meaningful with a time —
 	// see the field below — so it is seeded and shown alongside the clock.
 	let duration = $state('');
+	let snoozeCustom = $state('');
+
+	const snoozed = $derived(!!task?.snoozed_until && new Date(task.snoozed_until) > new Date());
+	const snoozedText = $derived(
+		snoozed
+			? new Date(task.snoozed_until).toLocaleString(tag(), {
+					day: 'numeric',
+					month: 'short',
+					hour: '2-digit',
+					minute: '2-digit'
+				})
+			: ''
+	);
+
+	async function snoozeTo(iso) {
+		snoozeCustom = '';
+		try {
+			await app.snooze(task.id, iso);
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
+	// Quick picks, in local time, as ISO for the API. This evening is six; the
+	// morning ones are nine; next week is the coming Monday.
+	const atLocal = (d, h) => {
+		d.setHours(h, 0, 0, 0);
+		return d.toISOString();
+	};
+	const thisEvening = () => atLocal(new Date(), 18);
+	const tomorrowMorning = () => {
+		const d = new Date();
+		d.setDate(d.getDate() + 1);
+		return atLocal(d, 9);
+	};
+	const nextWeek = () => {
+		const d = new Date();
+		d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));
+		return atLocal(d, 9);
+	};
 	let labels = $state('');
 	let projectId = $state('');
 	let recurrence = $state('');
@@ -459,6 +499,31 @@
 			</div>
 		</div>
 
+		<!-- Snooze: park it out of the way until a moment, without touching when it is
+		     due. While snoozed the row greys and sinks to the bottom of its list. -->
+		<div class="field">
+			<span class="field-label">{t('detail.snooze')}</span>
+			{#if snoozed}
+				<div class="snoozed-now">
+					<span>{t('task.snoozedUntil', { when: snoozedText })}</span>
+					<button class="snooze-btn" onclick={() => snoozeTo('')}>{t('detail.wake')}</button>
+				</div>
+			{:else}
+				<div class="snooze-row">
+					<button class="snooze-btn" onclick={() => snoozeTo(thisEvening())}>{t('detail.thisEvening')}</button>
+					<button class="snooze-btn" onclick={() => snoozeTo(tomorrowMorning())}>{t('detail.tomorrow')}</button>
+					<button class="snooze-btn" onclick={() => snoozeTo(nextWeek())}>{t('detail.nextWeek')}</button>
+					<input
+						type="datetime-local"
+						class="snooze-custom"
+						aria-label={t('detail.snoozeCustom')}
+						bind:value={snoozeCustom}
+						onchange={() => snoozeCustom && snoozeTo(new Date(snoozeCustom).toISOString())}
+					/>
+				</div>
+			{/if}
+		</div>
+
 		<div class="field">
 			<label for="labels">{t('detail.labels')}</label>
 			<input
@@ -765,11 +830,45 @@
 		gap: var(--s2);
 	}
 
-	label {
+	label,
+	.field-label {
 		font-size: var(--text-xs);
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 		color: var(--ink-faint);
+	}
+
+	.snooze-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--s1);
+		align-items: center;
+	}
+	.snooze-btn {
+		width: auto;
+		padding: var(--s1) var(--s2);
+		font-size: var(--text-xs);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink);
+		cursor: pointer;
+	}
+	.snooze-btn:hover {
+		background: var(--surface-raised);
+	}
+	.snooze-custom {
+		width: auto;
+		flex: 1;
+		min-width: 9rem;
+	}
+	.snoozed-now {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--s2);
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
 	}
 
 	input,

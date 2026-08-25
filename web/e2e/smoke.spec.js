@@ -127,6 +127,32 @@ test('hvert link i sidebjælken fører et sted hen', async ({ page }) => {
 	expect(trouble).toEqual([]);
 });
 
+test('en opgave kan slumres og hentes frem igen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	// "i dag" is parsed as the due date, so the task is named "Alfa" and shows here.
+	const box = page.getByLabel('Ny opgave');
+	await box.fill('Alfa i dag');
+	await box.press('Enter');
+
+	// Snooze it to tomorrow from its drawer.
+	await page.getByText('Alfa', { exact: true }).click();
+	const drawer = page.getByRole('complementary', { name: 'Opgave' });
+	await drawer.getByRole('button', { name: 'I morgen' }).click();
+
+	// The row greys — it carries the snoozed class and a "slumret til" mark.
+	const alfa = page.locator('.row', { hasText: 'Alfa' });
+	await expect(alfa).toHaveClass(/snoozed/);
+	await expect(alfa.locator('.snooze-mark')).toBeVisible();
+
+	// The drawer now offers to wake it, and waking takes the grey off.
+	await drawer.getByRole('button', { name: 'Væk nu' }).click();
+	await expect(alfa).not.toHaveClass(/snoozed/);
+
+	expect(trouble).toEqual([]);
+});
+
 test('en opgave kan åbnes og redigeres', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 	await page.goto('/');

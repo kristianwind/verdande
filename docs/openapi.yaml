@@ -805,6 +805,28 @@ paths:
         "200": { $ref: "#/components/responses/Task" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/tasks/{taskID}/snooze:
+    parameters:
+      - { name: taskID, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [tasks]
+      summary: Snooze a task until a time, or wake it.
+      description: |
+        Parks the task at the bottom of its list, greyed, until `until` passes —
+        nothing else about it moves. An empty `until` wakes it now.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                until: { type: string, format: date-time, description: "RFC3339; empty to wake." }
+      responses:
+        "200": { $ref: "#/components/responses/Task" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Validation" }
+
   /api/v1/tasks/quick-add:
     post:
       tags: [tasks]

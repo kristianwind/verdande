@@ -120,7 +120,18 @@
 		}
 	}
 
-	let ordered = $derived([...tasks].sort((a, b) => a.sort_order - b.sort_order));
+	// A snoozed task sinks below the rest, then rises back when its time passes —
+	// the same order the server sorts a list in, kept here so a drag-sorted list
+	// agrees rather than jumping when it reloads.
+	const snoozedNow = (t) => t.snoozed_until && new Date(t.snoozed_until) > new Date();
+	let ordered = $derived(
+		[...tasks].sort((a, b) => {
+			const sa = snoozedNow(a) ? 1 : 0;
+			const sb = snoozedNow(b) ? 1 : 0;
+			if (sa !== sb) return sa - sb;
+			return a.sort_order - b.sort_order;
+		})
+	);
 </script>
 
 {#each ordered as task (task.id)}

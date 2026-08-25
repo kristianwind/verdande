@@ -310,6 +310,7 @@ export const api = {
 	completeTask: (id) => post(`/tasks/${id}/complete`),
 	reopenTask: (id) => post(`/tasks/${id}/reopen`),
 	moveTask: (id, data) => post(`/tasks/${id}/move`, data),
+	snoozeTask: (id, until) => post(`/tasks/${id}/snooze`, { until: until ?? '' }),
 
 	quickAdd: (text, projectId, sectionId) =>
 		post('/tasks/quick-add', { text, project_id: projectId, section_id: sectionId }),
