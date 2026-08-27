@@ -1,8 +1,7 @@
 # Saved filters
 
-A filter is a small expression describing a slice of your tasks. The grammar is
-deliberately close to the one Todoist uses, so if you are coming from there you
-already know it.
+A filter is a small expression describing a slice of your tasks. The grammar will
+feel familiar if you have used query-based filters in other task apps.
 
 ```
 today & p1
