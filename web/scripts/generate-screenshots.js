@@ -483,6 +483,17 @@ async function seed({ colleague, noteTitle }) {
 	const made = {};
 	for (const task of tasks) made[task.content] = await api('/tasks', task);
 
+	// One task snoozed, so the board and the list show a card parked at the bottom
+	// of its section — greyed, with a "snoozed until" mark — set aside rather than
+	// forgotten, and without touching when it is due.
+	const snoozeUntil = (() => {
+		const d = new Date();
+		d.setDate(d.getDate() + 2);
+		d.setHours(9, 0, 0, 0);
+		return d.toISOString();
+	})();
+	await api(`/tasks/${made['Write the job advert'].id}/snooze`, { until: snoozeUntil });
+
 	// A saved filter, because the sidebar shows them and an empty heading reads as
 	// a feature that does not work.
 	await api('/filters', { name: 'Important this week', query: 'p1 & 7 days' });

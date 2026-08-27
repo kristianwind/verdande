@@ -22,15 +22,22 @@ forward mail to, and an MCP endpoint so Claude can work your task list directly.
   Firma, labelled regnskab. Danish and English, mixed freely in one line.
 - **Projects, sections, sub-tasks, labels, [saved filters](filters.md).** List,
   board and calendar views, and foldable groups over the projects in the sidebar.
-- **Notes, beside the work.** Rich text to write in, Markdown on disk. A note is
-  shared by filing it in a project; `#project` and `[[another note]]` are links,
-  and a task shows what has been written about it.
+  The calendar draws each task to its length — drag the foot to resize, the body
+  to move it.
+- **Notes, beside the work.** Rich text to write in, Markdown on disk. Share a
+  single note with a person, or file it in a project; `#project` and
+  `[[another note]]` are links, and a task shows what has been written about it.
+- **Delegate, and snooze.** Hand a task to somebody and it is marked with an
+  arrow to them, gathered on a *Waiting on others* page. Snooze one to park it,
+  greyed, at the foot of the list until a moment you pick — without touching when
+  it is due.
 - **Drag where it means something** — reorder a list or a board, file a project
   under a group, drop a task on another project, or drop it on another day.
 - **Sharing** with owner, editor and viewer roles. Anyone outside your instance
   joins through an invite link.
 - **Live sync** — a change made by somebody else appears without a refresh.
-- **Repeating tasks** as RRULE, reminders, comments and attachments.
+- **Repeating tasks** as RRULE, comments and attachments, and reminders that go
+  out as Web Push to an iPhone or a Mac.
 - **[Calendar](caldav.md), [mail](mail.md) and [Claude](mcp.md)** connected over
   open standards rather than private formats.
 
@@ -48,7 +55,9 @@ columns.*
 
 ![Waiting on others](screenshots/delegated.png)
 
-*What you have handed to somebody else, grouped by whoever has it.*
+*What you have handed to somebody else, grouped by whoever has it — and each row
+marked with an arrow to them, so a delegated task reads as delegated wherever you
+meet it.*
 
 ![Settings, integrations](screenshots/settings.png)
 

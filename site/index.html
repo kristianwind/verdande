@@ -949,12 +949,12 @@
 					<figure class="shot">
 						<img
 							src="screenshots/board.webp"
-							alt="A project in board view: one column per section, with task cards showing due dates, labels and repetition."
+							alt="A project in board view: one column per section, with task cards showing due dates, labels, an arrow to whoever a task is delegated to, and a snoozed card greyed at the foot of its column."
 							width="1400"
 							height="900"
 							loading="lazy"
 						/>
-						<figcaption>Board view — one column per section.</figcaption>
+						<figcaption>Board view — one column per section. A delegated card carries an arrow to whoever has it; a snoozed one greys at the foot.</figcaption>
 					</figure>
 					<figure class="shot">
 						<img
@@ -1009,12 +1009,12 @@
 					<figure class="shot">
 						<img
 							src="screenshots/delegated.webp"
-							alt="Waiting on others: tasks that have been handed to somebody else, grouped under the person who has them."
+							alt="Waiting on others: tasks that have been handed to somebody else, grouped under the person who has them, each row carrying an arrow to that person."
 							width="1400"
 							height="900"
 							loading="lazy"
 						/>
-						<figcaption>Waiting on others — grouped by who has it.</figcaption>
+						<figcaption>Waiting on others — grouped by who has it, each marked with an arrow to them.</figcaption>
 					</figure>
 					<figure class="shot">
 						<img
@@ -1070,8 +1070,8 @@
 						<h3>Repeats, and says so in words</h3>
 						<p>
 							Recurring tasks are RRULE underneath and "every other Tuesday" on the
-							screen. Reminders are absolute or relative, and go out to the devices
-							you have allowed them on.
+							screen. Reminders are absolute or relative, and go out as Web Push to
+							an iPhone or a Mac you have allowed them on.
 						</p>
 					</div>
 					<div class="cell">
@@ -1104,8 +1104,17 @@
 						<h3>Waiting on others</h3>
 						<p>
 							What you have handed to somebody else, on its own page, grouped under
-							the person who has it. The thing a shared list stops being able to tell
-							you the moment it is shared.
+							the person who has it — and marked where you meet it too, with an arrow
+							out of your hands, so a list reads at a glance as which tasks are yours
+							and which you are waiting on.
+						</p>
+					</div>
+					<div class="cell">
+						<h3>Snooze it out of the way</h3>
+						<p>
+							Park a task to this evening, tomorrow, next week, or a moment you pick.
+							It greys and sinks to the bottom of the list until then, and comes back
+							by itself — without touching when it is actually due.
 						</p>
 					</div>
 				</div>
@@ -1226,6 +1235,23 @@
 				</p>
 				<ul class="lately">
 					<li>
+						<span class="ver">0.41</span>
+						A task you have delegated is marked where you meet it, not only on the
+						"Waiting on others" page. A task can be snoozed to the bottom of the list
+						until a moment you choose, and comes back by itself.
+					</li>
+					<li>
+						<span class="ver">0.41</span>
+						Web Push reminders reach an iPhone and a Mac again, and every dated task
+						now shows up in a calendar you have subscribed to — not only the timed ones.
+					</li>
+					<li>
+						<span class="ver">0.41</span>
+						The calendar draws each task to its length: drag the foot to resize, or the
+						body to move it. A single note can be shared with one person, and a
+						<code>[[note]]</code> is a link you follow inline.
+					</li>
+					<li>
 						<span class="ver">0.34</span>
 						Sections can be dragged into the order the work actually happens in. The
 						sidebar keeps its head still while the projects scroll.
@@ -1235,21 +1261,6 @@
 						Notes grew an archive, selection of many at once, pictures you can paste
 						or drag in, a source view, and a copy button on code blocks. Search
 						stopped answering by date and started answering by relevance.
-					</li>
-					<li>
-						<span class="ver">0.32</span>
-						A calendar of its own as a menu item, with a read-only Google calendar
-						that can be laid over it.
-					</li>
-					<li>
-						<span class="ver">0.31</span>
-						Mailboxes over IMAP, so flagging a mail in iCloud or Fastmail makes a
-						task — not only Gmail.
-					</li>
-					<li>
-						<span class="ver">0.30</span>
-						An installation count that says exactly what it sends, and can be turned
-						off in one click.
 					</li>
 				</ul>
 			</section>
