@@ -1,7 +1,8 @@
-# Self-hosting
+# With Docker
 
-verdande is one static binary and one directory. There is no database server, no
-cache, no queue and no second process.
+Running it yourself outside a panel: one static binary and one directory. There is
+no database server, no cache, no queue and no second process. (Yggdrasil is
+self-hosting too — for that route see [As a Rune](rune.md).)
 
 ## Docker
 

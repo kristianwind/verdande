@@ -11,7 +11,8 @@ of. Which is what a to-do list is.
 
 ## What it is for
 
-Todoist Pro, on your own hardware, with your own data. And with the integrations a
+A fast, self-hosted task manager — projects, quick add, filters, notes and shared
+lists — on your own hardware, with your own data. And with the integrations a
 hosted product will not build for you: a real CalDAV server, an address you can
 forward mail to, and an MCP endpoint so Claude can work your task list directly.
 

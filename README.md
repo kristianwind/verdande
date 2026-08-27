@@ -24,9 +24,10 @@ Documentation: [`docs/`](docs/), built with Material for MkDocs.
 
 ## Why this exists
 
-Todoist Pro, self-hosted, on your own hardware, with your own data — and with the
-integrations that a hosted product will not build for you: a real CalDAV server, a
-mail-to-task address, and an MCP endpoint so Claude can work your task list directly.
+A fast, self-hosted task manager — projects, quick add, filters, notes and shared
+lists — on your own hardware, with your own data, and with the integrations that a
+hosted product will not build for you: a real CalDAV server, a mail-to-task address,
+and an MCP endpoint so Claude can work your task list directly.
 
 ## What it does
 
