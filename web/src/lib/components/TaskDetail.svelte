@@ -1115,5 +1115,21 @@
 			width: auto;
 			border-left: 0;
 		}
+
+		/* Two columns is half a phone each: Prioritet collapses to "Ing" and the
+		   due-row (date + fixed-width time + duration) runs off the right edge. One
+		   column per field gives each its full width; the due-row wraps if even that
+		   is not enough. */
+		.grid {
+			grid-template-columns: 1fr;
+		}
+
+		.due {
+			flex-wrap: wrap;
+		}
+
+		.due input[type='date'] {
+			flex: 1 1 100%;
+		}
 	}
 </style>
