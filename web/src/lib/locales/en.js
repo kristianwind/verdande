@@ -184,6 +184,7 @@ export const en = {
 	'repeat.everyN.month': 'every {n} months',
 	'repeat.everyN.year': 'every {n} years',
 	'task.assignee': 'Assigned to {name}',
+	'task.delegatedTo': 'Delegated to {name}',
 	'task.subtasks': '{done} of {total} sub-tasks are done',
 	'task.attachments': '{n} attached',
 	'task.priority': 'Priority {n}',

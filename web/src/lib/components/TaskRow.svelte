@@ -113,8 +113,14 @@
 				{#if assignee}
 					<!-- First in the row, because "who" changes what the rest of the line
 					     means: a date on somebody else's task is their deadline, not
-					     yours. -->
-					<span class="assignee" title={t('task.assignee', { name: assignee.name })}>
+					     yours. The hand-off arrow marks it as delegated — out of your
+					     hands and into theirs — so a list reads at a glance as which are
+					     yours to do and which you are waiting on. -->
+					<span class="assignee" title={t('task.delegatedTo', { name: assignee.name })}>
+						<svg class="handoff" viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M13 5l7 7-7 7" />
+							<path d="M20 12H4" />
+						</svg>
 						<span class="face" style="background: {assignee.avatar_color}">
 							{assignee.name[0]?.toUpperCase() ?? '?'}
 						</span>
@@ -358,8 +364,25 @@
 	.assignee {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--s1);
+		gap: 4px;
 		color: var(--ink-muted);
+		background: var(--surface-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-full);
+		padding: 1px var(--s2) 1px 4px;
+	}
+
+	/* The delegation mark: an arrow leaving, in the accent so the chip reads as
+	   handed-off rather than as just another name. */
+	.handoff {
+		width: 12px;
+		height: 12px;
+		fill: none;
+		stroke: var(--accent);
+		stroke-width: 2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		flex: none;
 	}
 
 	.face {

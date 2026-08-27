@@ -188,6 +188,7 @@ export const da = {
 	'repeat.everyN.month': 'hver {n}. måned',
 	'repeat.everyN.year': 'hvert {n}. år',
 	'task.assignee': 'Ansvarlig: {name}',
+	'task.delegatedTo': 'Uddelegeret til {name}',
 	'task.subtasks': '{done} af {total} undertasks er lukket',
 	'task.attachments': '{n} vedhæftet',
 	'task.priority': 'Prioritet {n}',
