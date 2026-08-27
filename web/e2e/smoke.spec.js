@@ -937,7 +937,7 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 	await page.keyboard.press('Escape');
 
 	const row = page.locator('.row').filter({ hasText: 'brænde kaffe' });
-	await expect(row.getByTitle('Ansvarlig: andreas')).toBeVisible();
+	await expect(row.getByTitle('Uddelegeret til andreas')).toBeVisible();
 	// And not on a task that is nobody's.
 	await page.getByLabel('Ny opgave').fill('min egen');
 	await page.getByLabel('Ny opgave').press('Enter');
