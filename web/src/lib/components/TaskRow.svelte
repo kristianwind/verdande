@@ -11,6 +11,7 @@
 	import { app } from '$lib/stores.svelte.js';
 	import { t, tag } from '$lib/i18n.svelte.js';
 	import { repeatLabel } from '$lib/when.js';
+	import { linkify } from '$lib/linkify.js';
 
 	let { task, onedit } = $props();
 
@@ -99,13 +100,38 @@
 		</svg>
 	</button>
 
-	<!-- Opening the detail drawer is the default. `onedit` is for the callers that
-	     want the click to mean something else. -->
-	<button class="body" onclick={() => (onedit ? onedit(task) : app.openDetail(task.id))}>
-		<span class="content">{task.content}</span>
+	<!-- A URL pasted into the title or the description is clickable, without the
+	     text ever having been anything but plain text. The link cannot live inside
+	     the open-button — an <a> in a <button> is invalid — so the whole body is a
+	     container and the button is an overlay behind it: plain text (below it)
+	     still opens the task, links (raised above it) open the page. -->
+	<div class="body">
+		<!-- Opening the detail drawer is the default. `onedit` is for the callers
+		     that want the click to mean something else. -->
+		<button
+			class="open"
+			aria-label={task.content}
+			onclick={() => (onedit ? onedit(task) : app.openDetail(task.id))}
+		></button>
+
+		<span class="content"
+			>{#each linkify(task.content) as run}{#if run.href}<a
+						class="tlink"
+						href={run.href}
+						target="_blank"
+						rel="noopener noreferrer">{run.text}</a
+					>{:else}{run.text}{/if}{/each}</span
+		>
 
 		{#if task.description}
-			<span class="description">{task.description}</span>
+			<span class="description"
+				>{#each linkify(task.description) as run}{#if run.href}<a
+							class="tlink"
+							href={run.href}
+							target="_blank"
+							rel="noopener noreferrer">{run.text}</a
+						>{:else}{run.text}{/if}{/each}</span
+			>
 		{/if}
 
 		{#if assignee || due || task.labels?.length || repeats || task.subtask_count || task.attachment_count}
@@ -186,7 +212,7 @@
 				{/each}
 			</span>
 		{/if}
-	</button>
+	</div>
 </div>
 
 <style>
@@ -301,6 +327,7 @@
 	}
 
 	.body {
+		position: relative;
 		flex: 1;
 		display: flex;
 		flex-direction: column;
@@ -309,10 +336,46 @@
 		min-width: 0;
 	}
 
+	/* The click target for opening the task, stretched behind everything. Plain
+	   text and the meta row sit at the base level, so a click on them lands here;
+	   only the links are raised above it. */
+	.open {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		cursor: pointer;
+		background: none;
+		border: 0;
+		padding: 0;
+		margin: 0;
+		border-radius: var(--radius-sm);
+	}
+
+	.open:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
 	.content {
 		color: var(--ink);
 		line-height: 1.45;
 		overflow-wrap: anywhere;
+	}
+
+	/* Raised above the open-overlay so the link takes the click, while the rest of
+	   the line still opens the task. */
+	.tlink {
+		position: relative;
+		z-index: 2;
+		color: var(--accent);
+		text-decoration: underline;
+		text-decoration-thickness: 1px;
+		text-underline-offset: 2px;
+		overflow-wrap: anywhere;
+	}
+
+	.tlink:hover {
+		text-decoration-thickness: 2px;
 	}
 
 	.description {
