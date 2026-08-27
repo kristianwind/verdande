@@ -11,6 +11,7 @@
 	import { app } from '$lib/stores.svelte.js';
 	import { t, tag } from '$lib/i18n.svelte.js';
 	import { repeatLabel } from '$lib/when.js';
+	import { linkify } from '$lib/linkify.js';
 
 	let { task, onedit } = $props();
 
@@ -99,13 +100,44 @@
 		</svg>
 	</button>
 
-	<!-- Opening the detail drawer is the default. `onedit` is for the callers that
-	     want the click to mean something else. -->
-	<button class="body" onclick={() => (onedit ? onedit(task) : app.openDetail(task.id))}>
-		<span class="content">{task.content}</span>
+	<!-- A URL pasted into the title or the description is clickable, without the
+	     text ever having been anything but plain text. The link is a real <a>, which
+	     an <a> in a <button> may not be — so the body is a role=button rather than a
+	     button, and each link stops its click from also opening the task. Clicking
+	     any plain text still opens it. -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="body"
+		role="button"
+		tabindex="0"
+		onclick={() => (onedit ? onedit(task) : app.openDetail(task.id))}
+		onkeydown={(e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				onedit ? onedit(task) : app.openDetail(task.id);
+			}
+		}}
+	>
+		<span class="content"
+			>{#each linkify(task.content) as run}{#if run.href}<a
+						class="tlink"
+						href={run.href}
+						target="_blank"
+						rel="noopener noreferrer"
+						onclick={(e) => e.stopPropagation()}>{run.text}</a
+					>{:else}{run.text}{/if}{/each}</span
+		>
 
 		{#if task.description}
-			<span class="description">{task.description}</span>
+			<span class="description"
+				>{#each linkify(task.description) as run}{#if run.href}<a
+							class="tlink"
+							href={run.href}
+							target="_blank"
+							rel="noopener noreferrer"
+							onclick={(e) => e.stopPropagation()}>{run.text}</a
+						>{:else}{run.text}{/if}{/each}</span
+			>
 		{/if}
 
 		{#if assignee || due || task.labels?.length || repeats || task.subtask_count || task.attachment_count}
@@ -186,7 +218,7 @@
 				{/each}
 			</span>
 		{/if}
-	</button>
+	</div>
 </div>
 
 <style>
@@ -307,12 +339,33 @@
 		gap: 2px;
 		text-align: left;
 		min-width: 0;
+		cursor: pointer;
+		border-radius: var(--radius-sm);
+	}
+
+	.body:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
 	.content {
 		color: var(--ink);
 		line-height: 1.45;
 		overflow-wrap: anywhere;
+	}
+
+	/* A real link, so it can be middle-clicked, copied and previewed. Its own click
+	   is stopped from bubbling, so opening the page does not also open the task. */
+	.tlink {
+		color: var(--accent);
+		text-decoration: underline;
+		text-decoration-thickness: 1px;
+		text-underline-offset: 2px;
+		overflow-wrap: anywhere;
+	}
+
+	.tlink:hover {
+		text-decoration-thickness: 2px;
 	}
 
 	.description {

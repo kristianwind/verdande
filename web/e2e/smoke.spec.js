@@ -86,6 +86,29 @@ test('hurtig tilføjelse opretter en opgave, og den kan lukkes', async ({ page }
 	expect(trouble).toEqual([]);
 });
 
+test('en URL i en opgave bliver et klikbart link, og resten åbner opgaven', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const box = page.getByLabel('Ny opgave');
+	// The URL is one token, so the parser leaves it in the title; "i dag" is what it
+	// takes. The link is made at display time — the stored title is still plain text.
+	await box.fill('læs https://example.com/artikel i dag');
+	await box.press('Enter');
+
+	const row = page.locator('.row').filter({ hasText: 'læs' });
+	const link = row.getByRole('link', { name: 'https://example.com/artikel' });
+	await expect(link).toHaveAttribute('href', 'https://example.com/artikel');
+	await expect(link).toHaveAttribute('rel', /noopener/);
+
+	// Clicking the plain part of the title still opens the task; only the link is
+	// carved out. Aimed at the top-left, over "læs", not the URL in the middle.
+	await row.locator('.content').click({ position: { x: 3, y: 3 } });
+	await expect(page.getByRole('complementary', { name: 'Opgave' })).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
 test('hvert link i sidebjælken fører et sted hen', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 	await page.goto('/');
