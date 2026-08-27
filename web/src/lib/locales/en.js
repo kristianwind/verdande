@@ -262,6 +262,10 @@ export const en = {
 		'Where you are signed in. If you do not recognise one, sign it out and change your password.',
 	'account.thisDevice': 'this device',
 	'account.signOutDevice': 'Sign out',
+	'account.support': 'Support the project',
+	'account.supportHint':
+		'verdande is free, open-source software under the MIT licence — no paid tier, nothing held back. If it saved you an afternoon, you can buy the maintainer a coffee. Entirely optional, and nothing in the app changes either way.',
+	'account.buyCoffee': 'Buy me a coffee',
 
 	'account.totpEnabled': 'On.',
 	'account.recoveryLeftOne': '{n} recovery code left.',

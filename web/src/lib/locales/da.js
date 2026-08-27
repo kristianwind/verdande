@@ -266,6 +266,10 @@ export const da = {
 		'Hvor du er logget ind. Genkender du ikke en af dem, så log den ud og skift adgangskode.',
 	'account.thisDevice': 'denne enhed',
 	'account.signOutDevice': 'Log ud',
+	'account.support': 'Støt projektet',
+	'account.supportHint':
+		'verdande er fri, open source-software under MIT-licensen — ingen betalt version, intet holdt tilbage. Sparede den dig en eftermiddag, kan du give vedligeholderen en kop kaffe. Helt frivilligt, og intet i appen ændrer sig.',
+	'account.buyCoffee': 'Buy me a coffee',
 
 	'account.totpEnabled': 'Slået til.',
 	'account.recoveryLeftOne': '{n} gendannelseskode tilbage.',
