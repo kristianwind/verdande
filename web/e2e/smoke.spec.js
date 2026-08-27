@@ -101,9 +101,9 @@ test('en URL i en opgave bliver et klikbart link, og resten åbner opgaven', asy
 	await expect(link).toHaveAttribute('href', 'https://example.com/artikel');
 	await expect(link).toHaveAttribute('rel', /noopener/);
 
-	// Clicking anywhere but the link still opens the task — the open-overlay sits
-	// behind the text, the link above it.
-	await row.getByRole('button', { name: /læs https/ }).click();
+	// Clicking the plain part of the title still opens the task; only the link is
+	// carved out. Aimed at the top-left, over "læs", not the URL in the middle.
+	await row.locator('.content').click({ position: { x: 3, y: 3 } });
 	await expect(page.getByRole('complementary', { name: 'Opgave' })).toBeVisible();
 
 	expect(trouble).toEqual([]);
