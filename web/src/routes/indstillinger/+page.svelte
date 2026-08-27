@@ -571,6 +571,42 @@
 	</ul>
 </section>
 
+<!-- Last, and quietly: a donate link belongs in Settings, never in the way of the
+     work. A plain anchor with an inline SVG — no third-party script, no webfont,
+     no tracking — so it works offline and cannot phone home. See the coffee-cup
+     snippet for why not their generated button. -->
+<section class="panel">
+	<header>
+		<h2>{t('account.support')}</h2>
+		<p class="hint">{t('account.supportHint')}</p>
+	</header>
+
+	<a
+		class="bmc"
+		href="https://buymeacoffee.com/kristianwind"
+		target="_blank"
+		rel="noopener noreferrer"
+	>
+		<svg
+			width="16"
+			height="16"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="1.8"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+			focusable="false"
+		>
+			<path d="M4 9h13v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V9Z" />
+			<path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17" />
+			<path d="M7.5 5.6c0-.9.8-1.1.8-2M11 5.6c0-.9.8-1.1.8-2M14.5 5.6c0-.9.8-1.1.8-2" />
+		</svg>
+		{t('account.buyCoffee')} ↗
+	</a>
+</section>
+
 <style>
 	.looks {
 		margin-top: var(--s4);
@@ -770,5 +806,37 @@
 
 	.uri {
 		overflow-wrap: anywhere;
+	}
+
+	/* The understated variant: present, not loud. Bordered and in the muted ink so
+	   it reads as a footnote, brightening on hover. The cup is outline-only. */
+	.bmc {
+		align-self: flex-start;
+		display: inline-flex;
+		align-items: center;
+		gap: var(--s2);
+		padding: var(--s2) var(--s3);
+		border: 1px solid var(--line-strong);
+		border-radius: var(--radius);
+		color: var(--ink-muted);
+		text-decoration: none;
+		font-size: var(--text-sm);
+		transition:
+			color var(--fast) var(--ease),
+			border-color var(--fast) var(--ease);
+	}
+
+	.bmc:hover {
+		color: var(--ink);
+		border-color: var(--ink-muted);
+	}
+
+	.bmc:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
+	.bmc svg {
+		flex: none;
 	}
 </style>
