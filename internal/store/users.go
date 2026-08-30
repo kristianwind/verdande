@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/kristianwind/verdande/internal/auth"
 )
@@ -62,6 +63,26 @@ func NormalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
+// NormalizeName trims a display name and capitalises the first letter of every
+// word, leaving the rest of each word exactly as typed. So "andreas" becomes
+// "Andreas" and "anne mette" becomes "Anne Mette", while a name that already
+// carries a capital in the middle — "McDonald", an "iPhone" — keeps it: only the
+// first letter of a word is ever raised, never lowered.
+//
+// A name is the person's to spell; the one thing the instance insists on is that
+// it does not start in lower case, because a column of lower-case first names
+// reads as a bug the person cannot fix from their own keyboard. Unicode-aware, so
+// "æblegaard" and "óscar" are raised the same as an ASCII initial.
+func NormalizeName(name string) string {
+	fields := strings.Fields(name)
+	for i, f := range fields {
+		r := []rune(f)
+		r[0] = unicode.ToUpper(r[0])
+		fields[i] = string(r)
+	}
+	return strings.Join(fields, " ")
+}
+
 // CreateUser inserts a user and gives them an Inbox, in one transaction.
 //
 // The Inbox is created here rather than lazily on first use because every other
@@ -70,6 +91,7 @@ func NormalizeEmail(email string) string {
 // of them end up racing to create the second one.
 func (db *DB) CreateUser(ctx context.Context, u *User, inboxName string) error {
 	u.Email = NormalizeEmail(u.Email)
+	u.Name = NormalizeName(u.Name)
 	if u.ID == "" {
 		u.ID = NewID()
 	}
@@ -473,6 +495,7 @@ func (db *DB) UpdatePasswordHash(ctx context.Context, userID, hash, keepSessionI
 // invites were sent to, and changing it is a re-verification flow rather than a
 // field. Neither is is_admin — an account cannot promote itself.
 func (db *DB) UpdateProfile(ctx context.Context, userID, name, timezone, locale string) error {
+	name = NormalizeName(name)
 	res, err := db.ExecContext(ctx,
 		`UPDATE users SET name = ?, timezone = ?, locale = ?, updated_at = ? WHERE id = ?`,
 		name, timezone, locale, time.Now().Unix(), userID)
@@ -483,6 +506,56 @@ func (db *DB) UpdateProfile(ctx context.Context, userID, name, timezone, locale 
 		return ErrNotFound
 	}
 	return nil
+}
+
+// NormalizeUserNames capitalises the first letter of every existing user's name,
+// for the accounts created before the app started doing it on the way in.
+//
+// Idempotent: a name already normalised is left untouched, so it costs one pass
+// of names at each start and writes nothing once it has caught up. Like SealNotes
+// it runs at boot rather than as a migration, because the rule lives in Go —
+// Unicode-aware and per word — and SQLite's own UPPER cannot spell it.
+//
+// `updated_at` is not touched: fixing the spelling of a name the person chose is
+// the instance tidying up after itself, not the person editing their profile.
+func (db *DB) NormalizeUserNames(ctx context.Context) (int, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id, name FROM users`)
+	if err != nil {
+		return 0, err
+	}
+	type pending struct{ id, name string }
+	var todo []pending
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if n := NormalizeName(name); n != name {
+			todo = append(todo, pending{id, n})
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(todo) == 0 {
+		return 0, nil
+	}
+
+	err = db.Tx(ctx, func(tx *sql.Tx) error {
+		for _, p := range todo {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE users SET name = ? WHERE id = ?`, p.name, p.id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return len(todo), nil
 }
 
 func (db *DB) SetTOTPSecret(ctx context.Context, userID, secret string, enabled bool) error {

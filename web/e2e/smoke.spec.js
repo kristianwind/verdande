@@ -925,6 +925,8 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
 	const andreas = await context.newPage();
 	await andreas.goto(link);
+	// Typed in lower case on purpose: the instance capitalises a name on the way
+	// in, so from here on this person is "Andreas" everywhere they are shown.
 	await andreas.getByLabel('Navn', { exact: true }).fill('andreas');
 	await andreas.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
 	await andreas.getByRole('button', { name: 'Opret konto' }).click();
@@ -943,7 +945,7 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 	await page.reload();
 	await projectAction(page, /Delt/);
 	await expect(page.getByText('Ejer')).toBeVisible();
-	await page.getByLabel('Rolle for andreas').selectOption('editor');
+	await page.getByLabel('Rolle for Andreas').selectOption('editor');
 
 	await andreas.reload();
 	await expect(andreas.getByLabel('Ny opgave')).toBeVisible();
@@ -956,11 +958,11 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 	await page.getByLabel('Ny opgave').press('Enter');
 	await page.getByText('brænde kaffe', { exact: true }).click();
 	const drawer = page.getByRole('complementary', { name: 'Opgave' });
-	await drawer.getByLabel('Ansvarlig').selectOption({ label: 'andreas' });
+	await drawer.getByLabel('Ansvarlig').selectOption({ label: 'Andreas' });
 	await page.keyboard.press('Escape');
 
 	const row = page.locator('.row').filter({ hasText: 'brænde kaffe' });
-	await expect(row.getByTitle('Uddelegeret til andreas')).toBeVisible();
+	await expect(row.getByTitle('Uddelegeret til Andreas')).toBeVisible();
 	// And not on a task that is nobody's.
 	await page.getByLabel('Ny opgave').fill('min egen');
 	await page.getByLabel('Ny opgave').press('Enter');

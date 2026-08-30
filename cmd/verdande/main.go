@@ -80,6 +80,16 @@ func run() error {
 		log.Info("notes sealed", "count", sealed)
 	}
 
+	// Names created before the app capitalised them on the way in — "andreas"
+	// rather than "Andreas". Idempotent, so it is a cheap pass of names once it has
+	// caught up. A failure here does not stop the start: a lower-case first name is
+	// a blemish, not a broken instance.
+	if fixed, err := db.NormalizeUserNames(context.Background()); err != nil {
+		log.Error("normalize user names", "err", err)
+	} else if fixed > 0 {
+		log.Info("user names normalized", "count", fixed)
+	}
+
 	httpapi.Version = version
 	api := httpapi.New(cfg, db, log, webAssets(log))
 
