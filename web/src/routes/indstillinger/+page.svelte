@@ -1,7 +1,7 @@
 <script>
 	/** Konto: who you are, your password, and the second factor. */
 	import { api, humanMessage } from '$lib/api.js';
-	import { app, theme, THEMES, look, LOOKS } from '$lib/stores.svelte.js';
+	import { app, theme, THEMES, look, LOOKS, menuSize, textSize, SIZES } from '$lib/stores.svelte.js';
 	import { t, plural, i18n } from '$lib/i18n.svelte.js';
 	import { supported, register } from '$lib/passkey.js';
 	import { ago } from '$lib/when.js';
@@ -362,6 +362,40 @@
 			{/each}
 		</div>
 	</div>
+
+	<!-- Two more axes: how large the menu reads and how large the body text reads.
+	     Separate on purpose — one is a glance down a list of names, the other is a
+	     paragraph you sit and read. -->
+	<div class="sizes">
+		<h3>{t('account.sizes')}</h3>
+		<p class="hint">{t('account.sizesHint')}</p>
+		<div class="size-row">
+			<div class="size-field">
+				<label for="menu-size">{t('account.menuSize')}</label>
+				<select
+					id="menu-size"
+					value={menuSize.current}
+					onchange={(e) => menuSize.set(e.currentTarget.value)}
+				>
+					{#each SIZES as option (option.id)}
+						<option value={option.id}>{t(option.name)}</option>
+					{/each}
+				</select>
+			</div>
+			<div class="size-field">
+				<label for="text-size">{t('account.textSize')}</label>
+				<select
+					id="text-size"
+					value={textSize.current}
+					onchange={(e) => textSize.set(e.currentTarget.value)}
+				>
+					{#each SIZES as option (option.id)}
+						<option value={option.id}>{t(option.name)}</option>
+					{/each}
+				</select>
+			</div>
+		</div>
+	</div>
 </section>
 
 <section class="panel">
@@ -617,6 +651,37 @@
 	.looks h3 {
 		font-size: var(--text-sm);
 		margin-bottom: var(--s1);
+	}
+
+	.sizes {
+		margin-top: var(--s4);
+		padding-top: var(--s3);
+		border-top: 1px solid var(--line);
+	}
+
+	.sizes h3 {
+		font-size: var(--text-sm);
+		margin-bottom: var(--s1);
+	}
+
+	.size-row {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+		gap: var(--s3);
+		margin-top: var(--s3);
+	}
+
+	.size-field {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s1);
+	}
+
+	.size-field label {
+		font-size: var(--text-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--ink-faint);
 	}
 
 	.look-row {
