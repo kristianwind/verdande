@@ -1441,7 +1441,10 @@
 		border-radius: var(--radius);
 		color: var(--ink-muted);
 		text-decoration: none;
-		font-size: var(--text-sm);
+		/* Its own size (Settings → Appearance) and medium weight, so the menu items
+		   carry more than the muted small text they used to and read at a glance. */
+		font-size: var(--menu-size);
+		font-weight: 500;
 		transition:
 			background var(--fast) var(--ease),
 			color var(--fast) var(--ease);
@@ -1455,7 +1458,7 @@
 	a.active {
 		background: var(--surface-raised);
 		color: var(--ink);
-		font-weight: 500;
+		font-weight: 600;
 	}
 
 	/* Only your own projects reorder. A shared one sits where its owner put it —

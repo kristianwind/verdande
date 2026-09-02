@@ -28,6 +28,14 @@
 				// face and again in another, which is a visible jump.
 				const look = localStorage.getItem('verdande:look');
 				if (look && look !== 'verdande') document.documentElement.dataset.look = look;
+
+				// The font-size choices change layout too, so they belong before first
+				// paint for the same reason: otherwise the sidebar and the list are drawn
+				// once at one size and again at another.
+				const menuSize = localStorage.getItem('verdande:menu-size');
+				if (menuSize && menuSize !== 'default') document.documentElement.dataset.menuSize = menuSize;
+				const textSize = localStorage.getItem('verdande:text-size');
+				if (textSize && textSize !== 'default') document.documentElement.dataset.textSize = textSize;
 			} catch (e) {
 				// Private browsing can refuse localStorage; the dark default stands.
 			}

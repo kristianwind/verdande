@@ -86,6 +86,12 @@
 	--text-xl: 1.375rem;
 	--text-2xl: 1.75rem;
 
+	/* The sidebar's own text size, its own knob (Settings → Appearance) so the menu
+	   can be made easier to read without dragging the whole list with it. Default is
+	   a step up from the old --text-sm the nav used, at medium weight, so the menu
+	   items read as menu items. [data-menu-size] on <html> overrides it. */
+	--menu-size: 0.9375rem;
+
 	/* Spacing on a 4px grid. */
 	--s1: 0.25rem;
 	--s2: 0.5rem;
@@ -515,4 +521,42 @@ button {
 [data-look='terminal'] body {
 	line-height: 1.5;
 	letter-spacing: -0.01em;
+}
+
+/* Body text size — its own control in Settings → Appearance, for reading the list
+   and the notes larger (or smaller) without touching the menu. It re-scales the
+   shared type tokens the same way a look does; placed after the looks so that an
+   explicit size choice wins the tokens they both set. The menu has its own knob
+   below and does not move with this one. */
+[data-text-size='small'] {
+	--text-base: 0.875rem;
+	--text-sm: 0.75rem;
+	--text-lg: 1rem;
+}
+
+[data-text-size='large'] {
+	--text-base: 1.0625rem;
+	--text-sm: 0.9375rem;
+	--text-lg: 1.1875rem;
+}
+
+[data-text-size='xl'] {
+	--text-base: 1.1875rem;
+	--text-sm: 1.0625rem;
+	--text-lg: 1.3125rem;
+}
+
+/* Menu (sidebar) font size — independent of the body size above, because the two
+   are separate questions: a menu you can read at a glance, and a list you can read
+   a paragraph of. */
+[data-menu-size='small'] {
+	--menu-size: 0.8125rem;
+}
+
+[data-menu-size='large'] {
+	--menu-size: 1.0625rem;
+}
+
+[data-menu-size='xl'] {
+	--menu-size: 1.1875rem;
 }

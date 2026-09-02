@@ -1051,6 +1051,52 @@ class Look {
 
 export const look = new Look();
 
+/**
+ * The font-size steps, shared by the menu and the body-text controls. `default`
+ * carries no attribute, so the base tokens in app.css stand unchanged.
+ */
+export const SIZES = [
+	{ id: 'small', name: 'size.small' },
+	{ id: 'default', name: 'size.default' },
+	{ id: 'large', name: 'size.large' },
+	{ id: 'xl', name: 'size.xl' }
+];
+
+/**
+ * A font-size preference — the same shape as Look: kept in localStorage and
+ * mirrored onto <html>, where app.html sets it before first paint so a chosen size
+ * does not flash in at the default and resize. Two instances below, because the
+ * menu and the body text are separate questions.
+ */
+class Sizing {
+	current = $state('default');
+	#key;
+	#attr;
+
+	constructor(key, attr) {
+		this.#key = key;
+		this.#attr = attr;
+		if (typeof document !== 'undefined') {
+			this.current = document.documentElement.dataset[attr] ?? 'default';
+		}
+	}
+
+	set(id) {
+		if (!SIZES.some((s) => s.id === id)) return;
+		this.current = id;
+		if (id === 'default') delete document.documentElement.dataset[this.#attr];
+		else document.documentElement.dataset[this.#attr] = id;
+		try {
+			localStorage.setItem(this.#key, id);
+		} catch {
+			// Private browsing; the choice simply will not persist.
+		}
+	}
+}
+
+export const menuSize = new Sizing('verdande:menu-size', 'menuSize');
+export const textSize = new Sizing('verdande:text-size', 'textSize');
+
 /** Theme, kept in localStorage and applied to the document element. */
 class Theme {
 	/**

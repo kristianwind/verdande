@@ -245,6 +245,38 @@ test('hver fane under indstillinger renderer', async ({ page }) => {
 	expect(trouble).toEqual([]);
 });
 
+test('menu- og brødtekststørrelse sættes hver for sig og overlever en genindlæsning', async ({
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/indstillinger');
+
+	// Two independent knobs under Udseende — the sidebar's size, and the body text's.
+	await page.getByLabel('Menu', { exact: true }).selectOption('large');
+	await page.getByLabel('Brødtekst', { exact: true }).selectOption('xl');
+	await expect(page.getByLabel('Menu', { exact: true })).toHaveValue('large');
+
+	const attrs = () =>
+		page.evaluate(() => [
+			document.documentElement.dataset.menuSize,
+			document.documentElement.dataset.textSize
+		]);
+	expect(await attrs()).toEqual(['large', 'xl']);
+
+	// They live in localStorage like the theme, so they survive a reload — and are
+	// applied before first paint, so the picker comes back showing the saved choice.
+	await page.reload();
+	expect(await attrs()).toEqual(['large', 'xl']);
+	await expect(page.getByLabel('Menu', { exact: true })).toHaveValue('large');
+
+	// Put them back, so the shared account does not leak a size into other tests.
+	await page.getByLabel('Menu', { exact: true }).selectOption('default');
+	await page.getByLabel('Brødtekst', { exact: true }).selectOption('default');
+	expect(await attrs()).toEqual([undefined, undefined]);
+
+	expect(trouble).toEqual([]);
+});
+
 /**
  * The PWA's own files. Both of the bugs found last in this project were of this
  * kind — a manifest promising icons that were never generated — and they are
