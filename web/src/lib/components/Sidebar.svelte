@@ -487,6 +487,7 @@
 					     it, which is the second time that drop has earned its test. -->
 					<a
 						href={item.href}
+						data-view={item.key}
 						class:active={current === item.href}
 						class:receiving={item.key === 'today' && overToday}
 						onclick={onnavigate}
@@ -616,6 +617,7 @@
 	{#snippet projectRow(project, sortable)}
 		<a
 			href="/projekt/{project.id}"
+			data-view={project.is_inbox ? 'inbox' : undefined}
 			class:sortable
 			class:active={current === `/projekt/${project.id}`}
 			class:dragging={draggingId === project.id}
@@ -724,7 +726,7 @@
 			     and with every project filed there would be no loose row left to aim at. -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				class="group-head"
+				class="group-head sticky-head"
 				class:over={overGroup === ''}
 				ondragover={(e) => {
 					if (!carries(e, PROJECT)) return;
@@ -1201,8 +1203,26 @@
 		flex: none;
 	}
 
-	a.active .mark {
-		color: var(--accent);
+	/* The fixed views carry a colour of their own, the way Things does — the star
+	   amber, the Inbox blue — and keep it whether or not they are the active row.
+	   So no active-state override here; the colour is the icon's identity. */
+	[data-view='inbox'] .mark {
+		color: var(--color-blue);
+	}
+	[data-view='today'] .mark {
+		color: var(--color-amber);
+	}
+	[data-view='upcoming'] .mark {
+		color: var(--color-tomato);
+	}
+	[data-view='delegated'] .mark {
+		color: var(--color-violet);
+	}
+	[data-view='notes'] .mark {
+		color: var(--color-teal);
+	}
+	[data-view='calendar'] .mark {
+		color: var(--color-indigo);
 	}
 
 	.group-head {
@@ -1210,6 +1230,17 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 0 var(--s2) var(--s2);
+	}
+
+	/* The Projekter heading holds the only way to add a project or a group, so it
+	   must not scroll away with a long list. Pinned to the top of the scroller, on
+	   the sidebar's own ground so the rows pass under it. */
+	.sticky-head {
+		position: sticky;
+		top: 0;
+		z-index: 3;
+		padding-top: var(--s2);
+		background: var(--surface-sunken);
 	}
 
 	h2 {
@@ -1533,8 +1564,12 @@
 		color: var(--ink);
 	}
 
+	/* An accent-tinted selection, not a half-step of surface: on the sunken dark
+	   sidebar --surface-raised was all but invisible, so the active row read as no
+	   different from the rest. --accent-sunken carries the accent hue and stands out
+	   in both themes. */
 	a.active {
-		background: var(--surface-raised);
+		background: var(--accent-sunken);
 		color: var(--ink);
 		font-weight: 600;
 	}
