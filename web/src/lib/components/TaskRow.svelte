@@ -228,13 +228,21 @@
 		align-items: flex-start;
 		padding: var(--s3) var(--s2);
 		border-bottom: 1px solid var(--line);
+		border-radius: var(--radius);
 		transition:
 			opacity var(--medium) var(--ease),
 			transform var(--medium) var(--ease);
 	}
 
-	.row:hover {
-		background: var(--surface);
+	/* Hover only where there is a real pointer. On a touch screen a :hover on the tap
+	   target makes iOS spend the first tap applying the hover and only open on the
+	   second — the "double-tap" on iPhone. With no hover to apply, the first tap opens
+	   the task. The rounded corners are on the row itself, so the highlight is a
+	   rounded box like a note in the list. */
+	@media (hover: hover) {
+		.row:hover {
+			background: var(--surface);
+		}
 	}
 
 	/* The exit: a short lift and fade, so completing something reads as the task
