@@ -298,11 +298,59 @@ test('manifestet og service workeren findes, og ikonerne findes også', async ({
 	const appleIcon = await request.get('/apple-touch-icon.png');
 	expect(appleIcon.ok(), 'apple-touch-icon.png findes ikke').toBeTruthy();
 
-	// The service worker is what Web Push needs; without it a subscription cannot
-	// be created at all.
-	const worker = await request.get('/sw.js');
+	// The service worker is what Web Push needs — and, since it also caches, what
+	// carries the app through a short network drop. SvelteKit serves it under this
+	// name and registers it itself; the old hand-registered /sw.js is gone.
+	const worker = await request.get('/service-worker.js');
 	expect(worker.ok()).toBeTruthy();
-	expect(await worker.text()).toContain("addEventListener('push'");
+	// The source is minified, so the quotes around the event names are whatever the
+	// minifier chose — match either kind rather than one it might change under us.
+	const source = await worker.text();
+	expect(source).toMatch(/addEventListener\(['"`]push['"`]/);
+	expect(source).toMatch(/addEventListener\(['"`]fetch['"`]/);
+});
+
+/**
+ * The app survives a network drop: reloaded with the network cut, it opens from
+ * the cache and still shows the tasks it last saw, instead of the browser's own
+ * "you are offline" page.
+ *
+ * This is the whole point of the service worker's cache — not offline authoring,
+ * which the app does not claim, but a reload through a tunnel or a handover coming
+ * back to the app rather than to a dead tab. The retry in api.js covers the write
+ * side of the same drop; this covers the read side.
+ */
+test('appen overlever et netværksudfald og åbner fra cachen', async ({ page, context }) => {
+	// First load, online: the worker installs, and once it controls the page the
+	// shell and the reads it serves are in the cache.
+	await page.goto('/');
+	await expect(page.getByRole('link', { name: 'I dag' })).toBeVisible();
+
+	// Wait until the worker actually controls this page. Until it does, a reload
+	// still goes to the network and the test proves nothing — the first load
+	// registers the worker but the page that triggered the install is not itself
+	// controlled until it activates and claims.
+	await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, {
+		timeout: 15000
+	});
+
+	// A controlled reload, still online: now the navigation and its API reads pass
+	// through the worker and land in the cache, ready for the drop.
+	await page.reload();
+	await expect(page.getByRole('link', { name: 'I dag' })).toBeVisible();
+
+	// The network is gone.
+	await context.setOffline(true);
+	try {
+		await page.reload();
+		// The shell came from the cache — the sidebar is here, not a browser error
+		// page — and so did the task list the app renders into it.
+		await expect(page.getByRole('link', { name: 'I dag' })).toBeVisible({ timeout: 15000 });
+		await expect(page.getByRole('link', { name: 'Indbakke' })).toBeVisible();
+	} finally {
+		// Never leave the shared context offline for whatever test runs next.
+		await context.setOffline(false);
+	}
 });
 
 /**

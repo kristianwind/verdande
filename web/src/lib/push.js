@@ -26,9 +26,13 @@ export function permission() {
 }
 
 async function registration() {
-	// `ready` waits for an active worker; register() alone resolves while the
-	// worker is still installing, and subscribing against that fails.
-	await navigator.serviceWorker.register('/sw.js');
+	// SvelteKit registers src/service-worker.js itself on load, so normally there
+	// is already a registration here. Register it by hand only if there is not yet
+	// one — a push subscribe that races the app's own registration would otherwise
+	// find nothing. `ready` waits for an active worker; register() alone resolves
+	// while the worker is still installing, and subscribing against that fails.
+	const existing = await navigator.serviceWorker.getRegistration();
+	if (!existing) await navigator.serviceWorker.register('/service-worker.js');
 	return navigator.serviceWorker.ready;
 }
 

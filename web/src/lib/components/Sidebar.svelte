@@ -31,6 +31,16 @@
 
 	async function signOut() {
 		await api.logout();
+		// Empty the offline data cache before leaving: the service worker keeps the
+		// last-seen task and note lists so a network drop does not blank the app, and
+		// the next person to sign in on this browser must not find them.
+		try {
+			navigator.serviceWorker?.controller?.postMessage({ type: 'clear-api-cache' });
+			await caches?.delete('verdande-api');
+		} catch {
+			// No service worker / no Cache API (older browser, private mode): nothing
+			// was cached, so nothing to clear.
+		}
 		location.href = '/';
 	}
 
