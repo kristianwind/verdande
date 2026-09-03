@@ -132,7 +132,10 @@
 		if (days === 1) return { key: 'i-gaar', label: t('notes.groupYesterday') };
 		if (days < 7) return { key: 'ugen', label: t('notes.groupWeek') };
 
-		const label = at.toLocaleDateString(tag(), { month: 'long', year: 'numeric' });
+		// Stort forbogstav på måneden: Intl giver "august 2026" på dansk, og en
+		// overskrift begynder med stort.
+		const month = at.toLocaleDateString(tag(), { month: 'long', year: 'numeric' });
+		const label = month.charAt(0).toUpperCase() + month.slice(1);
 		return { key: `m-${at.getFullYear()}-${at.getMonth()}`, label };
 	}
 
@@ -835,41 +838,38 @@
 										ondragstart={(e) => onDragStart(e, note)}
 										ondragend={() => (dragging = null)}
 									>
-										<!-- Titel og projekt på linje ét, uddrag på linje to. Datoen står
-										     i gruppens overskrift og ikke her — undtagen når der er sorteret
-										     på navn, for så er der ingen overskrift, der siger den, og så er
-										     den det eneste tilbage, der gør. -->
+										<!-- Tre linjer, som Apple Noter: titlen, så datoen og uddraget, og
+										     nederst hvor noten er lagt. Datoen står forrest på linje to og
+										     venstrestillet, ikke ude til højre. -->
 										<span class="head">
 											<strong>{note.title || t('notes.untitled')}</strong>
-											{#if order === 'title'}
-												<span class="when" title={stamp(note)}>{when(shownDate(note))}</span>
-											{/if}
-											{#if note.project_id}
-												<!-- Projektets egen farve, den samme som prikken i sidebjælken.
-												     Mærkaten sagde det samme som alle de andre i en grå, der var
-												     lysere end uddraget — og projektet er dét, man skanner efter,
-												     når man leder i tolv hundrede noter. Nu kan Hjem kendes fra
-												     Claude uden at læse ordet. -->
-												<span class="filed" style="--project: {projectColour(note.project_id)}">
-													<span class="dot" aria-hidden="true"></span>
-													{projectName(note.project_id)}
-												</span>
-											{/if}
+										</span>
+										<span class="preview">
+											<span class="when" title={stamp(note)}>{when(shownDate(note))}</span>
+											<span class="snippet">{preview(note)}</span>
+										</span>
+										<!-- Linje tre: hvor noten er lagt, med den samme mappe som grupperne i
+										     menuen — projektets navn, ejerens hvis den er en andens, ellers bare
+										     "Noter", når den ikke hører til et projekt. -->
+										<span class="filed">
 											{#if note.shared_with_me && note.owner}
-												<!-- Hvis note delt med mig: hvem den kom fra, i personens egen
-												     avatar-farve. Samme form som projekt-mærkaten, så listen har
-												     ét sprog for "det her hører til nogen". -->
-												<span
-													class="filed person"
-													style="--project: {note.owner.avatar_color}"
-													title={t('notes.sharedBy', { name: note.owner.name })}
-												>
-													<span class="dot" aria-hidden="true"></span>
-													{note.owner.name}
-												</span>
+												<svg class="filed-icon" viewBox="0 0 16 16" aria-hidden="true">
+													<circle cx="8" cy="6" r="2.3" fill="none" stroke="currentColor" stroke-width="1.4" />
+													<path d="M3.6 13c0-2.5 2-4 4.4-4s4.4 1.5 4.4 4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+												</svg>
+												<span class="filed-name" title={t('notes.sharedBy', { name: note.owner.name })}>{note.owner.name}</span>
+											{:else if note.project_id}
+												<svg class="filed-icon" viewBox="0 0 16 16" aria-hidden="true">
+													<path d="M2 4.6a1 1 0 011-1h3.1l1.4 1.5H13a1 1 0 011 1v6.3a1 1 0 01-1 1H3a1 1 0 01-1-1z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
+												</svg>
+												<span class="filed-name">{projectName(note.project_id)}</span>
+											{:else}
+												<svg class="filed-icon" viewBox="0 0 16 16" aria-hidden="true">
+													<path d="M2 4.6a1 1 0 011-1h3.1l1.4 1.5H13a1 1 0 011 1v6.3a1 1 0 01-1 1H3a1 1 0 01-1-1z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
+												</svg>
+												<span class="filed-name">{t('notes.title')}</span>
 											{/if}
 										</span>
-										<span class="preview">{preview(note)}</span>
 									</button>
 									<!-- De to knapper står oven på hinanden i en smal søjle.
 									     Ved siden af hinanden tog de toogfyrre pixels af en liste,
@@ -1326,13 +1326,20 @@
 	 * målt på en rigtig række: titel plus én linje uddrag. */
 	li {
 		content-visibility: auto;
-		contain-intrinsic-size: auto 54px;
+		contain-intrinsic-size: auto 74px;
 	}
 
+	/* A faint hairline between notes, as Apple Notes has — the group boxes give the
+	   coarse structure, this separates one note from the next inside a group. */
 	.rowline {
 		display: flex;
 		align-items: center;
 		gap: var(--s1);
+		border-bottom: 1px solid var(--line);
+	}
+
+	li:last-child .rowline {
+		border-bottom: none;
 	}
 
 	/* De sjældne handlinger i en søjle, ikke en række. To knapper ved siden af
@@ -1490,19 +1497,25 @@
 	/* Dato og begyndelse på samme linje, som Apple Noter gør det. To linjer pr.
 	   note frem for tre, og datoen først, fordi det er den, man skanner efter. */
 
+	/* Datoen forrest på linje to og venstrestillet, som Apple Noter — ikke skubbet
+	   ud til højre. Tabular-tal, så en søjle af datoer står på lige linjer. */
 	.when {
 		flex: none;
 		color: var(--ink-muted);
+		font-variant-numeric: tabular-nums;
 	}
 
-	/* `display: block`, og det er ikke pynt.
-	 *
-	 * Uddraget lå før inde i en flex-boks, der ejede afkortningen. Da datoen flyttede
-	 * op i gruppens overskrift, forsvandt den boks — og et inline-element klippes
-	 * ikke af `overflow: hidden`, så den sidste sætning løb videre ind under
-	 * favoritstjernen. Reglerne skal stå på det element, der faktisk skal klippes. */
+	/* Linje to er en flex-række: datoen, der ikke krymper, og uddraget, der klippes.
+	   Afkortningen skal stå på uddraget selv — et inline-element klippes ikke af
+	   `overflow: hidden`. */
 	.preview {
-		display: block;
+		display: flex;
+		align-items: baseline;
+		gap: 0.45em;
+		min-width: 0;
+	}
+
+	.snippet {
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -1519,31 +1532,30 @@
 	 * Prikken bærer farven, ikke teksten. Fem projekters farver som skriftfarve på
 	 * en lys flade er fem forskellige grader af læsbarhed, og den lyseste af dem er
 	 * ikke læsbar. */
+	/* Linje tre: hvor noten er lagt. En mappe som grupperne i menuen og et navn,
+	   venstrestillet under uddraget — ikke en mærkat skubbet ud til højre. */
 	.filed {
 		display: flex;
 		align-items: center;
-		gap: 0.375em;
-		flex: none;
-		margin-left: auto;
-		max-width: 45%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		gap: 0.4em;
+		min-width: 0;
+		margin-top: 1px;
 		font-size: var(--text-xs);
 		color: var(--ink-muted);
 	}
 
-	.filed .dot {
-		width: 6px;
-		height: 6px;
+	.filed-icon {
+		width: 13px;
+		height: 13px;
 		flex: none;
-		border-radius: var(--radius-full);
-		background: var(--project, var(--line-strong));
+		color: var(--ink-faint);
 	}
 
-	.filed::before {
-		content: '▸ ';
-		opacity: 0.7;
+	.filed-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	/* Noten er et ark, ikke en flade i appen.
@@ -1763,17 +1775,6 @@
 		display: block;
 	}
 
-	/* The person chip: the project mark's shape in a person's own colour. No ▸
-	   before it — the coloured dot already says "belongs to", and two markers on
-	   one short chip is noise. It sits next to the title rather than pushed to the
-	   right, so in the Delt med mig group it reads as "Ferieplan — Sofie". */
-	.filed.person {
-		margin-left: 0.5em;
-		max-width: 40%;
-	}
-	.filed.person::before {
-		content: none;
-	}
 
 	.sharepanel .none {
 		font-size: var(--text-xs);
