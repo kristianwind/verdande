@@ -682,13 +682,14 @@
 	<!--
 		A fixed heading that folds, the same way a project group's does.
 
-		One snippet for all four rather than four copies of a chevron and an aria
+		One snippet for all four rather than four copies of an icon and an aria
 		attribute: they have to behave identically, and the group heading is already
 		the proof that they drift otherwise — it grew a fold, a colour and two
 		actions while these stayed plain text.
 
-		The whole heading is the target, not the chevron. At this size a lone chevron
-		is something you miss, and the name is where the eye already is.
+		The whole heading is the target, and the icon is the mark: no arrow beside it.
+		At this size an extra glyph is clutter, and the name is where the eye already
+		is.
 	-->
 	<!-- One monochrome mark per kind of heading, so a section and a group read as the
 	     same kind of thing — a folder of projects, a funnel of filters, a tag of
@@ -749,19 +750,15 @@
 	{/snippet}
 
 	{#snippet foldHeading(key, label)}
+		<!-- No chevron: a system section has no page and nothing to rename, so the
+		     whole heading is one button that folds it. The icon and the bold name are
+		     the whole control — an arrow beside them was only ever saying "clickable"
+		     twice. -->
 		<h2 class="fold">
 			<button
 				onclick={() => app.toggleSection(key)}
 				aria-expanded={!app.sectionCollapsed(key)}
 			>
-				<svg
-					class="chevron"
-					class:collapsed={app.sectionCollapsed(key)}
-					viewBox="0 0 24 24"
-					aria-hidden="true"
-				>
-					<path d="M6 9l6 6 6-6" />
-				</svg>
 				{@render sectionIcon(key)}
 				{label}
 			</button>
@@ -930,31 +927,22 @@
 							</div>
 						</form>
 					{:else}
-						<!-- The button sits inside the heading, not around it, the same way a
-						     project's title does: a group *is* a heading in the sidebar, and
-						     wrapping an h2 in a button both invalidates the markup and takes
-						     the heading away from a screen reader. The whole heading folds —
-						     at this size a lone chevron is a target you miss, and the name is
-						     where the eye already is. -->
-						<!-- The chevron folds; the name opens the group's own page. Two
-						     targets in one heading, because they are two different intentions
-						     and the old single one could only ever serve the smaller. -->
+						<!-- No chevron: the folder icon itself folds the group, and the name
+						     beside it opens the group's own page. Two intentions, two targets,
+						     but no arrow to clutter the rail — the icon a section carries is
+						     the same one that folds it here. The button sits inside the
+						     heading, not around it: a group *is* a heading, and wrapping an h2
+						     in a button both invalidates the markup and takes the heading from
+						     a screen reader. -->
 						<button
-							class="chevron-button"
+							class="fold-icon"
 							onclick={() => app.toggleGroup(group.id)}
 							aria-expanded={!group.collapsed}
 							aria-label={group.collapsed
 								? t('sidebar.unfold', { name: group.name })
 								: t('sidebar.fold', { name: group.name })}
 						>
-							<svg
-								class="chevron"
-								class:collapsed={group.collapsed}
-								viewBox="0 0 24 24"
-								aria-hidden="true"
-							>
-								<path d="M6 9l6 6 6-6" />
-							</svg>
+							{@render sectionIcon('group')}
 						</button>
 						<h2 class="fold">
 							<!-- Navigation waits two tenths of a second for a second click. A
@@ -975,7 +963,6 @@
 									}, 200);
 								}}
 							>
-								{@render sectionIcon('group')}
 								{group.name}
 							</a>
 						</h2>
@@ -1425,35 +1412,17 @@
 		min-width: 0;
 	}
 
-	/* The chevron on its own, so the name beside it can be a link to the group's
-	   page. Sized as a target rather than as a glyph: 11px of arrow is something
-	   you miss. */
-	/* The chevron sits on top of the group's dot rather than before it. In the flow
-	   it pushed the name 22px further in than a project's, so groups read as if
-	   they were filed under the projects above them — the opposite of what they
-	   are. Out of the flow, a group's name starts exactly where a project's does.
-	   The dot is the resting state; the chevron takes over on hover or focus, and
-	   stays put while the group is folded, so a folded group still shows the way
-	   back open. */
-	/* Uden baggrund. Knappen dækkede prikken med et felt i --surface, og på den
-	   sænkede bjælke er det en lys firkant: en foldet gruppe stod med en hvid
-	   klods ud for navnet permanent, fordi chevronen bliver stående, når gruppen
-	   er lukket. Prikken tones ud i stedet for at blive dækket — det er samme
-	   skifte, uden noget at male henover den med. */
-	/* A group folds from its own chevron, the same one the system sections carry —
-	   in the flow before the name now, not an absolute mark that appeared on hover,
-	   so a group and a section read identically at rest. The name beside it is still
-	   a link to the group's page; the chevron is the second intention. */
-	.chevron-button {
+	/* The folder icon is the fold toggle now — no chevron beside it. A bare icon
+	   button the size of the icon it holds: the name next to it opens the group's
+	   page, this folds it, and neither wears an arrow to say so. */
+	.fold-icon {
 		flex: none;
-		width: 14px;
-		height: 14px;
 		display: grid;
 		place-items: center;
 		color: inherit;
 	}
 
-	.chevron-button:hover {
+	.fold-icon:hover {
 		color: var(--ink);
 	}
 
@@ -1480,22 +1449,6 @@
 
 	.fold a {
 		text-decoration: none;
-	}
-
-	.chevron {
-		width: 11px;
-		height: 11px;
-		flex: none;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 2.4;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-		transition: transform var(--fast) var(--ease);
-	}
-
-	.chevron.collapsed {
-		transform: rotate(-90deg);
 	}
 
 	/* Hidden until the heading is hovered, like the section actions on a project
