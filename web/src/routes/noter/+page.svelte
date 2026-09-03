@@ -810,7 +810,11 @@
 										</svg>
 									</span>
 								{:else}
-									<span class="mark" class:closed={folded.has(group.key)} aria-hidden="true">▾</span>
+									<!-- No arrow, to match the sidebar: the box folds on a click,
+									     the star and the people icon are the marks that mean
+									     something, and a date group has none — an empty spacer, so
+									     every label still starts at the same place. -->
+									<span class="mark" aria-hidden="true"></span>
 								{/if}
 								{group.label}
 								<span class="count">{group.notes.length}</span>
@@ -1400,17 +1404,15 @@
 		background: var(--surface-sunken);
 	}
 
+	/* The mark, or an empty box the same width where a date group has none, so every
+	   label starts at the same place. The star and the people icon fill it; the
+	   arrow that used to is gone — the box folds on a click. */
 	h3.group .mark {
 		flex: none;
 		width: 0.75em;
 		font-size: 0.85em;
 		line-height: 1;
 		color: var(--ink-faint);
-		transition: transform var(--fast) var(--ease);
-	}
-
-	h3.group .mark.closed {
-		transform: rotate(-90deg);
 	}
 
 	/* Sit eget navn og ikke `.star`. Rækkens favoritknap hedder også det og er
