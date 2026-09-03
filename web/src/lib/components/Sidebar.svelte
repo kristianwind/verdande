@@ -1075,6 +1075,30 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--s5);
+		/* The sidebar is padded, so the scrollbar sat a pad-width inside the edge and
+		   read as floating in the middle. Pull the scroller out to the border and pad
+		   the content back, so the bar sits against the edge where a scrollbar
+		   belongs — the rows do not move. Thin and dim, so it is present without
+		   drawing the eye. */
+		margin-right: calc(var(--s3) * -1);
+		padding-right: var(--s3);
+		scrollbar-width: thin;
+		scrollbar-color: var(--line-strong) transparent;
+	}
+
+	.scroller::-webkit-scrollbar {
+		width: 10px;
+	}
+
+	.scroller::-webkit-scrollbar-thumb {
+		background: var(--line-strong);
+		border-radius: 999px;
+		border: 3px solid transparent;
+		background-clip: padding-box;
+	}
+
+	.scroller::-webkit-scrollbar-track {
+		background: transparent;
 	}
 
 	/* Wider than it looks: a 1px target is a target you miss. The visible line stays
