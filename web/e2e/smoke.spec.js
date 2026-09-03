@@ -371,9 +371,9 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	await sidebar.getByLabel('Gruppens navn').fill('Arbejde');
 	await sidebar.getByLabel('Gruppens navn').press('Enter');
 
-	// The name is a link to the group's own page; the chevron beside it is a
+	// The name is a link to the group's own page; the folder icon beside it is a
 	// separate button that folds. Two intentions, two targets — the single one they
-	// used to share could only ever serve the smaller.
+	// used to share could only ever serve the smaller, and neither wears an arrow.
 	//
 	// `exact` on the link, because a group's name is a user-chosen word that can
 	// turn up inside another control's name, and Playwright matches an accessible
@@ -389,13 +389,14 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	// The clipping half is here because it was once broken: "Omdøb" and "Slet" sat
 	// in the flow reserving their width even while invisible, so ARBEJDE was drawn
 	// as "ARBE". The alignment half changed meaning with the redesign: a group now
-	// carries a fold chevron and a section icon just like "Projekter" above it, and
-	// belongs to that heading tier rather than to the project rows below.
+	// carries a section icon just like "Projekter" above it, and belongs to that
+	// heading tier rather than to the project rows below.
 	const shape = await sidebar.locator('.folder-head').evaluate((el) => {
 		const link = el.querySelector('h2 a');
-		// The leading mark is now the section icon, the same folder/funnel/tag glyph
-		// the system headings carry — a group and a section read identically.
-		const name = { ...link.querySelector('.head-icon').getBoundingClientRect().toJSON() };
+		// The leading mark is the section icon in its own fold button, the same
+		// folder/funnel/tag glyph the system headings carry — a group and a section
+		// read identically, and the icon sits before the name, not inside the link.
+		const name = { ...el.querySelector('.head-icon').getBoundingClientRect().toJSON() };
 		return {
 			clipped: link.scrollWidth > link.clientWidth + 1,
 			left: name.left,
@@ -408,7 +409,7 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	expect(shape.count, 'navnet og tallet overlapper').toBeGreaterThanOrEqual(shape.right);
 
 	// A group is a heading, not a project row: it belongs to the same tier as
-	// "Projekter" and the other system sections — chevron, icon, bold name — and
+	// "Projekter" and the other system sections — icon, bold name, no arrow — and
 	// starts where they start, not where the projects filed under it do. Measured
 	// icon to icon, the one mark both headings share.
 	const sectionLeft = await sidebar
@@ -440,13 +441,13 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 		'false'
 	);
 
-	// A group's chevron is in the flow now, the same one the system sections carry —
-	// no absolute mark with a --surface field behind it, so a folded group no longer
-	// leaves a pale square beside its name on the sunken bar.
-	const chevronBg = await sidebar
-		.locator('.folder-head .chevron-button')
+	// The fold control is the bare folder icon now — no chevron, and no --surface
+	// field behind it, so a folded group leaves no pale square beside its name on
+	// the sunken bar.
+	const foldBg = await sidebar
+		.locator('.folder-head .fold-icon')
 		.evaluate((el) => getComputedStyle(el).backgroundColor);
-	expect(chevronBg, 'chevronen har en firkant bag sig').toBe('rgba(0, 0, 0, 0)');
+	expect(foldBg, 'foldeknappen har en firkant bag sig').toBe('rgba(0, 0, 0, 0)');
 
 	await sidebar.getByRole('button', { name: /^Fold Arbejde/ }).click();
 
