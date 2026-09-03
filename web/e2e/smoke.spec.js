@@ -1525,9 +1525,18 @@ test('en gruppe er en side med sine projekter, en beskrivelse og filer', async (
 	// Into the group, then onto its page — which is what the heading is a link to
 	// now. The chevron beside it still folds; they are two intentions and the old
 	// single target could only serve the smaller one.
-	await sidebar
-		.getByRole('link', { name: 'Drejebænk' })
-		.dragTo(sidebar.getByRole('link', { name: 'Værksted' }));
+	//
+	// The drop is retried until the project actually nests under the group: a native
+	// HTML5 drag occasionally does not register the first time under CI load, and a
+	// single dragTo then leaves the group empty and the page assertion failing for a
+	// reason that has nothing to do with what the test is about.
+	const nested = sidebar.locator('.folder > a').filter({ hasText: 'Drejebænk' });
+	await expect(async () => {
+		await sidebar
+			.getByRole('link', { name: 'Drejebænk' })
+			.dragTo(sidebar.getByRole('link', { name: 'Værksted' }));
+		await expect(nested).toHaveCount(1, { timeout: 1000 });
+	}).toPass({ timeout: 10000 });
 	await sidebar.getByRole('link', { name: 'Værksted' }).click();
 
 	await expect(page.getByRole('heading', { name: 'Værksted', level: 1 })).toBeVisible();
