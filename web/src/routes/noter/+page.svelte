@@ -707,7 +707,10 @@
 	}}
 />
 
-<div class="notes">
+<!-- `has-note` drives the phone layout: one column, showing the list until a note
+     is opened and the editor once one is. On a wide screen both are always up and
+     the class does nothing. -->
+<div class="notes" class:has-note={selected}>
 	<aside>
 		<div class="head">
 			<h1>{t('notes.title')}</h1>
@@ -917,6 +920,9 @@
 
 	<section class="editor">
 		{#if selected}
+			<!-- Phone only (hidden on a wide screen by CSS): the way back to the list,
+			     since there the editor fills the screen and the list is not beside it. -->
+			<button class="back" onclick={() => open(null)}>‹ {t('notes.title')}</button>
 			<NoteEditor
 				note={selected}
 				notes={notes}
@@ -1911,14 +1917,48 @@
 		font-size: var(--text-sm);
 	}
 
+	/* The way back to the list on a phone — an iOS-style "‹ Noter" at the top of the
+	   editor. Hidden on a wide screen, where the list is always beside the editor. */
+	.back {
+		display: none;
+		align-self: flex-start;
+		align-items: center;
+		gap: var(--s1);
+		margin-bottom: var(--s2);
+		padding: var(--s1) 0;
+		font-size: var(--text-base);
+		color: var(--accent);
+	}
+
 	@media (max-width: 700px) {
 		.notes {
 			grid-template-columns: 1fr;
+			padding: 0;
+			gap: 0;
 		}
 
-		aside {
-			border-right: 0;
-			padding-right: 0;
+		/* One pane at a time. The two-column card layout has no room on a phone, so
+		   the list shows until a note is opened and the editor takes over once one is
+		   — the back button is the way between them. Without this the editor stacked
+		   below a full-height list, so a tapped note opened out of sight. */
+		.notes.has-note aside {
+			display: none;
+		}
+
+		.notes:not(.has-note) .editor {
+			display: none;
+		}
+
+		/* Full-bleed: the card border and rounded corners are for sitting beside
+		   another card, and on one column there is nothing beside it. */
+		aside,
+		.editor {
+			border: 0;
+			border-radius: 0;
+		}
+
+		.back {
+			display: inline-flex;
 		}
 	}
 </style>
