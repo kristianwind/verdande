@@ -529,6 +529,52 @@
 									stroke-linecap="round"
 								/>
 							</svg>
+						{:else if item.key === 'today'}
+							<!-- A star, the way Things marks Today: the one view you open first. -->
+							<svg class="mark" viewBox="0 0 16 16" aria-hidden="true">
+								<path
+									d="M8 2l1.7 3.6 3.9.5-2.9 2.7.7 3.9L8 10.9 4.6 13.4l.7-3.9L2.4 6.1l3.9-.5z"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.3"
+									stroke-linejoin="round"
+								/>
+							</svg>
+						{:else if item.key === 'upcoming'}
+							<!-- A calendar with a day marked — the Calendar view carries the plain
+							     grid, so the marked day keeps the two apart. -->
+							<svg class="mark" viewBox="0 0 16 16" aria-hidden="true">
+								<rect
+									x="2.2"
+									y="3.2"
+									width="11.6"
+									height="10.6"
+									rx="1.4"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.4"
+								/>
+								<path
+									d="M2.2 6.4h11.6M5.6 2.2v2M10.4 2.2v2"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.4"
+									stroke-linecap="round"
+								/>
+								<rect x="8.8" y="8.6" width="2.6" height="2.6" rx="0.5" fill="currentColor" />
+							</svg>
+						{:else if item.key === 'delegated'}
+							<!-- A person: the tasks you are waiting on someone else for. -->
+							<svg class="mark" viewBox="0 0 16 16" aria-hidden="true">
+								<circle cx="8" cy="5.4" r="2.5" fill="none" stroke="currentColor" stroke-width="1.4" />
+								<path
+									d="M3.4 13.4c0-2.6 2.1-4.2 4.6-4.2s4.6 1.6 4.6 4.2"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.4"
+									stroke-linecap="round"
+								/>
+							</svg>
 						{:else}
 							<span class="dot" class:today={item.key === 'today'} aria-hidden="true"></span>
 						{/if}
@@ -593,7 +639,29 @@
 					? onTaskDrop(e, project)
 					: sortable && onDrop(e, project)}
 		>
-			<span class="dot" style="background: {colorVar(project.color)}" aria-hidden="true"></span>
+			{#if project.is_inbox}
+				<!-- A tray, not a coloured dot: the Inbox is a fixed view that happens to
+				     be a project, and it reads as one of the views above, not as the first
+				     of the projects below. -->
+				<svg class="mark" viewBox="0 0 16 16" aria-hidden="true">
+					<path
+						d="M2.3 9.2L4 3.4a1.1 1.1 0 011-.8h6a1.1 1.1 0 011 .8l1.7 5.8"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.3"
+						stroke-linejoin="round"
+					/>
+					<path
+						d="M2.3 9.2v2.9A1.3 1.3 0 003.6 13.4h8.8a1.3 1.3 0 001.3-1.3V9.2h-3.3l-1 1.7H6.6l-1-1.7z"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.3"
+						stroke-linejoin="round"
+					/>
+				</svg>
+			{:else}
+				<span class="dot" style="background: {colorVar(project.color)}" aria-hidden="true"></span>
+			{/if}
 			{projectName(project)}
 			<!-- Open tasks, not people. The same grey number meant three things in this
 			     one column — people at a project, projects at a group, tasks at a label
@@ -1370,21 +1438,31 @@
 		flex: none;
 	}
 
-	/* Projects inside a group are indented to the group's name, not to its dot:
-	   the eye follows the text, and lining up under the dot leaves the names
-	   looking a step short of where the heading starts. */
+	/* Projects sit at the same left margin whether or not they are in an area —
+	   one straight edge down the whole sidebar reads calmer than a staircase, and
+	   the bold area heading above already does the grouping the indent used to. */
 	.folder > a {
-		padding-left: calc(var(--s2) + var(--s4));
+		padding-left: var(--s2);
 	}
 
-	/* The line is indented with them, so a drop between two projects in a group
-	   reads as landing in the group rather than across the whole sidebar. */
 	.folder > a.sortable::before {
-		left: calc(var(--s2) + var(--s4));
+		left: var(--s2);
 	}
 
 	.folder > .empty {
-		padding-left: calc(var(--s2) + var(--s4));
+		padding-left: var(--s2);
+	}
+
+	/* An area is the sidebar's own heading — Things treats it as bold and plainly
+	   cased, a thing the eye lands on, not another faint uppercase label like the
+	   system sections. So an area's name is set apart while "Projekter", "Filtre"
+	   and "Etiketter" stay quiet. */
+	.folder-head h2 {
+		font-size: var(--menu-size);
+		font-weight: 600;
+		text-transform: none;
+		letter-spacing: 0;
+		color: var(--ink);
 	}
 
 	/* Inside the rename form now, so it needs no padding of its own — the form

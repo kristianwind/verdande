@@ -485,10 +485,10 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 		.evaluate((el) => el.getBoundingClientRect().left + parseFloat(getComputedStyle(el).paddingLeft));
 	expect(headLeft, 'gruppehovedet er rykket ind').toBeLessThanOrEqual(looseLeft);
 
-	// A project inside a group starts further in than a row outside one. Measured
-	// rather than asserted on a class, because indentation is a fact about where
-	// the row's contents land — and measured at the *content* edge, not the box:
-	// the indent is padding, so the element's own left edge does not move.
+	// A project sits at the same left margin whether or not it is in a group — one
+	// straight edge down the sidebar, with the bold heading doing the grouping the
+	// indent used to. Measured at the *content* edge, not the box, because what the
+	// eye follows is where the text lands.
 	await sidebar.getByRole('link', { name: 'Regnskab' }).dragTo(heading);
 	const contentLeft = (el) =>
 		el.getBoundingClientRect().left + parseFloat(getComputedStyle(el).paddingLeft);
@@ -496,7 +496,10 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 		sidebar.locator('.folder > a').first().evaluate(contentLeft),
 		sidebar.locator('.views a').first().evaluate(contentLeft)
 	]);
-	expect(inside, 'et projekt i en gruppe er ikke rykket ind').toBeGreaterThan(outside);
+	expect(
+		Math.abs(inside - outside),
+		'et projekt i en gruppe står ikke i flugt med de faste visninger'
+	).toBeLessThan(2);
 
 	await sidebar
 		.getByRole('link', { name: 'Regnskab' })
