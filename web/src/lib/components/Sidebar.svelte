@@ -1336,7 +1336,9 @@
 	h2 {
 		font-size: var(--menu-size);
 		font-weight: 600;
-		color: var(--ink);
+		/* Kul sets these headings to a quiet grey (--heading-ink); every other theme
+		   falls back to the reading ink and keeps them bold and bright. */
+		color: var(--heading-ink, var(--ink));
 	}
 
 	/* The heading's mark, in the muted ink so the bold name still leads. Sized and
@@ -1591,7 +1593,10 @@
 	   in both themes. */
 	a.active {
 		background: var(--accent-sunken);
-		color: var(--ink);
+		/* On a solid accent (Kul's amber menu item) the label goes dark via
+		   --nav-active-ink; on the tinted accent-sunken every other theme uses, it
+		   falls back to the reading ink. */
+		color: var(--nav-active-ink, var(--ink));
 		font-weight: 600;
 	}
 

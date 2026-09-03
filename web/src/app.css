@@ -210,27 +210,38 @@
 	--shadow-lg: 0 8px 32px rgb(0 0 0 / 0.4);
 }
 
-/* Kul — a neutral dark grey, the greys of Apple Notes rather than the default's
-   faint green cast. The same green accent, so it still reads as verdande; only the
-   grounds, surfaces and inks turn to plain grey. */
+/* Kul — the greys of Apple Notes' dark mode, to Kristian's own sampled values.
+   Three panel greys, lightest sidebar to darkest editor — the reverse of the usual
+   sunken-is-darkest order, which is why the editor gets its own --editor-bg rather
+   than sharing --surface-raised with the list. The accent turns amber, and the
+   selected menu item, selected note and section headings each get a fallback token
+   so this theme can hit its colours without touching any other. */
 [data-theme='charcoal'] {
-	--ground: #1c1c1c;
-	--surface: #232323;
-	--surface-raised: #2b2b2b;
-	--surface-sunken: #171717;
-	--line: #363636;
-	--line-strong: #474747;
+	--ground: #1e1e1e;
+	--surface: #2a3033;
+	--surface-raised: #242b2e; /* the note list */
+	--surface-sunken: #2d3133; /* the menu / sidebar — lightest here */
+	--line: #34393b;
+	--line-strong: #414749;
 
-	--ink: #ededed;
-	--ink-muted: #a4a4a4;
-	/* Light enough to clear 4.5:1 against the ground — the quiet tier of dates and
-	   counts is the first to disappear if it is too dim. */
-	--ink-faint: #8e8e8e;
+	--ink: #ffffff;
+	--ink-muted: #dcdcdc;
+	--ink-faint: #9ba0a2;
 
-	--accent: #5fbf8f;
-	--accent-hover: #6fcf9f;
-	--accent-sunken: #23332b80;
-	--accent-ink: #0d1411;
+	/* Amber, Apple's Notes accent. The bright value is the selected menu item; the
+	   dark text rides on top of it. */
+	--accent: #ffce35;
+	--accent-hover: #ffd75a;
+	--accent-sunken: #ffce35;
+	--accent-ink: #1e1e1e;
+
+	/* Per-element, and only here — every other theme falls back to the shared token
+	   in the var() calls that read these. */
+	--editor-bg: #1e1e1e; /* the text field, a shade below the list */
+	--note-on-bg: #a78c26; /* a selected note in the list — gold */
+	--note-on-ink: #1e1e1e; /* dark text on the gold */
+	--nav-active-ink: #1e1e1e; /* dark text on the amber menu item */
+	--heading-ink: #8a8e90; /* PROJEKTER and the group names — quiet grey */
 
 	--p1: #cf6b6b;
 	--p2: #d69f5c;
