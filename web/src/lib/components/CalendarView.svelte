@@ -651,6 +651,7 @@
 					<div
 						class="allday"
 						data-allday={iso(date)}
+						class:today={iso(date) === todayISO}
 						class:over={over === iso(date)}
 						ondragover={(e) => onDragOver(e, date)}
 						ondragleave={() => (over = null)}
@@ -876,17 +877,31 @@
 		overflow: hidden;
 	}
 
+	/* White, not the sidebar's sunken ground: a calendar reads lightest when the
+	   day itself is the brightest thing on the screen and the events are the soft
+	   colour laid on it — the opposite of the grey grid it was, where the events
+	   had to shout to be seen at all. */
 	.corner,
 	.head,
 	.gutter,
 	.allday,
 	.daycol {
-		background: var(--ground);
+		background: var(--surface);
 	}
 
 	.head {
 		padding: var(--s2) var(--s1);
 		text-align: center;
+	}
+
+	/* Today's whole column, faintly, so the eye finds it before it reads a number —
+	   the marker on the date above is the label, this is the glow it sits in. Kept
+	   under the events, so a pastel block still reads as its own calendar's colour
+	   rather than as this wash tinted. */
+	.head.today,
+	.allday.today,
+	.daycol.today {
+		background: color-mix(in oklab, var(--accent) 6%, var(--surface));
 	}
 
 	.head .wd {
@@ -901,9 +916,19 @@
 		font-size: var(--text-sm);
 	}
 
+	/* The marker at the top the day is named by: today's number in a filled disc,
+	   the same one the month grid gives today, so "this is today" is one glance in
+	   either view rather than a colour you have to already know to read. */
 	.head.today .num {
-		color: var(--accent);
+		color: var(--accent-ink);
+		background: var(--accent);
+		border-radius: var(--radius-full);
+		width: 20px;
+		height: 20px;
+		display: inline-grid;
+		place-items: center;
 		font-weight: 560;
+		margin-top: 1px;
 	}
 
 	.gutter {
@@ -977,6 +1002,10 @@
 	/* Placeringen kommer fra `place()` som en inline `style`; alt andet står her.
 	   To ting på samme tid deler bredden, så `margin-right` er den ene hårstrå
 	   luft, der gør to kasser til to kasser. */
+	/* A soft wash of the calendar's own colour rather than a grey block edged in it:
+	   each calendar keeps a dusty, unmistakable nuance, and a screen of them reads
+	   as colour laid on white instead of a grid of grey bars. The left edge stays,
+	   a shade stronger than the fill, so the block still has a spine. */
 	.tevent {
 		position: absolute;
 		margin-right: 2px;
@@ -984,16 +1013,20 @@
 		padding: 1px var(--s1);
 		border-radius: var(--radius-sm);
 		border-left: 3px solid var(--event-colour, var(--line-strong));
-		background: var(--surface-sunken);
-		color: var(--ink-muted);
+		background: color-mix(in oklab, var(--event-colour, var(--line-strong)) 16%, var(--surface));
+		color: var(--ink);
 		font-size: var(--text-xs);
 		line-height: 1.3;
 		text-align: left;
 		text-decoration: none;
 	}
 
+	/* A task is a card you can pick up, not an event you cannot — so on the white
+	   column it is an outlined card, where an event is a solid wash. The priority
+	   colour rides the left edge, as it does everywhere else. */
 	.tevent.task {
-		background: var(--surface-raised);
+		background: var(--surface);
+		box-shadow: inset 0 0 0 1px var(--line);
 		border-left-color: var(--line-strong);
 		color: var(--ink);
 		cursor: grab;
@@ -1101,7 +1134,8 @@
 		text-align: left;
 		padding: 1px var(--s1);
 		border-radius: var(--radius-sm);
-		background: var(--surface-raised);
+		background: var(--surface);
+		box-shadow: inset 0 0 0 1px var(--line);
 		border-left: 2px solid var(--line-strong);
 		color: var(--ink);
 		overflow: hidden;
@@ -1120,7 +1154,7 @@
 	}
 
 	.chip:hover {
-		background: var(--surface);
+		background: var(--surface-sunken);
 	}
 
 	/* An event reads as a different kind of thing at a glance, before any of the
@@ -1140,8 +1174,8 @@
 		padding: 1px var(--s1);
 		border-radius: var(--radius-sm);
 		border-left: 3px solid var(--event-colour);
-		background: var(--surface-sunken);
-		color: var(--ink-muted);
+		background: color-mix(in oklab, var(--event-colour) 16%, var(--surface));
+		color: var(--ink);
 		text-decoration: none;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -1156,7 +1190,7 @@
 	}
 
 	.event:hover {
-		background: var(--surface);
+		background: color-mix(in oklab, var(--event-colour) 26%, var(--surface));
 		color: var(--ink);
 	}
 
@@ -1165,7 +1199,7 @@
 	   every calendar anybody has used. */
 	.event.allday {
 		border-left: none;
-		background: color-mix(in oklab, var(--event-colour) 22%, var(--ground));
+		background: color-mix(in oklab, var(--event-colour) 22%, var(--surface));
 		box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--event-colour) 45%, transparent);
 	}
 
@@ -1267,20 +1301,18 @@
 			padding: 1px var(--s1);
 			border-radius: var(--radius-sm);
 			border-left: 2px solid var(--line-strong);
-			background: var(--surface-raised);
+			background: var(--surface);
+			box-shadow: inset 0 0 0 1px var(--line);
 		}
 
 		.calendar.week .chip[data-priority='1'] {
 			border-left-color: var(--p1);
-			background: var(--surface-raised);
 		}
 		.calendar.week .chip[data-priority='2'] {
 			border-left-color: var(--p2);
-			background: var(--surface-raised);
 		}
 		.calendar.week .chip[data-priority='3'] {
 			border-left-color: var(--p3);
-			background: var(--surface-raised);
 		}
 
 		/* Readable again in the week, for the reason the task chips are: a
@@ -1292,12 +1324,12 @@
 			padding: 1px var(--s1);
 			border-radius: var(--radius-sm);
 			border-left: 3px solid var(--event-colour);
-			background: var(--surface-sunken);
+			background: color-mix(in oklab, var(--event-colour) 16%, var(--surface));
 		}
 
 		.calendar.week .event.allday {
 			border-left: none;
-			background: color-mix(in oklab, var(--event-colour) 22%, var(--ground));
+			background: color-mix(in oklab, var(--event-colour) 22%, var(--surface));
 		}
 
 		.calendar.week .at {
