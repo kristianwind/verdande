@@ -1006,6 +1006,7 @@ export const completedView = new CompletedView();
  */
 export const THEMES = [
 	{ id: 'dark', name: 'theme.dark', note: 'theme.darkNote', dark: true },
+	{ id: 'charcoal', name: 'theme.charcoal', note: 'theme.charcoalNote', dark: true },
 	{ id: 'dusk', name: 'theme.dusk', note: 'theme.duskNote', dark: true },
 	{ id: 'light', name: 'theme.light', note: 'theme.lightNote', dark: false },
 	{ id: 'paper', name: 'theme.paper', note: 'theme.paperNote', dark: false },

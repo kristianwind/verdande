@@ -34,6 +34,23 @@
 		location.href = '/';
 	}
 
+	// Signing out is one click from a button the pointer passes over on its way to
+	// everything below it, and it drops you at the login screen — so it asks first.
+	// A second click within a few seconds confirms; anything else lets it lapse. Not
+	// a dialog: a two-step button is lighter and stays where the eye already is.
+	let confirmSignOut = $state(false);
+	let signOutTimer;
+	function onSignOutClick() {
+		if (confirmSignOut) {
+			clearTimeout(signOutTimer);
+			signOut();
+			return;
+		}
+		confirmSignOut = true;
+		clearTimeout(signOutTimer);
+		signOutTimer = setTimeout(() => (confirmSignOut = false), 3500);
+	}
+
 	let filters = $state([]);
 	let labels = $state([]);
 
@@ -1050,12 +1067,12 @@
 			{#if !app.connected}
 				<span class="offline" title={t('nav.offlineHint')}>{t('nav.offline')}</span>
 			{/if}
-			<button class="user" onclick={signOut}>
+			<button class="user" class:confirming={confirmSignOut} onclick={onSignOutClick}>
 				<span class="avatar" style="background: {app.user?.avatar_color}">
 					{app.user?.name?.[0]?.toUpperCase() ?? '?'}
 				</span>
-				<span class="user-name">{app.user?.name}</span>
-				<span class="signout">{t('nav.signOut')}</span>
+				<span class="user-name">{confirmSignOut ? t('nav.signOutConfirm') : app.user?.name}</span>
+				<span class="signout">{confirmSignOut ? '' : t('nav.signOut')}</span>
 			</button>
 		</div>
 	</div>
@@ -1091,14 +1108,16 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--s5);
-		padding: var(--s4) var(--s3);
+		/* A few pixels more air down each side than the rows strictly need, so the
+		   menu breathes rather than sitting flush against its own edges. */
+		padding: var(--s4) calc(var(--s3) + 3px);
 		background: var(--surface-sunken);
 		border-right: 1px solid var(--line);
 		/* Selve bjælken ruller ikke længere — .scroller gør. `hidden` frem for
 		   ingenting, fordi den stadig er den yderste kant: løber en række over,
 		   skal den klippes her og ikke skubbe kolonnen bredere. */
 		overflow: hidden;
-		padding-left: max(var(--s3), env(safe-area-inset-left));
+		padding-left: max(calc(var(--s3) + 3px), env(safe-area-inset-left));
 		position: relative;
 	}
 
@@ -1693,6 +1712,16 @@
 
 	.user:hover {
 		background: var(--surface);
+	}
+
+	/* Asking to confirm: the row goes to the danger tint and the name is replaced by
+	   "click again", so the second click is plainly the one that signs out. */
+	.user.confirming {
+		background: var(--danger-sunken);
+	}
+
+	.user.confirming .user-name {
+		color: var(--danger);
 	}
 
 	.avatar {
