@@ -1406,7 +1406,10 @@
 		top: 0;
 		z-index: 1;
 		margin: 0 0 var(--s1);
-		background: var(--ground);
+		/* --ground everywhere but Kul, where the ground is the darkest thing on screen
+		   and a day separator on it reads as a dark bar. There it takes the menu's own
+		   resting colour instead, via --note-group-bg. */
+		background: var(--note-group-bg, var(--ground));
 		border-radius: var(--radius);
 	}
 

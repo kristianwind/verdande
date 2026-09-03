@@ -242,6 +242,7 @@
 	--note-on-ink: #1e1e1e; /* dark text on the gold */
 	--nav-active-ink: #1e1e1e; /* dark text on the amber menu item */
 	--heading-ink: #8a8e90; /* PROJEKTER and the group names — quiet grey */
+	--note-group-bg: #2d3133; /* day separators take the menu's resting grey, not the darker ground */
 
 	--p1: #cf6b6b;
 	--p2: #d69f5c;
