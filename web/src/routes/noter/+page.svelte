@@ -710,7 +710,7 @@
 <!-- `has-note` drives the phone layout: one column, showing the list until a note
      is opened and the editor once one is. On a wide screen both are always up and
      the class does nothing. -->
-<div class="notes" class:has-note={selected}>
+<div class="notes" class:has-note={selectedId}>
 	<aside>
 		<div class="head">
 			<h1>{t('notes.title')}</h1>
@@ -919,10 +919,15 @@
 	</aside>
 
 	<section class="editor">
-		{#if selected}
+		{#if selectedId}
+			<!-- Keyed on the id, which is set the instant a row is tapped — not on the
+			     loaded note, which arrives a moment later. On a phone that moment was the
+			     whole bug: the pane did not switch until the body had loaded, so the first
+			     tap looked like nothing and people tapped again. -->
 			<!-- Phone only (hidden on a wide screen by CSS): the way back to the list,
 			     since there the editor fills the screen and the list is not beside it. -->
 			<button class="back" onclick={() => open(null)}>‹ {t('notes.title')}</button>
+			{#if selected}
 			<NoteEditor
 				note={selected}
 				notes={notes}
@@ -1056,6 +1061,12 @@
 					{/if}
 				</div>
 			</footer>
+			{:else}
+				<!-- Chosen, but its full text is still loading. Keep the pane (so the tap
+				     felt like it landed) and stay quiet — the "pick a note" line is for
+				     when nothing is chosen at all, not for this half-second. -->
+				<p class="empty" aria-busy="true"></p>
+			{/if}
 		{:else}
 			<p class="empty">{t('notes.pickOne')}</p>
 		{/if}
