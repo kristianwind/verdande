@@ -1,9 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <!-- Wunjo, the rune Verdande's name begins with. Drawn as strokes rather than
-       as a filled glyph so it stays legible at 16px in a browser tab. -->
+       as a filled glyph so it stays legible at 16px in a browser tab. Bigger and
+       heavier than it was, to read clearly as a home-screen icon, and nudged right
+       of the geometric centre so the heavy stave and the light flag balance about
+       the middle of the tile — a bounding box centred on 32 leaves the stave
+       looking left-hung. -->
   <rect width="64" height="64" rx="14" fill="#111312"/>
-  <g fill="none" stroke="#5fbf8f" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M22 14v36"/>
-    <path d="M22 17l17 8-17 8"/>
+  <g fill="none" stroke="#5fbf8f" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M26 11v42"/>
+    <path d="M26 15l17 9.5L26 34"/>
   </g>
 </svg>
