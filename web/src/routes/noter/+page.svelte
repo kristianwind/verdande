@@ -810,7 +810,11 @@
 										</svg>
 									</span>
 								{:else}
-									<span class="mark" class:closed={folded.has(group.key)} aria-hidden="true">▾</span>
+									<!-- No arrow, to match the sidebar: the box folds on a click,
+									     the star and the people icon are the marks that mean
+									     something, and a date group has none — an empty spacer, so
+									     every label still starts at the same place. -->
+									<span class="mark" aria-hidden="true"></span>
 								{/if}
 								{group.label}
 								<span class="count">{group.notes.length}</span>
@@ -1367,43 +1371,48 @@
 	 *
 	 * Baggrunden er ikke gennemsigtig. En klæbende overskrift uden en er en
 	 * overskrift med rækkerne kørende igennem sig. */
+	/* One design with the sidebar headings: a rounded box, the same corner as an
+	   active menu item, filled just enough to separate one group of notes from the
+	   next. The hard rule underneath is gone — the box is the separation now. */
 	h3.group {
 		position: sticky;
 		top: 0;
 		z-index: 1;
-		margin: 0;
+		margin: 0 0 var(--s1);
 		background: var(--ground);
-		border-bottom: 1px solid var(--line);
+		border-radius: var(--radius);
 	}
 
+	/* Bold and plainly cased, in the reading ink — the faint uppercase label read as
+	   a different app's heading beside the sidebar's. Menu size, so the two tiers of
+	   heading in front of the eye at once are the same size. */
 	h3.group button {
 		display: flex;
 		align-items: center;
 		gap: var(--s2);
 		width: 100%;
 		padding: var(--s2) var(--s2);
-		font-size: var(--text-xs);
+		font-size: var(--menu-size);
 		font-weight: 600;
-		letter-spacing: 0.07em;
-		text-transform: uppercase;
-		color: var(--ink-faint);
+		letter-spacing: normal;
+		text-transform: none;
+		color: var(--ink);
+		border-radius: var(--radius);
 	}
 
 	h3.group button:hover {
-		color: var(--ink-muted);
+		background: var(--surface-sunken);
 	}
 
+	/* The mark, or an empty box the same width where a date group has none, so every
+	   label starts at the same place. The star and the people icon fill it; the
+	   arrow that used to is gone — the box folds on a click. */
 	h3.group .mark {
 		flex: none;
 		width: 0.75em;
 		font-size: 0.85em;
 		line-height: 1;
 		color: var(--ink-faint);
-		transition: transform var(--fast) var(--ease);
-	}
-
-	h3.group .mark.closed {
-		transform: rotate(-90deg);
 	}
 
 	/* Sit eget navn og ikke `.star`. Rækkens favoritknap hedder også det og er
@@ -1419,6 +1428,7 @@
 		margin-left: auto;
 		font-weight: 500;
 		letter-spacing: 0;
+		color: var(--ink-muted);
 	}
 
 	/* Stregen mellem rækkerne er væk.
