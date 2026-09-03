@@ -17,6 +17,9 @@ import (
 type totpSetupResponse struct {
 	Secret string `json:"secret"`
 	URI    string `json:"uri"`
+	// The URI as a scannable QR code (SVG). The secret and URI stay for typing in by
+	// hand on a device that cannot scan.
+	QR string `json:"qr"`
 }
 
 func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +57,12 @@ func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, "store totp secret", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, totpSetupResponse{Secret: secret, URI: uri})
+	qrSVG, err := auth.TOTPQRSVG(uri)
+	if err != nil {
+		s.internal(w, r, "render totp qr", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, totpSetupResponse{Secret: secret, URI: uri, QR: qrSVG})
 }
 
 type totpConfirmResponse struct {
