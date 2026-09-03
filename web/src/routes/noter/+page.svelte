@@ -1495,8 +1495,21 @@
 		white-space: nowrap;
 	}
 
-	.row:hover {
-		background: var(--surface);
+	/* Pointer only. On a touch screen a :hover on the tap target costs a tap — iOS
+	   spends the first applying the hover and opens on the second. Gated, the first
+	   tap opens the note. The row's buttons are shown outright on touch below, since
+	   there is no hover to reveal them. */
+	@media (hover: hover) {
+		.row:hover {
+			background: var(--surface);
+		}
+	}
+
+	@media (hover: none) {
+		.star,
+		.archive-one {
+			opacity: 1;
+		}
 	}
 
 	.row.on {
