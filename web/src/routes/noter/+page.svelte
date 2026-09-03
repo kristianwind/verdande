@@ -1480,8 +1480,20 @@
 	}
 
 	.row.on {
-		background: var(--surface-raised);
-		color: var(--ink);
+		background: var(--note-on-bg, var(--surface-raised));
+		color: var(--note-on-ink, var(--ink));
+	}
+
+	/* On a themed selection colour (Kul's gold), the row's own quieter tiers go dark
+	   too, or the date and the filed line vanish into it. Other themes have no
+	   --note-on-ink, so these fall back to their normal muted inks. */
+	.row.on .when,
+	.row.on .filed {
+		color: var(--note-on-ink, var(--ink-muted));
+	}
+
+	.row.on .filed-icon {
+		color: var(--note-on-ink, var(--ink-faint));
 	}
 
 	/* Samme størrelse som en opgavetitel. En note og en opgave er to ting af samme
@@ -1577,8 +1589,10 @@
 		min-height: 0;
 		min-width: 0;
 		/* A nuance lighter than the ground in dark, still white in light — matches
-		   the note list beside it so the two read as one writing surface. */
-		background: var(--surface-raised);
+		   the note list beside it so the two read as one writing surface. Kul gives
+		   the text field its own darker grey via --editor-bg; other themes fall back
+		   to the shared surface so the list and the editor stay the same colour. */
+		background: var(--editor-bg, var(--surface-raised));
 		border: 1px solid var(--line);
 		border-radius: var(--radius);
 		/* Luft nok til at teksten ikke rører kanten.
