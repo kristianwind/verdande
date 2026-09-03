@@ -1142,14 +1142,16 @@
 	}
 
 	.scroller::-webkit-scrollbar {
-		width: 10px;
+		width: 6px;
 	}
 
+	/* No transparent border and no padding-box clip: those centred a 4px bar in a
+	   10px track, so the thumb floated three pixels shy of the divider. The bar is
+	   the track now — a thin rounded thumb sitting flush against the line on the
+	   right, which is where a scrollbar belongs. */
 	.scroller::-webkit-scrollbar-thumb {
 		background: var(--line-strong);
 		border-radius: 999px;
-		border: 3px solid transparent;
-		background-clip: padding-box;
 	}
 
 	.scroller::-webkit-scrollbar-track {
