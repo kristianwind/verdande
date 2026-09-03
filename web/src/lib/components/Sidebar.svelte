@@ -690,6 +690,64 @@
 		The whole heading is the target, not the chevron. At this size a lone chevron
 		is something you miss, and the name is where the eye already is.
 	-->
+	<!-- One monochrome mark per kind of heading, so a section and a group read as the
+	     same kind of thing — a folder of projects, a funnel of filters, a tag of
+	     labels — instead of one being a faint label and the other a coloured dot. -->
+	{#snippet sectionIcon(key)}
+		{#if key === 'filters'}
+			<svg class="head-icon" viewBox="0 0 16 16" aria-hidden="true">
+				<path
+					d="M2.2 3.4h11.6L9.3 8.8v3.4L6.7 10.9V8.8z"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.4"
+					stroke-linejoin="round"
+				/>
+			</svg>
+		{:else if key === 'labels'}
+			<svg class="head-icon" viewBox="0 0 16 16" aria-hidden="true">
+				<path
+					d="M7.7 2.3H13v5.3l-5.3 5.3-5.3-5.3z"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.4"
+					stroke-linejoin="round"
+				/>
+				<circle cx="10.2" cy="4.9" r="0.95" fill="currentColor" />
+			</svg>
+		{:else if key === 'shared'}
+			<svg class="head-icon" viewBox="0 0 16 16" aria-hidden="true">
+				<circle cx="6.2" cy="5.6" r="2.1" fill="none" stroke="currentColor" stroke-width="1.4" />
+				<path
+					d="M2.6 12.8c0-2.1 1.7-3.3 3.6-3.3s3.6 1.2 3.6 3.3"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.4"
+					stroke-linecap="round"
+				/>
+				<path
+					d="M11 9.6c1.5.2 2.6 1.3 2.6 3.2"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.4"
+					stroke-linecap="round"
+				/>
+				<circle cx="11.2" cy="5.6" r="1.7" fill="none" stroke="currentColor" stroke-width="1.4" />
+			</svg>
+		{:else}
+			<!-- Projekter and every group: a folder of projects. -->
+			<svg class="head-icon" viewBox="0 0 16 16" aria-hidden="true">
+				<path
+					d="M2 4.6a1 1 0 011-1h3.1l1.4 1.5H13a1 1 0 011 1v6.3a1 1 0 01-1 1H3a1 1 0 01-1-1z"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.4"
+					stroke-linejoin="round"
+				/>
+			</svg>
+		{/if}
+	{/snippet}
+
 	{#snippet foldHeading(key, label)}
 		<h2 class="fold">
 			<button
@@ -704,6 +762,7 @@
 				>
 					<path d="M6 9l6 6 6-6" />
 				</svg>
+				{@render sectionIcon(key)}
 				{label}
 			</button>
 		</h2>
@@ -916,11 +975,7 @@
 									}, 200);
 								}}
 							>
-								<span
-									class="dot group-dot"
-									style="background: {colorVar(group.color)}"
-									aria-hidden="true"
-								></span>
+								{@render sectionIcon('group')}
 								{group.name}
 							</a>
 						</h2>
@@ -1267,12 +1322,22 @@
 		background: var(--surface-sunken);
 	}
 
+	/* Every heading — the system sections and the user's groups — reads the same:
+	   a mark, then a bold plainly-cased name. What used to set them apart (one a
+	   faint uppercase label, the other a bold name with a coloured dot) is gone. */
 	h2 {
-		font-size: var(--text-xs);
-		font-weight: 560;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		color: var(--ink-faint);
+		font-size: var(--menu-size);
+		font-weight: 600;
+		color: var(--ink);
+	}
+
+	/* The heading's mark, in the muted ink so the bold name still leads. Sized and
+	   nudged like a row's own mark, so the icons line up down the sidebar. */
+	.head-icon {
+		width: 14px;
+		height: 14px;
+		flex: none;
+		color: var(--ink-muted);
 	}
 
 	/* Only the square icon buttons — "+" and the folder — and asked for by class
@@ -1373,39 +1438,17 @@
 	   klods ud for navnet permanent, fordi chevronen bliver stående, når gruppen
 	   er lukket. Prikken tones ud i stedet for at blive dækket — det er samme
 	   skifte, uden noget at male henover den med. */
+	/* A group folds from its own chevron, the same one the system sections carry —
+	   in the flow before the name now, not an absolute mark that appeared on hover,
+	   so a group and a section read identically at rest. The name beside it is still
+	   a link to the group's page; the chevron is the second intention. */
 	.chevron-button {
-		position: absolute;
-		left: calc(var(--s2) - 5px);
-		width: 18px;
-		height: 18px;
+		flex: none;
+		width: 14px;
+		height: 14px;
 		display: grid;
 		place-items: center;
-		border-radius: var(--radius-sm);
 		color: inherit;
-		opacity: 0;
-		/* Fordi prikken herunder tones ud frem for at blive dækket. En `opacity`
-		   under 1 laver en stakkontekst og maler elementet, som var det placeret
-		   med `z-index: 0` — så prikken, der står senere i DOM'en, lagde sig oven
-		   på knappen i det øjeblik den forsvandt. Den var usynlig og tog stadig
-		   klikket: prøven brugte tredive sekunder på at folde en gruppe, der ikke
-		   ville foldes. Ét lag op, og rækkefølgen er den samme som før. */
-		z-index: 1;
-	}
-
-	.folder-head:hover .chevron-button,
-	.chevron-button:focus-visible,
-	.chevron-button[aria-expanded='false'] {
-		opacity: 1;
-	}
-
-	/* Præcis de tre tilfælde ovenfor, læst nedad i stedet for opad: står chevronen
-	   der, er prikken væk. `opacity` og ikke `display`, for de to ligger oven i
-	   hinanden — forsvandt prikken ud af flowet, ville navnet rykke sig hver gang
-	   pilen kom frem. */
-	.folder-head:hover .group-dot,
-	.folder-head:has(.chevron-button:focus-visible) .group-dot,
-	.folder-head:has(.chevron-button[aria-expanded='false']) .group-dot {
-		opacity: 0;
 	}
 
 	.chevron-button:hover {
@@ -1485,14 +1528,6 @@
 		white-space: nowrap;
 	}
 
-	/* The group's own mark, between the chevron and the name — inside the fold
-	   button, so it cannot push the heading in. It is a mark now and not a
-	   control: the colour is chosen while renaming, which is the other edit to
-	   the same thing. */
-	.group-dot {
-		flex: none;
-	}
-
 	/* Projects sit at the same left margin whether or not they are in an area —
 	   one straight edge down the whole sidebar reads calmer than a staircase, and
 	   the bold area heading above already does the grouping the indent used to. */
@@ -1506,18 +1541,6 @@
 
 	.folder > .empty {
 		padding-left: var(--s2);
-	}
-
-	/* An area is the sidebar's own heading — Things treats it as bold and plainly
-	   cased, a thing the eye lands on, not another faint uppercase label like the
-	   system sections. So an area's name is set apart while "Projekter", "Filtre"
-	   and "Etiketter" stay quiet. */
-	.folder-head h2 {
-		font-size: var(--menu-size);
-		font-weight: 600;
-		text-transform: none;
-		letter-spacing: 0;
-		color: var(--ink);
 	}
 
 	/* Inside the rename form now, so it needs no padding of its own — the form
