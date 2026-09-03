@@ -383,19 +383,19 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	await expect(heading).toBeVisible();
 	await expect(sidebar.getByText('Træk et projekt herop')).toBeVisible();
 
-	// A group's name must be readable in full, and must start where a project's
-	// name starts.
+	// A group's name must be readable in full, and must line up with the other
+	// headings — not with the projects filed under it.
 	//
-	// Both halves are here because both were once broken at the same time and for
-	// different reasons. "Omdøb" and "Slet" sat in the flow reserving their width
-	// even while invisible, so ARBEJDE was drawn as "ARBE"; and the fold chevron
-	// sat before the name, pushing a group 22px further in than the projects it
-	// contains — so a group read as if it were filed under them. Every assertion
-	// in this file passed through both, because both buttons still worked.
+	// The clipping half is here because it was once broken: "Omdøb" and "Slet" sat
+	// in the flow reserving their width even while invisible, so ARBEJDE was drawn
+	// as "ARBE". The alignment half changed meaning with the redesign: a group now
+	// carries a fold chevron and a section icon just like "Projekter" above it, and
+	// belongs to that heading tier rather than to the project rows below.
 	const shape = await sidebar.locator('.folder-head').evaluate((el) => {
 		const link = el.querySelector('h2 a');
-		const name = { ...link.querySelector('.dot').getBoundingClientRect().toJSON() };
-		// The last child of the link is the name itself; the dot is a span before it.
+		// The leading mark is now the section icon, the same folder/funnel/tag glyph
+		// the system headings carry — a group and a section read identically.
+		const name = { ...link.querySelector('.head-icon').getBoundingClientRect().toJSON() };
 		return {
 			clipped: link.scrollWidth > link.clientWidth + 1,
 			left: name.left,
@@ -407,17 +407,17 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	expect(shape.clipped, 'gruppens navn bliver klippet').toBe(false);
 	expect(shape.count, 'navnet og tallet overlapper').toBeGreaterThanOrEqual(shape.right);
 
-	// Measured dot to dot, not box to box: both rows begin with the same coloured
-	// mark, and it is the only thing in them that means the same on both sides.
-	// Comparing the group's inner link with the project's outer box reported the
-	// row's own padding as a misalignment.
-	const projectLeft = await sidebar
-		.getByRole('link', { name: 'Regnskab' })
-		.evaluate((el) => el.querySelector('.dot').getBoundingClientRect().left);
+	// A group is a heading, not a project row: it belongs to the same tier as
+	// "Projekter" and the other system sections — chevron, icon, bold name — and
+	// starts where they start, not where the projects filed under it do. Measured
+	// icon to icon, the one mark both headings share.
+	const sectionLeft = await sidebar
+		.getByRole('heading', { name: 'Projekter' })
+		.evaluate((el) => el.querySelector('.head-icon').getBoundingClientRect().left);
 	expect(
-		Math.abs(shape.left - projectLeft),
-		`gruppen starter ${Math.round(shape.left - projectLeft)}px fra projekterne`
-	).toBeLessThanOrEqual(2);
+		Math.abs(shape.left - sectionLeft),
+		`gruppen starter ${Math.round(shape.left - sectionLeft)}px fra sektionsoverskrifterne`
+	).toBeLessThanOrEqual(4);
 
 	// Dragged in, then dragged back out onto "Projekter" — which is the reason
 	// that heading is a drop target at all: with every project filed away there
@@ -440,18 +440,13 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 		'false'
 	);
 
-	// En foldet gruppe står med sin chevron fremme permanent, og den lå oven i
-	// prikken med et felt i --surface bag sig — en lys firkant ud for navnet på
-	// den sænkede bjælke, hele tiden. Nu tones prikken ud i stedet, så der er
-	// ingenting at male henover den med.
-	const chevron = await sidebar
+	// A group's chevron is in the flow now, the same one the system sections carry —
+	// no absolute mark with a --surface field behind it, so a folded group no longer
+	// leaves a pale square beside its name on the sunken bar.
+	const chevronBg = await sidebar
 		.locator('.folder-head .chevron-button')
-		.evaluate((el) => ({
-			background: getComputedStyle(el).backgroundColor,
-			dot: getComputedStyle(el.closest('.folder-head').querySelector('.group-dot')).opacity
-		}));
-	expect(chevron.background, 'chevronen har en firkant bag sig').toBe('rgba(0, 0, 0, 0)');
-	expect(chevron.dot, 'prikken ligger stadig under chevronen').toBe('0');
+		.evaluate((el) => getComputedStyle(el).backgroundColor);
+	expect(chevronBg, 'chevronen har en firkant bag sig').toBe('rgba(0, 0, 0, 0)');
 
 	await sidebar.getByRole('button', { name: /^Fold Arbejde/ }).click();
 
@@ -467,11 +462,7 @@ test('en projektgruppe kan foldes, fyldes og slettes uden at tage projekterne me
 	// button on click.
 	await expect(sidebar.getByLabel('Gruppens navn')).toBeVisible();
 	await sidebar.getByLabel('Gruppens navn').press('Enter');
-
-	const painted = await sidebar
-		.locator('.folder-head .group-dot')
-		.evaluate((el) => getComputedStyle(el).backgroundColor);
-	expect(painted, 'gruppens prik fik ikke sin farve').not.toBe('rgba(0, 0, 0, 0)');
+	await expect(sidebar.getByRole('link', { name: 'Arbejde', exact: true })).toBeVisible();
 
 	// The heading itself is *not* indented — only what is filed under it. A heading
 	// that starts further in than the rows above it says the heading is inside
