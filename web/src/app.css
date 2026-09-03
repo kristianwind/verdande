@@ -210,6 +210,40 @@
 	--shadow-lg: 0 8px 32px rgb(0 0 0 / 0.4);
 }
 
+/* Kul — a neutral dark grey, the greys of Apple Notes rather than the default's
+   faint green cast. The same green accent, so it still reads as verdande; only the
+   grounds, surfaces and inks turn to plain grey. */
+[data-theme='charcoal'] {
+	--ground: #1c1c1c;
+	--surface: #232323;
+	--surface-raised: #2b2b2b;
+	--surface-sunken: #171717;
+	--line: #363636;
+	--line-strong: #474747;
+
+	--ink: #ededed;
+	--ink-muted: #a4a4a4;
+	/* Light enough to clear 4.5:1 against the ground — the quiet tier of dates and
+	   counts is the first to disappear if it is too dim. */
+	--ink-faint: #8e8e8e;
+
+	--accent: #5fbf8f;
+	--accent-hover: #6fcf9f;
+	--accent-sunken: #23332b80;
+	--accent-ink: #0d1411;
+
+	--p1: #cf6b6b;
+	--p2: #d69f5c;
+	--p3: #6b9ecf;
+	--p4: var(--ink-faint);
+
+	--danger: #cf6b6b;
+	--danger-sunken: #33201f;
+
+	--shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+	--shadow-lg: 0 8px 32px rgb(0 0 0 / 0.4);
+}
+
 /* Papir — warm light, closer to paper than to a screen. */
 [data-theme='paper'] {
 	--ground: #f6f1e7;
@@ -375,9 +409,13 @@ button {
 	   søgefelt. */
 }
 
+/* A translucent wash of the accent, not a solid block and not the old near-invisible
+   tint. --accent-sunken sat a hair off the editor's own surface in dark, so a
+   selection could not be seen; a solid accent could, but read as a heavy slab. Mixing
+   the accent part-way into transparent lays a clear green film over the text while it
+   keeps its own colour — visible on white and on the dark surfaces alike. */
 ::selection {
-	background: var(--accent-sunken);
-	color: var(--ink);
+	background: color-mix(in oklab, var(--accent) 42%, transparent);
 }
 
 /* Scrollbars, made quiet. The default on Windows is a wide grey slab that

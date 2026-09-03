@@ -115,6 +115,7 @@ export const en = {
 	'nav.calendar': 'Calendar',
 	'nav.settings': 'Settings',
 	'nav.signOut': 'Sign out',
+	'nav.signOutConfirm': 'Click again to sign out',
 	'nav.main': 'Main menu',
 	'nav.search': 'Search',
 	'nav.searchLong': 'Search tasks and projects',
@@ -836,6 +837,8 @@ export const en = {
 	// --- the themes -------------------------------------------------------------------
 	'theme.dark': 'Northern lights',
 	'theme.darkNote': 'Dark, with a green accent.',
+	'theme.charcoal': 'Charcoal',
+	'theme.charcoalNote': 'Neutral dark grey.',
 	'theme.dusk': 'Dusk',
 	'theme.duskNote': 'Dark and warm, with amber.',
 	'theme.light': 'Daylight',

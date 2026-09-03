@@ -119,6 +119,7 @@ export const da = {
 	'nav.calendar': 'Kalender',
 	'nav.settings': 'Indstillinger',
 	'nav.signOut': 'Log ud',
+	'nav.signOutConfirm': 'Tryk igen for at logge ud',
 	'nav.main': 'Hovedmenu',
 	'nav.search': 'Søg',
 	'nav.searchLong': 'Søg i opgaver og projekter',
@@ -843,6 +844,8 @@ export const da = {
 	// --- the themes -------------------------------------------------------------------
 	'theme.dark': 'Nordlys',
 	'theme.darkNote': 'Mørk med grøn accent.',
+	'theme.charcoal': 'Kul',
+	'theme.charcoalNote': 'Neutral mørkegrå.',
 	'theme.dusk': 'Skumring',
 	'theme.duskNote': 'Mørk og varm, med rav.',
 	'theme.light': 'Dagslys',

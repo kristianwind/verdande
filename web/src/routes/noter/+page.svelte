@@ -1068,8 +1068,9 @@
 		   against the sidebar's rule, which reads as a rendering fault rather than
 		   as a layout. */
 		/* Luft hele vejen rundt om arket. Højre og bund var nul, dengang editoren
-		   ingen kant havde og ingenting kunne støde imod. */
-		padding: var(--s3) var(--s4) var(--s3) var(--s4);
+		   ingen kant havde og ingenting kunne støde imod. Et par pixels mere om
+		   notelisten, så kortet ikke ligger klods op ad menuen. */
+		padding: var(--s3) var(--s4) var(--s3) calc(var(--s4) + 3px);
 		display: grid;
 		grid-template-columns: minmax(220px, 300px) 1fr;
 		gap: var(--s4);
@@ -1083,13 +1084,15 @@
 		gap: var(--s2);
 		min-height: 0;
 		min-width: 0;
-		border-right: 1px solid var(--line);
-		padding-right: var(--s3);
+		/* A rounded card, the same corner and border as the editor beside it — the
+		   list is its own sheet, not a column ruled off the page. */
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
 		/* White in light, a nuance lighter than the ground in dark — the note list
 		   is a surface you read down, so it lifts off the page like the editor does.
 		   --surface-raised is #fff in the light themes and one step up in the dark. */
 		background: var(--surface-raised);
-		padding-left: var(--s3);
+		padding: var(--s3);
 	}
 
 	.head {
