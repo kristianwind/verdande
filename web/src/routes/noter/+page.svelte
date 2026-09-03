@@ -1081,6 +1081,11 @@
 		min-width: 0;
 		border-right: 1px solid var(--line);
 		padding-right: var(--s3);
+		/* White in light, a nuance lighter than the ground in dark — the note list
+		   is a surface you read down, so it lifts off the page like the editor does.
+		   --surface-raised is #fff in the light themes and one step up in the dark. */
+		background: var(--surface-raised);
+		padding-left: var(--s3);
 	}
 
 	.head {
@@ -1546,7 +1551,9 @@
 		flex-direction: column;
 		min-height: 0;
 		min-width: 0;
-		background: var(--surface);
+		/* A nuance lighter than the ground in dark, still white in light — matches
+		   the note list beside it so the two read as one writing surface. */
+		background: var(--surface-raised);
 		border: 1px solid var(--line);
 		border-radius: var(--radius);
 		/* Luft nok til at teksten ikke rører kanten.
