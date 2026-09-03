@@ -2030,7 +2030,12 @@ test('en passkey kan registreres og logges ind med', async ({ browser, browserNa
 	// Now sign out and back in with it. No email typed: the device knows which
 	// account its key belongs to, which is also why this page cannot be used to
 	// find out who has an account here.
-	await page.getByRole('navigation', { name: 'Hovedmenu' }).getByText('Log ud').click();
+	// Signing out asks first now: one click arms it, a second within a few seconds
+	// does it. The whole account row is the button; its label changes to the prompt.
+	const signOut = page.getByRole('navigation', { name: 'Hovedmenu' }).locator('.user');
+	await signOut.click();
+	await expect(signOut).toContainText('Tryk igen for at logge ud');
+	await signOut.click();
 	// `exact`, because "Log ind" is a substring of "Log ind med en passkey" and
 	// Playwright matches an accessible name loosely unless told otherwise.
 	await expect(page.getByRole('button', { name: 'Log ind', exact: true })).toBeVisible();
