@@ -285,7 +285,7 @@
 		<p class="hint">{t('data.doneHint')}</p>
 	</header>
 	<div class="row">
-		<a class="ghost" href="/faerdige">{t('data.openDone')}</a>
+		<a class="link" href="/faerdige">{t('data.openDone')}</a>
 	</div>
 </section>
 
