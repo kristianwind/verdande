@@ -138,6 +138,7 @@
 
 	let totpSecret = $state('');
 	let totpURI = $state('');
+	let totpQR = $state('');
 	let totpCode = $state('');
 	let totpErrors = $state({});
 	let recoveryCodes = $state([]);
@@ -163,6 +164,7 @@
 			enablePassword = '';
 			totpSecret = r.secret;
 			totpURI = r.uri;
+			totpQR = r.qr;
 		} catch (e) {
 			totpErrors = e.fields ?? {};
 			if (!Object.keys(totpErrors).length) app.toast(humanMessage(e));
@@ -177,6 +179,7 @@
 			recoveryCodes = r.recovery_codes;
 			totpSecret = '';
 			totpURI = '';
+			totpQR = '';
 			totpCode = '';
 			app.user = await api.me();
 		} catch (e) {
@@ -492,8 +495,13 @@
 	{:else if totpSecret}
 		<div class="field">
 			<p class="hint">{t('account.scanHint')}</p>
+			{#if totpQR}
+				<!-- The server renders the otpauth URI as an SVG QR — one dark path on a
+				     white square, so it scans in either theme. It is the URI it already
+				     sent, drawn; nothing here builds it. -->
+				<div class="qr">{@html totpQR}</div>
+			{/if}
 			<p class="mono secret">{totpSecret}</p>
-			<p class="hint mono uri">{totpURI}</p>
 		</div>
 
 		<form onsubmit={confirmTOTP}>
@@ -514,7 +522,14 @@
 
 			<div class="row">
 				<button class="primary" type="submit">{t('account.confirm')}</button>
-				<button class="secondary" onclick={() => (totpSecret = '')}>{t('account.cancel')}</button>
+				<button
+				class="secondary"
+				onclick={() => {
+					totpSecret = '';
+					totpURI = '';
+					totpQR = '';
+				}}>{t('account.cancel')}</button
+			>
 			</div>
 		</form>
 	{:else}
@@ -859,6 +874,23 @@
 		color: var(--ink-faint);
 	}
 
+	/* On its own white card whatever the theme: a QR is dark-on-light or it does not
+	   scan, so the square keeps its own background rather than taking the page's. */
+	.qr {
+		width: 176px;
+		height: 176px;
+		padding: var(--s2);
+		background: #ffffff;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+	}
+
+	.qr :global(svg) {
+		display: block;
+		width: 100%;
+		height: 100%;
+	}
+
 	.secret {
 		margin: 0;
 		padding: var(--s3);
@@ -866,10 +898,6 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius);
 		letter-spacing: 0.08em;
-		overflow-wrap: anywhere;
-	}
-
-	.uri {
 		overflow-wrap: anywhere;
 	}
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/boombuler/barcode/qr"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 )
@@ -48,6 +49,41 @@ func NewTOTPSecret(issuer, account string) (secret, uri string, err error) {
 		return "", "", fmt.Errorf("auth: generate totp secret: %w", err)
 	}
 	return key.Secret(), key.URL(), nil
+}
+
+// TOTPQRSVG renders the otpauth:// URI as a QR code, as an SVG a phone camera can
+// read. SVG rather than a PNG data URI so it stays crisp at any size and adds no
+// base64 blob to the page — one dark path on a white square, which is what a scanner
+// needs whatever theme the page is in.
+//
+// The barcode encoder is already in the module graph (pquerna/otp draws on it), so
+// this borrows a dependency rather than adding one.
+func TOTPQRSVG(uri string) (string, error) {
+	code, err := qr.Encode(uri, qr.M, qr.Auto)
+	if err != nil {
+		return "", fmt.Errorf("auth: encode totp qr: %w", err)
+	}
+	b := code.Bounds()
+	n := b.Dx()
+	// A four-module quiet zone all round, which the spec requires and scanners rely
+	// on — without it the code runs to the edge and a reader cannot find its border.
+	const quiet = 4
+	size := n + quiet*2
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" shape-rendering="crispEdges">`, size, size)
+	sb.WriteString(`<rect width="100%" height="100%" fill="#ffffff"/><path fill="#111312" d="`)
+	for y := 0; y < n; y++ {
+		for x := 0; x < n; x++ {
+			// Dark modules are black; the red channel is 0 for those and full for the
+			// light ones. One 1×1 rect per dark module, merged into a single path.
+			if r, _, _, _ := code.At(b.Min.X+x, b.Min.Y+y).RGBA(); r == 0 {
+				fmt.Fprintf(&sb, "M%d %dh1v1h-1z", x+quiet, y+quiet)
+			}
+		}
+	}
+	sb.WriteString(`"/></svg>`)
+	return sb.String(), nil
 }
 
 // TOTPURI rebuilds the otpauth:// URI for an existing secret, for showing the QR
