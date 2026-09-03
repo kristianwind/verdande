@@ -126,6 +126,8 @@ export const en = {
 	'nav.toggleTheme': 'Switch between light and dark',
 	'nav.offline': 'Offline',
 	'nav.offlineHint': 'Changes from other people are not showing right now',
+	'net.reconnecting': 'Reconnecting…',
+	'net.offline': 'No connection',
 	'nav.doItToday': 'Do it today',
 
 	// --- the sidebar's own sections ------------------------------------------------

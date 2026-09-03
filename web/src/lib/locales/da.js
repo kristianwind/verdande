@@ -130,6 +130,8 @@ export const da = {
 	'nav.toggleTheme': 'Skift mellem lyst og mørkt tema',
 	'nav.offline': 'Offline',
 	'nav.offlineHint': 'Ændringer fra andre vises ikke lige nu',
+	'net.reconnecting': 'Genopretter forbindelse…',
+	'net.offline': 'Ingen forbindelse',
 	'nav.doItToday': 'Gør det i dag',
 
 	// --- the sidebar's own sections ------------------------------------------------
