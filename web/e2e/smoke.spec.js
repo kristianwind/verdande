@@ -565,8 +565,13 @@ test('en opgave kan trækkes ned i en tom sektion, og en fejlet indlæsning sige
 	await expect(section.getByText('brænde kaffe')).toBeVisible();
 	await expect(page.locator('.toast')).toHaveCount(0);
 
-	// A load that fails says so, and offers to try again.
-	await page.route('**/api/v1/projects/*', (r) => r.abort());
+	// A load that fails with a server error says so at once and offers to try again.
+	// A 500 is the server answering, not a dropped connection, so it is not a blip to
+	// wait out — it is not retried, and the message is immediate. (A dropped
+	// connection now retries for a few seconds first; that is the self-heal test.)
+	await page.route('**/api/v1/projects/*', (r) =>
+		r.fulfill({ status: 500, contentType: 'application/json', body: '{"code":"internal_error"}' })
+	);
 	await page.reload();
 	await expect(page.getByText('Serveren svarede ikke')).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Prøv igen' })).toBeVisible();
@@ -575,6 +580,52 @@ test('en opgave kan trækkes ned i en tom sektion, og en fejlet indlæsning sige
 	await expect(page.getByRole('heading', { name: 'Risteriet' })).toBeVisible();
 
 	expect(trouble.filter((t) => !t.includes('projects'))).toEqual([]);
+});
+
+/**
+ * A save made during a short drop is not lost to it.
+ *
+ * This is the whole of what "offline" means here: not a cache to work in with no
+ * server, but a save that rides out a few seconds of no connection and goes through
+ * when it comes back — with a quiet "reconnecting" while it waits, and no error and
+ * no reverted change once it heals. A drop that outlasts the retry window is a real
+ * outage and takes the normal error path; that is not this test.
+ */
+test('en kort netaudsætning under en handling genoprettes af sig selv', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	// Wait for the app to finish loading before cutting the line — `goto` resolves at
+	// the load event, but the data load runs after hydration, and aborting that would
+	// test a cold start, not a blip mid-use.
+	const box = page.getByLabel('Ny opgave');
+	await expect(box).toBeVisible();
+
+	// The app is loaded and online. Now the connection drops — every call fails, the
+	// way it does in a tunnel, rather than one endpoint erroring.
+	let down = true;
+	await page.route('**/api/v1/**', (route) => (down ? route.abort() : route.continue()));
+
+	// A task captured during the drop. Its save fails on the network and starts
+	// retrying rather than giving up.
+	await box.fill('under et udfald');
+	await box.press('Enter');
+
+	// The quiet pill, once the retry has lasted long enough to be worth showing.
+	await expect(page.locator('.netstatus')).toBeVisible();
+
+	// The drop ends. The retry goes through on its own and the pill leaves — no
+	// error, nothing toasted as failed.
+	down = false;
+	await expect(page.locator('.netstatus')).toHaveCount(0, { timeout: 10000 });
+	await expect(page.locator('.toast')).toHaveCount(0);
+
+	// And the save landed: an undated quick capture goes to the Inbox, and there it
+	// is, saved across the drop rather than lost to it.
+	await page.getByRole('link', { name: /Indbakke/ }).click();
+	await expect(page.getByText('under et udfald')).toBeVisible({ timeout: 10000 });
+
+	expect(trouble).toEqual([]);
 });
 
 /**

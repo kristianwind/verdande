@@ -1,6 +1,7 @@
 <script>
 	import '../app.css';
 	import { app, theme, sidebar } from '$lib/stores.svelte.js';
+	import { connectivity } from '$lib/connectivity.svelte.js';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import Sidebar from '$lib/components/Sidebar.svelte';
@@ -13,6 +14,29 @@
 
 	let paletteOpen = $state(false);
 	let sidebarOpen = $state(false);
+
+	/**
+	 * Whether to show the "reconnecting" pill.
+	 *
+	 * Held back seven tenths of a second while merely retrying, so a blip that ends
+	 * on the first retry never flashes a pill nobody needed to see. A retry that has
+	 * already given up ('lost') is a real error and shown at once — the delay is only
+	 * for the hopeful case.
+	 */
+	let showNet = $state(false);
+	$effect(() => {
+		const s = connectivity.status;
+		if (s === 'online') {
+			showNet = false;
+			return;
+		}
+		if (s === 'lost') {
+			showNet = true;
+			return;
+		}
+		const timer = setTimeout(() => (showNet = true), 700);
+		return () => clearTimeout(timer);
+	});
 
 	/**
 	 * The two pages that arrive by email, and are for somebody who is not signed in.
@@ -204,6 +228,16 @@
 			</div>
 		{/each}
 	</div>
+
+	<!-- A short drop, said quietly: it appears only if a save is still retrying after
+	     the better part of a second, and leaves the moment the connection is back — so
+	     a two-second blip that heals itself is felt as nothing at all. -->
+	{#if showNet}
+		<div class="netstatus" class:lost={connectivity.status === 'lost'} role="status">
+			<span class="net-dot" aria-hidden="true"></span>
+			{connectivity.status === 'lost' ? t('net.offline') : t('net.reconnecting')}
+		</div>
+	{/if}
 {/if}
 
 <style>
@@ -376,6 +410,62 @@
 		gap: var(--s2);
 		z-index: 60;
 		padding-bottom: env(safe-area-inset-bottom);
+	}
+
+	/* The reconnecting pill: at the top, small, centred. Not a toast — a toast is a
+	   thing that happened and is over, this is a thing still happening. */
+	.netstatus {
+		position: fixed;
+		top: calc(var(--s3) + env(safe-area-inset-top));
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 60;
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		padding: var(--s1) var(--s3);
+		border-radius: var(--radius-full);
+		background: var(--surface-raised);
+		border: 1px solid var(--line-strong);
+		box-shadow: 0 4px 18px rgba(0, 0, 0, 0.14);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+	}
+
+	.net-dot {
+		width: 7px;
+		height: 7px;
+		flex: none;
+		border-radius: var(--radius-full);
+		background: var(--color-amber);
+		animation: net-pulse 1.1s ease-in-out infinite;
+	}
+
+	/* Given up: an amber pulse becomes a still red, the same red a failed toast
+	   carries, so "still trying" and "gave up" do not look alike. */
+	.netstatus.lost {
+		color: var(--ink);
+	}
+
+	.netstatus.lost .net-dot {
+		background: var(--p1);
+		animation: none;
+	}
+
+	@keyframes net-pulse {
+		0%,
+		100% {
+			opacity: 0.35;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.net-dot {
+			animation: none;
+		}
 	}
 
 	.toast {

@@ -23,6 +23,57 @@ export class ApiError extends Error {
 }
 
 import { t } from './i18n.svelte.js';
+import { connectivity, sleepOrOnline } from './connectivity.svelte.js';
+
+/**
+ * How long a request keeps retrying a network failure before giving up.
+ *
+ * This is the whole of the "offline" feature and its whole limit: it rides out a
+ * blip of a few seconds so a save is not lost to it, and then — because the app is
+ * a live view of a shared list, not a local database — it stops and says so rather
+ * than holding an edit for a network that is not coming back. Fifteen seconds is
+ * long enough for a handover or a tunnel and short enough that a real outage fails
+ * while the user is still looking at what they did.
+ */
+const RETRY_WINDOW_MS = 15000;
+
+/** Backoff between attempts: 0.5s, 1s, 2s, then 3s, capped. A waiting sleep also
+ *  wakes the instant the OS reports a link again, so most blips end on the first. */
+const backoff = (attempt) => Math.min(500 * 2 ** attempt, 3000);
+
+/**
+ * Runs `send` (a fetch), retrying only network failures for a short window.
+ *
+ * A network failure is fetch rejecting — no HTTP status ever arrived. An HTTP
+ * error (4xx/5xx) is the server answering, so it is returned, not retried: retrying
+ * a 400 just asks the same wrong question again. An abort is the caller changing
+ * its mind (a superseded search), so it is left to propagate.
+ *
+ * Retrying is not free of risk: a create whose request reached the server but whose
+ * response was lost would be made twice. For a drop of seconds that is rare, and the
+ * alternative — losing the save every time the network hiccups — is the thing this
+ * exists to stop. A server-side idempotency key would remove even that; it is a
+ * larger change noted for later.
+ */
+async function withRetry(send, noRetry = false) {
+	const deadline = Date.now() + (noRetry ? 0 : RETRY_WINDOW_MS);
+	let attempt = 0;
+	for (;;) {
+		try {
+			const res = await send();
+			connectivity.reachable();
+			return res;
+		} catch (e) {
+			if (e?.name === 'AbortError') throw e;
+			if (Date.now() >= deadline) {
+				connectivity.lost();
+				throw new ApiError(0, 'offline', 'ingen forbindelse');
+			}
+			connectivity.retrying();
+			await sleepOrOnline(backoff(attempt++));
+		}
+	}
+}
 
 /**
  * The key for each code the API can return.
@@ -110,14 +161,10 @@ async function request(method, path, body, options = {}) {
 		init.body = JSON.stringify(body);
 	}
 
-	let res;
-	try {
-		res = await fetch(`/api/v1${path}`, init);
-	} catch (e) {
-		// A network failure is not an HTTP status; give it one the app can handle
-		// the same way as everything else.
-		throw new ApiError(0, 'offline', 'ingen forbindelse');
-	}
+	// Retries a network failure for a few seconds so a short drop does not lose the
+	// call; `withRetry` turns an exhausted window into the same `offline` error the
+	// app already handles. `options.noRetry` opts a call out — used by nothing yet.
+	const res = await withRetry(() => fetch(`/api/v1${path}`, init), options.noRetry);
 
 	if (res.status === 204) return null;
 
@@ -157,12 +204,9 @@ async function upload(path, file, field = 'file') {
 	const form = new FormData();
 	form.append(field, file);
 
-	let res;
-	try {
-		res = await fetch(`/api/v1${path}`, { method: 'POST', body: form, credentials: 'same-origin' });
-	} catch {
-		throw new ApiError(0, 'offline', 'ingen forbindelse');
-	}
+	const res = await withRetry(() =>
+		fetch(`/api/v1${path}`, { method: 'POST', body: form, credentials: 'same-origin' })
+	);
 
 	const text = await res.text();
 	let payload = null;
