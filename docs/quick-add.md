@@ -3,11 +3,11 @@
 One line in, a fully-formed task out.
 
 ```
-betal moms i morgen kl 10 p1 #Firma @regnskab
+file the VAT return tomorrow at 10am p1 #Accounts @tax
 ```
 
-becomes a task called **betal moms**, due tomorrow at 10:00, priority 1, in the
-Firma project, labelled regnskab.
+becomes a task called **file the VAT return**, due tomorrow at 10:00, priority 1,
+in the Accounts project, labelled tax.
 
 The parts it understands are tinted underneath the text as you type, so you can see
 it being read before you commit to it.
@@ -16,8 +16,8 @@ it being read before you commit to it.
 
 | You type | It means |
 |---|---|
-| `#Firma` | Put it in that project. `#"Q3 rapport"` for a name with spaces. |
-| `@regnskab` | Add that label. As many as you like. |
+| `#Accounts` | Put it in that project. `#"Q3 report"` for a name with spaces. |
+| `@tax` | Add that label. As many as you like. |
 | `p1` … `p4` | Priority. `!!!`, `!!` and `!` also work. |
 | `i dag`, `i morgen`, `i overmorgen` | Today, tomorrow, the day after. |
 | `mandag`, `på fredag` | The next such weekday. |

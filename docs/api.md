@@ -85,7 +85,7 @@ what a person reads is decided by the client, which knows what language they are
 curl -X POST https://todo.example.dk/api/v1/tasks/quick-add \
   -H "Authorization: Bearer vrd_..." \
   -H "Content-Type: application/json" \
-  -d '{"text": "betal moms i morgen kl 10 p1 #Firma @regnskab"}'
+  -d '{"text": "file the VAT return tomorrow at 10am p1 #Accounts @tax"}'
 ```
 
 ### Projects and sections

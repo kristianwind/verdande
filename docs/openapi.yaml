@@ -832,9 +832,9 @@ paths:
       tags: [tasks]
       summary: Create a task from one line of natural language.
       description: |
-        Danish and English. `betal moms i morgen kl 10 p1 #Firma @vigtigt` becomes
-        a task due tomorrow at 10:00, priority 1, in the project Firma, labelled
-        vigtigt. An unknown `#project` is not an error — the task goes to the
+        Danish and English. `file the VAT return tomorrow at 10am p1 #Accounts @tax`
+        becomes a task due tomorrow at 10:00, priority 1, in the project Accounts,
+        labelled tax. An unknown `#project` is not an error — the task goes to the
         Inbox rather than a thought being thrown away over a typo.
       requestBody:
         required: true
