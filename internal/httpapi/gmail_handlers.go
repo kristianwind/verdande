@@ -251,10 +251,12 @@ func (s *Server) handleGmailSyncNow(w http.ResponseWriter, r *http.Request) {
 // takes a context and a user rather than a request.
 // maxGmailSeen bounds the list of message ids already turned into tasks.
 //
-// Gmail is read-only here — the scope is `gmail.readonly`, deliberately, because
-// asking for less is what makes the consent screen something a person can agree
-// to — so verdande cannot unstar a message the way the IMAP side unflags one. The
-// record has to live on this side, and a record on this side has to be bounded.
+// The star is taken off an imported message now, so on a starred trigger the mail
+// leaves the query on its own and this list is a safety net rather than the only
+// record. It still earns its place: it covers the window between making the task
+// and the star coming off, and it is the whole of the dedup for a label trigger,
+// where the label is the person's and not ours to remove. A record on this side
+// has to be bounded.
 //
 // A count rather than the previous rule of "whatever Gmail returned this run",
 // which was not a bound but a way of forgetting.
@@ -381,6 +383,29 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 		s.hub.Publish(projectID, "task.created", toTaskJSON(*task))
 	}
 
+	// The star comes off every message this query returned that now has a task —
+	// the ones made this run and the ones a run before it already made. Gated to the
+	// triggers that are about the star: for a label trigger the star is the person's
+	// own and not ours to touch, and dedup there rests on the seen list alone.
+	//
+	// Best effort, exactly like the IMAP unflag: a task made is not undone by a star
+	// that would not come off. The likeliest reason it will not, right after this
+	// ships, is a connection still holding the old read-only grant — the write is a
+	// 403 until the account is reconnected, and this logs it rather than failing the
+	// sync. It self-heals: the mail stays starred, stays in the next query, and is
+	// tried again once the grant is there.
+	if box.Trigger == "starred" || box.Trigger == "both" {
+		unstar := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if seen[id] {
+				unstar = append(unstar, id)
+			}
+		}
+		if err := client.Unstar(ctx, unstar); err != nil {
+			s.log.Warn("gmail unstar", "err", err, "user", user.ID, "count", len(unstar))
+		}
+	}
+
 	if created > 0 {
 		// The ids this run saw, on top of the ones already known.
 		//
@@ -442,8 +467,8 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 //
 // The one click that opens Google's consent screen already exists; what it needs
 // behind it is a registered client, and that is not something any app can conjure:
-// Google issues no Gmail access to an unregistered client, and `gmail.readonly` is
-// a restricted scope, so an id shipped inside a public image would be both
+// Google issues no Gmail access to an unregistered client, and `gmail.modify` is a
+// restricted scope, so an id shipped inside a public image would be both
 // extractable from it and unusable without Google's security review of every
 // deployment. The registration is a one-off. Having to edit a Rune's manifest and
 // recreate the container to paste the result was not.

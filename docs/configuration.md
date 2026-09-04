@@ -74,7 +74,7 @@ Then enable the APIs and scopes for whichever you want:
 
 | For | Enable | Scope |
 |---|---|---|
-| Mailboxes | Gmail API | `gmail.readonly` |
+| Mailboxes | Gmail API | `gmail.modify` |
 | Calendar | Google Calendar API | `calendar.readonly` |
 
 | Variable | What it does |

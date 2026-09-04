@@ -1,14 +1,20 @@
 // Package gmail is the small slice of the Gmail API verdande needs, and the scope
 // it asks for.
 //
-// The connection is one-way on purpose: a starred or labelled message becomes a
-// task, and nothing verdande does afterwards touches the mailbox. Unstarring the
-// message does not delete the task, completing the task does not unstar the
-// message. Two-way would mean deciding what to do when both sides changed, and the
-// only honest answer to that is a synchronisation model far bigger than the feature.
+// The one thing verdande writes back is the star. A starred message becomes a
+// task, and once it has, the star comes off — exactly as the IMAP side takes the
+// flag off a mail it has imported, and for the same reason: the star meant "turn
+// this into a task", the task now exists, so the star is no longer true. Nothing
+// else is touched. Completing the task does not reach back to the mail; the mail
+// is a pointer the task was made from, not a copy the two have to be kept in step.
 //
-// Scope is gmail.readonly. verdande never needs to send, modify or delete, and
-// asking for less is what makes the consent screen something a person can agree to.
+// That one write is why the scope is gmail.modify rather than gmail.readonly.
+// Removing the STARRED label is a modify, and Gmail offers no narrower scope that
+// can do it — so the consent screen asks for more than it used to, and the trade
+// is deliberate: a starred inbox that empties itself as the tasks are made, rather
+// than one that fills with stars nothing ever clears. Still not send, still not
+// delete — modify is labels, and the only label verdande removes is the one that
+// triggered the task.
 //
 // The OAuth flow itself moved to internal/google when Calendar needed the same one.
 // The names below are aliases so that every call site — and this package's own
@@ -27,8 +33,10 @@ import (
 	"github.com/kristianwind/verdande/internal/google"
 )
 
-// Read-only, and only mail. Not profile, not contacts, not send.
-const Scope = "https://www.googleapis.com/auth/gmail.readonly"
+// Read mail and change its labels, and only mail. Not profile, not contacts, not
+// send, not delete. The single write is removing the STARRED label from a message
+// that has become a task; see the package comment for why that costs modify.
+const Scope = "https://www.googleapis.com/auth/gmail.modify"
 
 const defaultAPIBase = "https://gmail.googleapis.com/gmail/v1"
 
@@ -167,6 +175,25 @@ func (c *Client) Get(ctx context.Context, id string) (Message, error) {
 
 func (c *Client) get(ctx context.Context, url string, out any) error {
 	return google.Get(ctx, c.http, c.accessToken, url, out)
+}
+
+// Unstar takes the star off the given messages — one call for all of them, the way
+// the IMAP side unflags a batch, so a sweep that made ten tasks is one write and
+// not ten.
+//
+// STARRED is a system label whose id is its name, so no lookup is needed; a custom
+// label would need one, and verdande removes none. batchModify answers 204 with no
+// body on success. An empty list is a no-op, not a call: batchModify with no ids is
+// an error on Google's side and nothing worth making a round trip to hear.
+func (c *Client) Unstar(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	body := struct {
+		IDs            []string `json:"ids"`
+		RemoveLabelIDs []string `json:"removeLabelIds"`
+	}{IDs: ids, RemoveLabelIDs: []string{"STARRED"}}
+	return google.Post(ctx, c.http, c.accessToken, c.api()+"/users/me/messages/batchModify", body, nil)
 }
 
 // SenderName pulls "Anders Jensen" out of "Anders Jensen <anders@example.dk>",

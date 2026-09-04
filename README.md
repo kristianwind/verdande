@@ -103,7 +103,7 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | CalDAV server (two-way VTODO) | Done, tested |
 | Mail-to-task | Done, tested |
 | AI layer (Anthropic/OpenAI/Google/local) | Built, degrades when unconfigured |
-| Gmail: OAuth2 with PKCE, polling, one-way to tasks | Done, tested |
+| Gmail: OAuth2 with PKCE, polling to tasks, unstars what it imports | Done, tested |
 | Google Calendar: read-only, laid over the task calendar | Built, never run against Google |
 | Calendar subscriptions: ICS and webcal, several per person | Done, tested |
 | Times on tasks, set by dragging in the week grid | Done, tested |

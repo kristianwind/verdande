@@ -660,7 +660,7 @@ export const da = {
 	// --- settings: integrations --------------------------------------------------------
 	'int.mailboxes': 'Postkasser',
 	'int.mailboxesHint':
-		'Flag en mail i iCloud, Fastmail eller enhver anden udbyder, og den bliver en opgave. Én vej: fjerner du flaget, sker der ikke noget med opgaven. Office 365 kan ikke bruges her — Microsoft har lukket for kodeord på IMAP.',
+		'Flag en mail i iCloud, Fastmail eller enhver anden udbyder, og den bliver en opgave — flaget fjernes, når opgaven er oprettet. Kun én vej: gør du selv noget ved mailen bagefter, sker der ikke noget med opgaven. Office 365 kan ikke bruges her — Microsoft har lukket for kodeord på IMAP.',
 	'int.addMailbox': 'Tilføj en postkasse',
 	'int.host': 'IMAP-server',
 	'int.username': 'Brugernavn',
@@ -676,7 +676,7 @@ export const da = {
 	'int.fetching': 'Henter …',
 	'int.gmail': 'Gmail',
 	'int.gmailHint':
-		'Stjernemarkér en mail, eller giv den en etiket, og den bliver en opgave. Envejs: at fjerne stjernen gør ikke noget ved opgaven.',
+		'Stjernemarkér en mail, eller giv den en etiket, og den bliver en opgave — stjernen fjernes så (en etiket bliver, hvor den er). Det du selv gør ved mailen bagefter, ændrer ikke opgaven.',
 	'int.connectGmail': 'Forbind Gmail',
 	'int.fromEnv':
 		'Klienten er sat i miljøet (VERDANDE_GMAIL_CLIENT_ID), så den kan ikke ændres her. Det er med vilje: en værdi i runens manifest er en beslutning, der bliver anvendt igen ved hver genstart, og en formular, der kunne overskrive den, ville gøre manifestet til en løgn.',

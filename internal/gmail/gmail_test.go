@@ -1,16 +1,81 @@
 package gmail
 
 import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
 // The scope is the one thing verdande chooses about the connection, and it is the
 // one the person reads on the consent screen. The flow itself is exercised in
-// internal/google; what belongs here is that Gmail still asks for read-only mail.
-func TestTheScopeIsReadOnlyMail(t *testing.T) {
-	if !strings.HasSuffix(Scope, "gmail.readonly") {
-		t.Errorf("scope = %q; verdande never needs to send or modify", Scope)
+// internal/google; what belongs here is that Gmail asks for modify — read plus the
+// one write it makes, taking the star off an imported message — and nothing wider.
+func TestTheScopeIsModifyMail(t *testing.T) {
+	if !strings.HasSuffix(Scope, "gmail.modify") {
+		t.Errorf("scope = %q; want gmail.modify — read, plus removing the star", Scope)
+	}
+	// Modify is the ceiling. Send, or the full account, would be a different promise
+	// to the person on the consent screen than the one this feature needs.
+	for _, wider := range []string{"gmail.send", "mail.google.com", "gmail.settings"} {
+		if strings.Contains(Scope, wider) {
+			t.Errorf("scope = %q; must not include %q", Scope, wider)
+		}
+	}
+}
+
+// Unstar removes the star from a batch in one call, and it addresses the messages
+// it was given and only the STARRED label.
+func TestUnstarRemovesOnlyTheStar(t *testing.T) {
+	var gotPath string
+	var gotBody struct {
+		IDs            []string `json:"ids"`
+		AddLabelIDs    []string `json:"addLabelIds"`
+		RemoveLabelIDs []string `json:"removeLabelIds"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &gotBody)
+		w.WriteHeader(http.StatusNoContent) // what batchModify answers on success
+	}))
+	defer srv.Close()
+
+	err := NewClient("token").At(srv.URL).Unstar(context.Background(), []string{"a", "b"})
+	if err != nil {
+		t.Fatalf("Unstar: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/users/me/messages/batchModify") {
+		t.Errorf("path = %q, want the batchModify endpoint", gotPath)
+	}
+	if strings.Join(gotBody.IDs, ",") != "a,b" {
+		t.Errorf("ids = %v, want [a b]", gotBody.IDs)
+	}
+	if strings.Join(gotBody.RemoveLabelIDs, ",") != "STARRED" {
+		t.Errorf("removeLabelIds = %v, want [STARRED]", gotBody.RemoveLabelIDs)
+	}
+	if len(gotBody.AddLabelIDs) != 0 {
+		t.Errorf("addLabelIds = %v, want none — verdande adds no label", gotBody.AddLabelIDs)
+	}
+}
+
+// An empty batch is not a request: Gmail rejects a batchModify with no ids, and
+// there is nothing to say to it anyway.
+func TestUnstarOfNothingMakesNoCall(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called = true
+	}))
+	defer srv.Close()
+
+	if err := NewClient("token").At(srv.URL).Unstar(context.Background(), nil); err != nil {
+		t.Fatalf("Unstar(nil): %v", err)
+	}
+	if called {
+		t.Error("Unstar(nil) made a request; it should make none")
 	}
 }
 

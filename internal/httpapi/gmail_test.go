@@ -1,14 +1,17 @@
 package httpapi
 
 import (
-	"github.com/kristianwind/verdande/internal/store"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/kristianwind/verdande/internal/config"
+	"github.com/kristianwind/verdande/internal/store"
 )
 
 // A Gmail failure has to survive being reported.
@@ -148,6 +151,84 @@ func TestASlowMailboxDoesNotHangTheRequest(t *testing.T) {
 		t.Errorf("status %d — a slow mailbox is not this server breaking", resp.StatusCode)
 	}
 	t.Logf("came back in %s with %d", took.Round(time.Millisecond), resp.StatusCode)
+}
+
+// A message that becomes a task has its star taken off — the write that the whole
+// gmail.modify scope is for. The mail's own inbox empties as the tasks are made,
+// the way the IMAP side unflags what it imports.
+func TestASyncedGmailMessageIsUnstarred(t *testing.T) {
+	var unstarred struct {
+		hit  bool
+		body struct {
+			IDs            []string `json:"ids"`
+			RemoveLabelIDs []string `json:"removeLabelIds"`
+		}
+	}
+	google := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/messages/batchModify"):
+			unstarred.hit = true
+			raw, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(raw, &unstarred.body)
+			w.WriteHeader(http.StatusNoContent)
+		case strings.Contains(r.URL.Path, "/messages/") && r.URL.Query().Get("format") == "metadata":
+			writeTestJSON(w, map[string]any{
+				"id": "m1", "threadId": "t1", "snippet": "kort tekst",
+				"payload": map[string]any{"headers": []map[string]string{
+					{"name": "From", "value": "Anders <anders@example.dk>"},
+					{"name": "Subject", "value": "Møde på fredag"},
+				}},
+			})
+		case strings.HasSuffix(r.URL.Path, "/messages"):
+			writeTestJSON(w, map[string]any{"messages": []map[string]string{{"id": "m1"}}})
+		default:
+			http.Error(w, "unexpected "+r.Method+" "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+	defer google.Close()
+
+	ts := newTestServerWith(t, func(cfg *config.Config) {
+		cfg.GmailClientID = "test-client"
+		cfg.GmailClientSecret = "test-secret"
+		cfg.GoogleTokenURL = google.URL + "/token"
+		cfg.GmailAPIURL = google.URL
+	})
+	ts.bootstrap(t)
+
+	user, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A live access token, so the run goes straight to the list without a refresh.
+	if err := ts.db.SaveMailbox(t.Context(), &store.Mailbox{
+		UserID: user.ID, Kind: "gmail", RefreshToken: "r", AccessToken: "a",
+		Trigger: "starred", ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, body := ts.do(t, "POST", "/api/v1/gmail/sync", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("sync: status %d, want 200", resp.StatusCode)
+	}
+	if created, _ := body["created"].(float64); created != 1 {
+		t.Fatalf("created = %v, want 1", body["created"])
+	}
+
+	if !unstarred.hit {
+		t.Fatal("the message was never unstarred; its star is the one thing modify is for")
+	}
+	if strings.Join(unstarred.body.IDs, ",") != "m1" {
+		t.Errorf("unstarred ids = %v, want [m1]", unstarred.body.IDs)
+	}
+	if strings.Join(unstarred.body.RemoveLabelIDs, ",") != "STARRED" {
+		t.Errorf("removed = %v, want [STARRED]", unstarred.body.RemoveLabelIDs)
+	}
+}
+
+func writeTestJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func mustParse(t *testing.T, raw string) *url.URL {
