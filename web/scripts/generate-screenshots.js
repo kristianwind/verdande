@@ -73,6 +73,12 @@ const SHOTS = [
 	{ name: 'detail', path: (ids) => `/opgave/${ids.detail}`, theme: 'dark' },
 	{ name: 'notes', path: '/noter', theme: 'dark', prepare: openMeetingNote },
 	{ name: 'notes-source', path: '/noter', theme: 'dark', prepare: showNoteSource },
+	// Charcoal, the newest theme — a warm near-black modelled on Apple Notes, with
+	// amber where the green usually is. Today and the notes list are the two views
+	// that show a theme's surfaces, text and one accent at once, so those are the two
+	// the landing page carries it in.
+	{ name: 'today-charcoal', path: '/', theme: 'charcoal' },
+	{ name: 'notes-charcoal', path: '/noter', theme: 'charcoal', prepare: openMeetingNote },
 	// The new work, and in the light theme, which is what most people want to look
 	// at a landing page in. The calendar drawing tasks to their length, and a note
 	// somebody shared into the "Shared with me" group.

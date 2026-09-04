@@ -39,8 +39,17 @@ forward mail to, and an MCP endpoint so Claude can work your task list directly.
 - **Live sync** — a change made by somebody else appears without a refresh.
 - **Repeating tasks** as RRULE, comments and attachments, and reminders that go
   out as Web Push to an iPhone or a Mac.
-- **[Calendar](caldav.md), [mail](mail.md) and [Claude](mcp.md)** connected over
-  open standards rather than private formats.
+- **[Your mail as an inbox](mailboxes.md).** Star a mail in Gmail, or flag one
+  over IMAP in iCloud or Fastmail, and it becomes a task — and the star or flag
+  comes off once it has, so a starred inbox empties as the tasks are made instead
+  of only filling up.
+- **[Calendar](caldav.md) and [Claude](mcp.md)** connected over open standards
+  rather than private formats.
+- **Six themes**, three dark and three light — including *Charcoal*, a warm
+  near-black after Apple Notes — and a size and typeface chosen apart from them.
+- **Holds through a short network drop.** A save rides out a few seconds of no
+  signal and goes through when it comes back; a reload opens from what it last saw
+  rather than the browser's offline page. It installs as a PWA.
 
 ## What it looks like
 
@@ -59,6 +68,12 @@ columns.*
 *What you have handed to somebody else, grouped by whoever has it — and each row
 marked with an arrow to them, so a delegated task reads as delegated wherever you
 meet it.*
+
+![Notes in the Charcoal theme](screenshots/notes-charcoal.png)
+
+*Charcoal, the newest of six themes — a warm near-black after Apple Notes, with
+amber where the accent green usually is. Three dark themes and three light, and a
+typeface and size chosen apart from them.*
 
 ![Settings, integrations](screenshots/settings.png)
 
