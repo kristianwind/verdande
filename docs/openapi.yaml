@@ -1250,7 +1250,7 @@ paths:
 
         The one click that opens Google's consent screen already exists. What it
         needs behind it is a registered client, and no app can conjure one: Google
-        issues no Gmail access to an unregistered client, and `gmail.readonly` is a
+        issues no Gmail access to an unregistered client, and `gmail.modify` is a
         restricted scope, so an id shipped inside a public image would be both
         extractable from it and unusable without Google's security review of every
         deployment that used it.

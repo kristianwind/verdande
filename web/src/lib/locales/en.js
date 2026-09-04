@@ -656,7 +656,7 @@ export const en = {
 	// --- settings: integrations --------------------------------------------------------
 	'int.mailboxes': 'Mailboxes',
 	'int.mailboxesHint':
-		'Flag an email in iCloud, Fastmail or any other provider and it becomes a task. One way: removing the flag does nothing to the task. Office 365 cannot be used here — Microsoft has closed IMAP to passwords.',
+		'Flag an email in iCloud, Fastmail or any other provider and it becomes a task — the flag comes off once it has. One way only: what you do to the mail afterwards does not change the task. Office 365 cannot be used here — Microsoft has closed IMAP to passwords.',
 	'int.addMailbox': 'Add a mailbox',
 	'int.host': 'IMAP server',
 	'int.username': 'Username',
@@ -672,7 +672,7 @@ export const en = {
 	'int.fetching': 'Fetching …',
 	'int.gmail': 'Gmail',
 	'int.gmailHint':
-		'Star an email, or give it a label, and it becomes a task. One way: removing the star does nothing to the task.',
+		'Star an email, or give it a label, and it becomes a task — the star then comes off (a label stays where it is). What you do to the mail afterwards does not change the task.',
 	'int.connectGmail': 'Connect Gmail',
 	'int.fromEnv':
 		'The client is set in the environment (VERDANDE_GMAIL_CLIENT_ID), so it cannot be changed here. That is deliberate: a value in the Rune’s manifest is a decision reapplied on every restart, and a form that could overwrite it would make the manifest a lie.',

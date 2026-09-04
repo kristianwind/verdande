@@ -215,6 +215,40 @@ func Get(ctx context.Context, client *http.Client, accessToken, url string, out 
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// Post sends a JSON body to a Google API and, unlike Get, does not insist on a
+// body coming back. A write call — modifying labels on a message — answers with
+// 204 No Content when it worked, so anything 2xx is success and only the body is
+// decoded, and only when the caller asked for one.
+func Post(ctx context.Context, client *http.Client, accessToken, url string, body, out any) error {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(payload)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return ErrUnauthorized
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("google: %s", resp.Status)
+	}
+	if out == nil || resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
 func randomString(n int) (string, error) {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

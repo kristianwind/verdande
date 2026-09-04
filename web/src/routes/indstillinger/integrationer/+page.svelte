@@ -423,7 +423,7 @@
 
 		<!-- The registration behind the button, for whoever can do something about
 		     it. Google issues no Gmail access to an unregistered client, and
-		     gmail.readonly is a restricted scope — so this step cannot be skipped by
+		     gmail.modify is a restricted scope — so this step cannot be skipped by
 		     any app. It can stop requiring a redeploy, which is what this is. -->
 		{#if app.user?.is_admin && client}
 			{#if client.from_env}
