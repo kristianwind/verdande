@@ -51,6 +51,12 @@ export default defineConfig({
 
 	use: {
 		baseURL,
+		// Off by default. The app now ships a caching service worker, and once it
+		// controls a page Playwright's page.route() no longer sees the fetches it
+		// makes — so a test that forces a 500 to check the error path gets the real
+		// 200 through the worker instead, and reads as a broken feature. The one test
+		// that needs the real worker turns it back on for its own context.
+		serviceWorkers: 'block',
 		trace: 'retain-on-failure',
 		screenshot: 'only-on-failure',
 		// Pinned, because the app reads both. The sign-up form sends

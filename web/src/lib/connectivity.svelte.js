@@ -1,11 +1,11 @@
 /**
  * Connectivity, as the app experiences it — not as the browser reports it.
  *
- * This is for short drops: a few seconds of lost Wi-Fi, a tunnel, a base station
- * handing over. It is deliberately NOT offline support. The app is already loaded
- * and its data is already in memory, so there is nothing to cache and nothing to
- * open from cold; what a blip needs is for the save you just made to survive it,
- * not for the whole app to run without a server.
+ * This is the WRITE side of surviving a short drop — a few seconds of lost Wi-Fi, a
+ * tunnel, a base station handing over. The READ side lives in the service worker,
+ * which keeps the last-seen task and note lists so a reload through a drop is not a
+ * blank screen. This store is the other half: it is what keeps the save you just made
+ * from being reverted under your hands while the network is briefly gone.
  *
  * The request layer drives this: it retries a failed request for a short window
  * (see api.js) and tells this store while it is trying, so the interface can say
