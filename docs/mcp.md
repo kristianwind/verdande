@@ -57,9 +57,9 @@ Both endpoints run the same server and reach the same things.
 | `complete_task` | Tick one off. |
 | `add_comment` | Comment on a task. |
 
-`create_task` prefers natural language, so *"add betal moms i morgen kl 10 p1
-#Firma"* goes through the same parser the app uses — dates, priorities, projects,
-labels and recurrence in either language.
+`create_task` prefers natural language, so *"add file the VAT return tomorrow at
+10am p1 #Accounts"* goes through the same parser the app uses — dates, priorities,
+projects, labels and recurrence in either language.
 
 ## What it can reach
 

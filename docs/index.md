@@ -18,9 +18,10 @@ forward mail to, and an MCP endpoint so Claude can work your task list directly.
 
 ## What it does
 
-- **[Quick add](quick-add.md) that reads what you type.** `betal moms i morgen kl
-  10 p1 #Firma @regnskab` becomes a task due tomorrow at 10:00, priority 1, in
-  Firma, labelled regnskab. Danish and English, mixed freely in one line.
+- **[Quick add](quick-add.md) that reads what you type.** `file the VAT return
+  tomorrow at 10am p1 #Accounts @tax` becomes a task due tomorrow at 10:00,
+  priority 1, in Accounts, labelled tax. Danish and English, mixed freely in one
+  line.
 - **Projects, sections, sub-tasks, labels, [saved filters](filters.md).** List,
   board and calendar views, and foldable groups over the projects in the sidebar.
   The calendar draws each task to its length — drag the foot to resize, the body
@@ -72,8 +73,12 @@ meet it.*
 ![Notes in the Charcoal theme](screenshots/notes-charcoal.png)
 
 *Charcoal, the newest of six themes — a warm near-black after Apple Notes, with
-amber where the accent green usually is. Three dark themes and three light, and a
-typeface and size chosen apart from them.*
+amber where the accent green usually is.*
+
+![The six themes as swatches](screenshots/themes.png)
+
+*Six themes — three dark, three light — chosen on the settings page, with the
+typeface and how tightly it sits set apart from them.*
 
 ![Settings, integrations](screenshots/settings.png)
 

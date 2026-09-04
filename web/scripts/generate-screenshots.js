@@ -74,11 +74,18 @@ const SHOTS = [
 	{ name: 'notes', path: '/noter', theme: 'dark', prepare: openMeetingNote },
 	{ name: 'notes-source', path: '/noter', theme: 'dark', prepare: showNoteSource },
 	// Charcoal, the newest theme — a warm near-black modelled on Apple Notes, with
-	// amber where the green usually is. Today and the notes list are the two views
-	// that show a theme's surfaces, text and one accent at once, so those are the two
-	// the landing page carries it in.
-	{ name: 'today-charcoal', path: '/', theme: 'charcoal' },
+	// amber where the green usually is. The notes list shows a theme's surfaces, text
+	// and one accent at once, so that is where the landing page carries it up close.
 	{ name: 'notes-charcoal', path: '/noter', theme: 'charcoal', prepare: openMeetingNote },
+	// The same Today view in each of the six themes, for a gallery that shows the
+	// whole range at a glance. One view throughout, so the only thing that changes
+	// from picture to picture is the theme itself. Names are the themes' own.
+	{ name: 'theme-northern-lights', path: '/', theme: 'dark' },
+	{ name: 'theme-charcoal', path: '/', theme: 'charcoal' },
+	{ name: 'theme-dusk', path: '/', theme: 'dusk' },
+	{ name: 'theme-daylight', path: '/', theme: 'light' },
+	{ name: 'theme-paper', path: '/', theme: 'paper' },
+	{ name: 'theme-contrast', path: '/', theme: 'contrast' },
 	// The new work, and in the light theme, which is what most people want to look
 	// at a landing page in. The calendar drawing tasks to their length, and a note
 	// somebody shared into the "Shared with me" group.
