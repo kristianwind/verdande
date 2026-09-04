@@ -320,7 +320,12 @@ test('manifestet og service workeren findes, og ikonerne findes også', async ({
  * back to the app rather than to a dead tab. The retry in api.js covers the write
  * side of the same drop; this covers the read side.
  */
-test('appen overlever et netværksudfald og åbner fra cachen', async ({ page, context }) => {
+test.describe('med service worker', () => {
+	// The rest of the suite blocks the worker (see playwright.config.js); this one
+	// test is about the worker, so it turns it back on for its own context.
+	test.use({ serviceWorkers: 'allow' });
+
+	test('appen overlever et netværksudfald og åbner fra cachen', async ({ page, context }) => {
 	// First load, online: the worker installs, and once it controls the page the
 	// shell and the reads it serves are in the cache.
 	await page.goto('/');
@@ -351,6 +356,7 @@ test('appen overlever et netværksudfald og åbner fra cachen', async ({ page, c
 		// Never leave the shared context offline for whatever test runs next.
 		await context.setOffline(false);
 	}
+	});
 });
 
 /**
