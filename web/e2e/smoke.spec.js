@@ -2875,13 +2875,13 @@ test('note links i en delt note fører til den rigtige note, eller siger hvorfor
 	await sidebar.getByRole('link', { name: 'Noter', exact: true }).click();
 	await page.getByRole('button', { name: 'Ny note' }).click();
 	await page.getByRole('textbox', { name: 'Notens tekst' }).click();
-	await page.keyboard.type('Prisliste for foraaret');
+	await page.keyboard.type('Kristians prisblad');
 	await page.getByRole('textbox', { name: 'Notens tekst' }).blur();
 
 	await page.getByRole('button', { name: 'Ny note' }).click();
 	await page.getByRole('textbox', { name: 'Notens tekst' }).click();
-	await page.keyboard.type('Aftale om levering\n');
-	await page.keyboard.type('[[Prisliste for foraaret]]');
+	await page.keyboard.type('Faelles aftale om afhentning\n');
+	await page.keyboard.type('[[Kristians prisblad]]');
 	await page.getByRole('textbox', { name: 'Notens tekst' }).blur();
 
 	// Gæsten har en note af sin egen, som hun kan pege på.
@@ -2891,7 +2891,7 @@ test('note links i en delt note fører til den rigtige note, eller siger hvorfor
 	await gæst.keyboard.type('Linneas egne maal');
 	await gæst.getByRole('textbox', { name: 'Notens tekst' }).blur();
 
-	await page.locator('.notes').getByRole('button', { name: /Aftale om levering/ }).click();
+	await page.locator('.notes button.row').filter({ hasText: /^Faelles aftale/ }).click();
 	await page.locator('.sharewrap > button').click();
 	const share = page.locator('.sharepanel');
 	await expect(share).toBeVisible();
@@ -2901,19 +2901,19 @@ test('note links i en delt note fører til den rigtige note, eller siger hvorfor
 	await expect(row).toBeVisible();
 	await row.locator('select').selectOption('editor');
 
-	// Hun skriver sit eget link ind i den delte note.
+	// Hun skriver sit eget link ind i den delte note — og et, der ikke rammer noget.
 	await gæst.goto(noterURL);
-	await gæst.locator('.notes').getByRole('button', { name: /Aftale om levering/ }).click();
+	await gæst.locator('.notes button.row').filter({ hasText: /^Faelles aftale/ }).click();
 	const body = gæst.getByRole('textbox', { name: 'Notens tekst' });
-	await expect(body).toContainText('Prisliste for foraaret');
+	await expect(body).toContainText('Kristians prisblad');
 	await body.click();
 	await gæst.keyboard.press('Control+End');
-	await gæst.keyboard.type('\n[[Linneas egne maal]]');
+	await gæst.keyboard.type('\n[[Linneas egne maal]]\n[[Noget der aldrig blev skrevet]]');
 	await body.blur();
 	await expect(gæst.locator('footer .hint')).toHaveText('Gemt');
 
 	await gæst.goto(noterURL);
-	await gæst.locator('.notes').getByRole('button', { name: /Aftale om levering/ }).click();
+	await gæst.locator('.notes button.row').filter({ hasText: /^Faelles aftale/ }).click();
 	const delt = gæst.getByRole('textbox', { name: 'Notens tekst' });
 
 	// Hendes eget link fører derhen, det siger.
@@ -2922,19 +2922,115 @@ test('note links i en delt note fører til den rigtige note, eller siger hvorfor
 		'Linneas egne maal'
 	);
 
-	// Ejerens link peger på en note, hun ikke har fået. Den må ikke lande et
-	// tilfældigt sted — og den må sige hvorfor.
-	await gæst.locator('.notes').getByRole('button', { name: /Aftale om levering/ }).click();
+	// Og det link, der ikke rammer nogen note, må ikke lande et tilfældigt sted. Det
+	// er dér, det gamle fald tilbage på "første søgeresultat" åbnede noten, man
+	// allerede stod i — hvilket ser ud som ingenting.
+	await gæst.locator('.notes button.row').filter({ hasText: /^Faelles aftale/ }).click();
 	const igen = gæst.getByRole('textbox', { name: 'Notens tekst' });
-	await expect(igen).toContainText('Prisliste for foraaret');
-	await igen.locator('a.notelink', { hasText: 'Prisliste for foraaret' }).click();
+	await igen.locator('a.notelink', { hasText: 'Noget der aldrig blev skrevet' }).click();
 	await expect(gæst.locator('.toast')).toContainText('ikke delt med dig');
 	// Stadig i den delte note: linket flyttede hende ingen steder hen.
 	await expect(gæst.getByRole('textbox', { name: 'Notens tekst' })).toContainText(
-		'Aftale om levering'
+		'Faelles aftale om afhentning'
 	);
 
 	await gæstCtx.close();
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * Delingen tager de noter med, noten peger på.
+ *
+ * Den anden halvdel af den melding: linkene i en delt note skal ikke bare sige
+ * hvorfor de ikke kan følges — de skal kunne følges. Deler man en note, deler man
+ * det, den *siger*, og et link er en del af det.
+ */
+test('en delt note tager de noter med, den peger på', async ({ browser, page }) => {
+	const trouble = watchForTrouble(page);
+
+	await page.goto('/indstillinger/brugere');
+	await page.getByLabel('E-mailadresse').fill('med@example.dk');
+	await page.getByRole('button', { name: 'Send invitation' }).click();
+	const link = await page.locator('.link-out').textContent();
+
+	const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const gæst = await ctx.newPage();
+	await gæst.goto(link);
+	await gæst.getByLabel('Navn', { exact: true }).fill('Mikkel');
+	await gæst.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
+	await gæst.getByRole('button', { name: 'Opret konto' }).click();
+	await expect(gæst.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+	const noterURL = new URL('/noter', link).href;
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('link', { name: 'Noter', exact: true }).click();
+
+	// Tre noter: en kæde på to, og en der ikke hænger sammen med noget.
+	for (const text of [
+		'Leveringstider for pakker',
+		'Prisliste i kroner\nog [[Leveringstider for pakker]]',
+		'Bankoplysninger som ingen skal se',
+		'Aftale om levering\nse [[Prisliste i kroner]]'
+	]) {
+		await page.getByRole('button', { name: 'Ny note' }).click();
+		await page.getByRole('textbox', { name: 'Notens tekst' }).click();
+		await page.keyboard.type(text);
+		await page.getByRole('textbox', { name: 'Notens tekst' }).blur();
+		await expect(page.locator('footer .hint')).toHaveText('Gemt');
+	}
+
+	await page.locator('.notes button.row').filter({ hasText: /^Aftale om levering/ }).click();
+	await page.locator('.sharewrap > button').click();
+	const share = page.locator('.sharepanel');
+	await share.locator('.addshare select').first().selectOption({ label: 'Mikkel' });
+	await share.getByRole('button', { name: 'Tilføj' }).click();
+
+	// Sagt, ikke stiltiende: begge noter fulgte med, og panelet navngiver dem.
+	await expect(page.locator('.toast')).toContainText('de 2 noter');
+	await expect(share.locator('.follows')).toContainText('Prisliste i kroner');
+	await expect(share.locator('.follows')).toContainText('Leveringstider for pakker');
+
+	// Og hos ham: hele kæden kan læses, og linkene fører derhen.
+	await gæst.goto(noterURL);
+	await gæst.locator('.notes button.row').filter({ hasText: /^Aftale om levering/ }).click();
+	await gæst
+		.getByRole('textbox', { name: 'Notens tekst' })
+		.locator('a.notelink', { hasText: 'Prisliste i kroner' })
+		.click();
+	const hos = gæst.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(hos).toContainText('Prisliste i kroner');
+	await hos.locator('a.notelink', { hasText: 'Leveringstider for pakker' }).click();
+	await expect(gæst.getByRole('textbox', { name: 'Notens tekst' })).toContainText(
+		'Leveringstider for pakker'
+	);
+	// Men kun det, noten peger på. Resten er stadig ejerens alene.
+	await expect(
+		gæst.locator('.notes button.row').filter({ hasText: /^Bankoplysninger/ })
+	).toHaveCount(0);
+
+	// Den fulgte adgang står som det, den er, i panelet under den note, den ramte.
+	// `button.row`, ikke bare knappen ved navn: panelet står åbent og har sin egen
+	// knap med den samme titel på.
+	await page.locator('.notes button.row').filter({ hasText: /^Prisliste i kroner/ }).click();
+	await page.locator('.sharewrap > button').click();
+	await expect(page.locator('.sharepanel .sharelist li').filter({ hasText: 'Mikkel' })).toContainText(
+		'følger med'
+	);
+
+	// Taget tilbage følger den med tilbage.
+	await page.locator('.notes button.row').filter({ hasText: /^Aftale om levering/ }).click();
+	await page.locator('.sharewrap > button').click();
+	await page
+		.locator('.sharepanel .sharelist li')
+		.filter({ hasText: 'Mikkel' })
+		.getByRole('button', { name: 'Fjern adgang' })
+		.click();
+	await gæst.goto(noterURL);
+	await expect(
+		gæst.locator('.notes button.row').filter({ hasText: /^Prisliste i kroner/ })
+	).toHaveCount(0);
+
+	await ctx.close();
 	expect(trouble).toEqual([]);
 });
 

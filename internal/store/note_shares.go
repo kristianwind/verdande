@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -130,4 +132,243 @@ func (db *DB) NotesSharedWith(ctx context.Context, userID string, noteIDs []stri
 		out[id] = true
 	}
 	return out, rows.Err()
+}
+
+// --- de noter, en delt note peger på ---------------------------------------------
+
+// LinkedShare is one note that followed a share: which note, what it is called,
+// and which of the owner's shared notes brought it. The panel shows all three —
+// "Prisliste came along with Aftale om levering" is a sentence somebody can act
+// on, where a bare id is not.
+type LinkedShare struct {
+	NoteID string `json:"note_id"`
+	Title  string `json:"title"`
+	ViaID  string `json:"via_id"`
+	Via    string `json:"via"`
+	Role   Role   `json:"role"`
+	UserID string `json:"user_id"`
+}
+
+// Hvor langt en deling må brede sig.
+//
+// En note, der peger på en note, der peger på en note, er stadig én ting at læse,
+// og den skal følge med. Men noter kan pege i ring og i vifte, og "del denne ene
+// note" må ikke kunne blive til fire hundrede. Loftet er ikke en optimering: det
+// er den grænse, hvor en deling holder op med at være noget, ejeren kan overskue.
+const linkedShareLimit = 100
+
+// SyncLinkedShares regner de udledte delinger forfra for alt, hvad én person ejer.
+//
+// Kaldt efter enhver af ejerens egne handlinger, der kan flytte svaret: en deling,
+// en fjernet deling, og en gemning, der har ændret på det, noten peger på. Regnet
+// forfra frem for rettet til, fordi det er den samme kode hver gang og derfor det
+// samme resultat hver gang — en tilføjelse og en fjernelse er ikke to veje gennem
+// koden, men det samme kald med et andet udgangspunkt.
+//
+// Kun *direkte* delinger er udgangspunkt. En note i et delt projekt er delt af
+// projektet, og projektets folk kan se projektets noter; det er en anden vej ind,
+// med sine egne regler, og den blander sig ikke her.
+//
+// Returnerer, hvad der nu følger med, så kalderen kan sige det. Det er meningen at
+// det bliver sagt: en deling, der stille tager tre noter mere med, er ikke til at
+// overskue, uanset hvor rigtigt den gør det.
+func (db *DB) SyncLinkedShares(ctx context.Context, ownerID string) ([]LinkedShare, error) {
+	if ownerID == "" {
+		return nil, nil
+	}
+
+	// Har personen ikke delt noget, er der intet at regne — og det er de fleste,
+	// det meste af tiden. Uden det her ville hvert eneste klik i notelisten åbne
+	// hver eneste note for at finde ud af, at svaret er tomt: fladen spørger til
+	// delingerne, hver gang man vælger en note, man selv ejer.
+	//
+	// Ét spørgsmål dækker begge halvdele. Er der ingen rækker overhovedet, er der
+	// hverken en deling at brede ud eller en udledt række at rydde op efter.
+	var anyShare int
+	if err := db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM note_shares s
+			JOIN notes n ON n.id = s.note_id
+			WHERE n.created_by = ?)`, ownerID).Scan(&anyShare); err != nil {
+		return nil, err
+	}
+	if anyShare == 0 {
+		return nil, nil
+	}
+
+	// Ejerens egne noter, åbnet. Titlerne er forseglet i basen, og et link peger på
+	// en titel — så der er ikke noget opslag at lave i SQL. Målt andetsteds i denne
+	// fil: tolv hundrede noter koster nogle og tredive millisekunder at åbne, og det
+	// her kører kun, når ejeren selv har gjort noget.
+	mine, err := db.notesWhere(ctx, `WHERE created_by = ? AND deleted_at IS NULL`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	byTitle := map[string]string{}
+	title := map[string]string{}
+	for _, n := range mine {
+		title[n.ID] = n.Title
+		key := strings.ToLower(strings.TrimSpace(n.Title))
+		// Den første vinder, og listen kommer sorteret med den senest rørte først:
+		// to noter med samme titel er sjældent, og når det sker, er den, man skrev
+		// sidst, den, man mente.
+		if key != "" {
+			if _, taken := byTitle[key]; !taken {
+				byTitle[key] = n.ID
+			}
+		}
+	}
+
+	// Hvad hver note peger på, i ét spørgsmål frem for ét pr. note.
+	links := map[string][]string{}
+	rows, err := db.QueryContext(ctx, `
+		SELECT l.note_id, l.target_id
+		FROM note_links l
+		JOIN notes n ON n.id = l.note_id
+		WHERE l.kind = 'note' AND n.created_by = ? AND n.deleted_at IS NULL`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var from, target string
+		if err := rows.Scan(&from, &target); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		links[from] = append(links[from], target)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// De delinger, ejeren selv har sat.
+	type grant struct{ noteID, userID string }
+	direct := map[grant]Role{}
+	rows, err = db.QueryContext(ctx, `
+		SELECT s.note_id, s.user_id, s.role
+		FROM note_shares s
+		JOIN notes n ON n.id = s.note_id
+		WHERE s.linked = 0 AND n.created_by = ? AND n.deleted_at IS NULL`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var g grant
+		var role Role
+		if err := rows.Scan(&g.noteID, &g.userID, &role); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if role.Valid() {
+			direct[g] = role
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Vandringen. Pr. person, fordi det er personen, delingen handler om: to
+	// forskellige mennesker kan have to forskellige noter og derfor to forskellige
+	// vifter ud fra dem.
+	wanted := map[grant]LinkedShare{}
+	perUser := map[string][]grant{}
+	for g := range direct {
+		perUser[g.userID] = append(perUser[g.userID], g)
+	}
+	for userID, roots := range perUser {
+		seen := map[string]bool{}
+		type step struct {
+			noteID string
+			via    string
+		}
+
+		// Medredaktør først, læser bagefter, og hver runde tømt for sig.
+		//
+		// En note kan nås fra to delte noter med hver sin rolle, og så skal den
+		// stærkeste gælde. Én kø med det hele i ville afgøre det på afstand frem for
+		// på rolle: et barnebarn af en redigerbar note ville tabe til et barn af en
+		// læsbar, fordi det stod længere bagude i køen. To runder gør reglen til
+		// rækkefølgen — er noten allerede nået som redigerbar, ser den anden runde
+		// den ikke.
+		for _, role := range []Role{RoleEditor, RoleViewer} {
+			var queue []step
+			for _, g := range roots {
+				if direct[g] != role || seen[g.noteID] {
+					continue
+				}
+				seen[g.noteID] = true
+				queue = append(queue, step{noteID: g.noteID, via: g.noteID})
+			}
+			for len(queue) > 0 && len(seen) <= linkedShareLimit {
+				cur := queue[0]
+				queue = queue[1:]
+				for _, target := range links[cur.noteID] {
+					id, ok := byTitle[strings.ToLower(strings.TrimSpace(target))]
+					// Et link, der ikke rammer en af ejerens egne noter, er enten
+					// dødt eller peger på en andens note. Ingen af delene er ejerens
+					// at dele.
+					if !ok || seen[id] {
+						continue
+					}
+					seen[id] = true
+					// Rollen arves fra den note, man kom fra. En medredaktør på en
+					// note bliver medredaktør på det, den peger på: teksten er én
+					// ting at arbejde i, og et link midt i den er ikke en grænse.
+					if _, isDirect := direct[grant{noteID: id, userID: userID}]; !isDirect {
+						wanted[grant{noteID: id, userID: userID}] = LinkedShare{
+							NoteID: id,
+							Title:  title[id],
+							ViaID:  cur.via,
+							Via:    title[cur.via],
+							Role:   role,
+							UserID: userID,
+						}
+					}
+					queue = append(queue, step{noteID: id, via: cur.via})
+				}
+			}
+		}
+	}
+
+	// Skrevet i én transaktion: mellem sletningen og skrivningen står basen med
+	// færre delinger, end den skal, og det er ikke et vindue nogen skal kunne læse i.
+	err = db.Tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM note_shares
+			WHERE linked = 1
+			  AND note_id IN (SELECT id FROM notes WHERE created_by = ?)`, ownerID); err != nil {
+			return err
+		}
+		for g, l := range wanted {
+			// DO NOTHING ved sammenstød: en direkte deling på den samme note er
+			// ejerens eget valg og har forrang. Den kan ikke nå herned — den er
+			// sorteret fra ovenfor — men reglen skal stå dér, hvor rækken skrives,
+			// ikke kun dér, hvor den udregnes.
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO note_shares (note_id, user_id, role, created_by, created_at, linked)
+				VALUES (?, ?, ?, ?, ?, 1)
+				ON CONFLICT (note_id, user_id) DO NOTHING`,
+				g.noteID, g.userID, l.Role, ownerID, time.Now().Unix()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]LinkedShare, 0, len(wanted))
+	for _, l := range wanted {
+		out = append(out, l)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].UserID != out[j].UserID {
+			return out[i].UserID < out[j].UserID
+		}
+		return strings.ToLower(out[i].Title) < strings.ToLower(out[j].Title)
+	})
+	return out, nil
 }

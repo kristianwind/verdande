@@ -3126,10 +3126,20 @@ paths:
                   candidates:
                     type: array
                     items: { $ref: "#/components/schemas/Person" }
+                  follows:
+                    description: >
+                      The notes this one points at with [[links]], which are shared
+                      alongside it. Owner's own notes only.
+                    type: array
+                    items: { $ref: "#/components/schemas/NoteFollow" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [notes]
       summary: Share a note with a person, or change the role they hold.
+      description: >
+        The notes this one points at with [[links]] are shared with the same person
+        and the same role, so a link in a shared note leads somewhere. Only notes
+        the sharer owns follow, and the response lists them.
       requestBody:
         required: true
         content:
@@ -3141,7 +3151,16 @@ paths:
                 user_id: { type: string }
                 role: { type: string, enum: [viewer, editor] }
       responses:
-        "204": { description: Shared }
+        "200":
+          description: Shared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  follows:
+                    type: array
+                    items: { $ref: "#/components/schemas/NoteFollow" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Validation" }
 
@@ -4035,6 +4054,23 @@ components:
       properties:
         user: { $ref: "#/components/schemas/Person" }
         role: { type: string, enum: [viewer, editor] }
+        linked:
+          description: >
+            True when the person has this note because another shared note points
+            at it, rather than because it was shared with them on its own. Such a
+            grant is taken back by removing the link or the share it came from, not
+            by removing it here.
+          type: boolean
+        via:
+          description: The title of the shared note that points at this one.
+          type: string
+
+    NoteFollow:
+      type: object
+      description: A note that is shared alongside another because that one links to it.
+      properties:
+        note_id: { type: string }
+        title: { type: string }
 
     Mailbox:
       type: object

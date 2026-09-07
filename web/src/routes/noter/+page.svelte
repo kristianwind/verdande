@@ -192,6 +192,10 @@
 	// hentes kun for en note, man selv har lavet.
 	let shares = $state([]);
 	let shareCandidates = $state([]);
+	// De noter, denne note tager med sig, når den deles. Ejeren skal kunne se dem:
+	// en deling, der stille tager tre noter mere med, er rigtig og alligevel ikke
+	// til at overskue.
+	let shareFollows = $state([]);
 	let sharePick = $state('');
 	let shareRole = $state('viewer');
 	let shareBusy = $state(false);
@@ -223,6 +227,7 @@
 		// under den nye.
 		shares = [];
 		shareCandidates = [];
+		shareFollows = [];
 		sharePick = '';
 		if (!id || selected.created_by !== app.user?.id) return;
 		let alive = true;
@@ -232,6 +237,7 @@
 				if (!alive || selected?.id !== id) return;
 				shares = r.shares ?? [];
 				shareCandidates = r.candidates ?? [];
+				shareFollows = r.follows ?? [];
 			})
 			.catch(() => {});
 		return () => {
@@ -246,10 +252,20 @@
 		const person = shareCandidates.find((p) => p.id === sharePick);
 		shareBusy = true;
 		try {
-			await api.shareNote(selected.id, sharePick, shareRole);
+			const r = await api.shareNote(selected.id, sharePick, shareRole);
 			shares = [...shares, { user: person, role: shareRole }].sort((a, b) => byName(a.user, b.user));
 			shareCandidates = shareCandidates.filter((p) => p.id !== sharePick);
-			app.toast(t('notes.sharedToast', { name: person?.name ?? '' }));
+			shareFollows = r?.follows ?? shareFollows;
+			// Sagt frem for stiltiende. Delingen tog flere noter med, og den, der
+			// delte, skal vide hvor mange, uden at skulle læse panelet efter.
+			app.toast(
+				shareFollows.length
+					? t('notes.sharedWithFollowers', {
+							name: person?.name ?? '',
+							count: String(shareFollows.length)
+						})
+					: t('notes.sharedToast', { name: person?.name ?? '' })
+			);
 			sharePick = '';
 		} catch (e) {
 			app.toast(humanMessage(e));
@@ -1024,24 +1040,48 @@
 															></span>
 															{sh.user.name}
 														</span>
-														<select
-															value={sh.role}
-															onchange={(e) => changeShareRole(sh.user.id, e.currentTarget.value)}
-														>
-															<option value="viewer">{t('notes.shareRoleViewer')}</option>
-															<option value="editor">{t('notes.shareRoleEditor')}</option>
-														</select>
-														<button
-															class="unshare"
-															onclick={() => removeShare(sh.user.id)}
-															title={t('notes.shareRemove')}
-															aria-label={t('notes.shareRemove')}>×</button
-														>
+														<!-- En adgang, der er fulgt med et link, er ikke valgt her og
+														     kan ikke tages tilbage her: den følger den note, der peger
+														     på denne. Rollen og krydset ville begge love noget, det
+														     næste opslag rullede tilbage — så de står ikke. -->
+														{#if sh.linked}
+															<span class="viafollow"
+																>{t('notes.shareVia', { note: sh.via ?? '' })}</span
+															>
+														{:else}
+															<select
+																value={sh.role}
+																onchange={(e) => changeShareRole(sh.user.id, e.currentTarget.value)}
+															>
+																<option value="viewer">{t('notes.shareRoleViewer')}</option>
+																<option value="editor">{t('notes.shareRoleEditor')}</option>
+															</select>
+															<button
+																class="unshare"
+																onclick={() => removeShare(sh.user.id)}
+																title={t('notes.shareRemove')}
+																aria-label={t('notes.shareRemove')}>×</button
+															>
+														{/if}
 													</li>
 												{/each}
 											</ul>
 										{:else}
 											<span class="none">{t('notes.shareNobody')}</span>
+										{/if}
+										{#if shareFollows.length}
+											<!-- Hvad delingen tager med sig. Et link i en delt note skal føre
+											     samme sted hen for begge, og det kræver, at det, den peger på,
+											     også er delt — men så skal det stå her, hvor den, der deler,
+											     kan se det. -->
+											<p class="follows">
+												{t('notes.shareFollows')}
+												{#each shareFollows as f, i (f.note_id)}<button
+														class="followlink"
+														onclick={() => openLink({ kind: 'note', target_id: f.title })}
+														>{f.title}</button
+													>{i < shareFollows.length - 1 ? ', ' : ''}{/each}
+											</p>
 										{/if}
 										{#if shareCandidates.length}
 											<div class="addshare">
@@ -1908,6 +1948,38 @@
 	.unshare:hover {
 		color: var(--danger, var(--ink));
 		background: var(--surface-raised);
+	}
+
+	/* Adgang, der er fulgt med et link. Sat i stedet for rollen og krydset, altså
+	   yderst til højre, hvor øjet allerede leder efter "hvad kan denne række". */
+	.sharelist .viafollow {
+		margin-left: auto;
+		color: var(--ink-faint);
+		font-size: var(--text-xs);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	/* Hvad delingen tager med sig. Under listen af folk, fordi det gælder dem alle
+	   — ikke én linje pr. person, som ville sige det samme tre gange. */
+	.follows {
+		margin: var(--s1) 0 0;
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		line-height: 1.5;
+	}
+
+	.followlink {
+		border: none;
+		background: none;
+		padding: 0;
+		font: inherit;
+		color: var(--accent);
+		cursor: pointer;
+	}
+	.followlink:hover {
+		text-decoration: underline;
 	}
 
 	.addshare {
