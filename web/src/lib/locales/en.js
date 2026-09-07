@@ -19,7 +19,7 @@ export const en = {
 	// Sharing with individual people, alongside the project.
 	'notes.groupSharedWithMe': 'Shared with me',
 	'notes.linkOpen': 'Open',
-	'notes.linkMissing': 'That note could not be found.',
+	'notes.linkMissing': 'That note does not exist, or it is not shared with you.',
 	'notes.sharedBy': 'Shared by {name}',
 	'notes.sharePeople': 'Share with people',
 	'notes.sharePick': 'Choose someone …',
@@ -72,7 +72,8 @@ export const en = {
 	'notes.copied': 'Copied',
 	'notes.copyFailed': 'Could not copy',
 	'notes.strike': 'Strikethrough',
-	'notes.showSource': 'Show as code',
+	'notes.code': 'Code',
+	'notes.showSource': 'Show the source (Markdown)',
 	'notes.source': 'Note source',
 	'notes.styleTitle': 'Title',
 	'notes.styleHeading': 'Heading',

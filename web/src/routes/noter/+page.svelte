@@ -665,17 +665,38 @@
 	 * to their own pages. Until now these were text and nothing else: the note said
 	 * it pointed somewhere and there was no way to go.
 	 */
+	/**
+	 * Følger et link — og siger det, når det ikke kan følges.
+	 *
+	 * Et `[[link]]` peger på en note ved dens *titel*, så det skal slås op. Først i
+	 * listen, der allerede er hentet, og ellers med en søgning, fordi listen kan
+	 * være snævret ind af et søgeord.
+	 *
+	 * Kun en titel, der passer helt. Der stod `?? found[0]` her, så et link, der
+	 * ikke kunne findes, åbnede den første note, søgningen tilfældigvis gav — og i
+	 * en *delt* note er det næsten altid den note, man allerede står i: den nævner
+	 * jo titlen, den linker til. Så linket så ud til ikke at gøre noget som helst,
+	 * hvilket er præcis sådan det blev meldt. Et link, der rammer forbi, skal sige
+	 * det, ikke ramme et andet sted.
+	 *
+	 * Beskeden nævner delingen, fordi det er den almindelige årsag: en note, der
+	 * deles, deler ikke de noter, den peger på, og modtageren kan derfor se linket
+	 * uden at kunne åbne det. Herfra kan de to tilfælde ikke skelnes — svaret er
+	 * det samme, hvad enten noten ikke findes eller bare ikke er ens egen — og
+	 * sætningen siger dem begge frem for at gætte på den ene.
+	 */
 	async function openLink(link) {
 		if (link.kind === 'note') {
-			const wanted = link.target_id.toLowerCase();
-			const here = notes.find((n) => (n.title ?? '').toLowerCase() === wanted);
+			const wanted = link.target_id.trim().toLowerCase();
+			const titled = (n) => (n.title ?? '').trim().toLowerCase();
+			const here = notes.find((n) => titled(n) === wanted);
 			if (here) {
 				open(here);
 				return;
 			}
 			try {
 				const found = (await api.notes({ q: link.target_id })).notes ?? [];
-				const hit = found.find((n) => (n.title ?? '').toLowerCase() === wanted) ?? found[0];
+				const hit = found.find((n) => titled(n) === wanted);
 				if (hit) open(hit);
 				else app.toast(t('notes.linkMissing'));
 			} catch (e) {

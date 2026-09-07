@@ -165,6 +165,111 @@
 	}
 
 	/**
+	 * Inline kode — `sådan her`.
+	 *
+	 * Den knap fandtes ikke, og `</>`, som i ethvert andet program betyder netop
+	 * kode, sad på kildevisningen med teksten "Vis som kode" på. Så markerede man et
+	 * ord og trykkede på den, og hele noten skiftede til Markdown. Det blev meldt
+	 * som en fejl, og det var det også: knappen sagde ét og gjorde et andet. Nu gør
+	 * `</>` det, tegnet siger, og kilden har fået sit eget mærke.
+	 *
+	 * Skrevet i hånden, fordi execCommand ikke har en kommando for kode. Markeringen
+	 * læses som ren tekst — det er hele meningen med kode, at det ikke er formateret
+	 * — og lægges tilbage inde i et <code>, som konverteringen allerede kender
+	 * begge veje.
+	 */
+	function codeAround() {
+		const selection = window.getSelection();
+		let node = selection?.anchorNode;
+		while (node && node !== editor) {
+			if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'CODE') return node;
+			node = node.parentNode;
+		}
+		return null;
+	}
+
+	/** Markerer ordet, markøren står i. Bruges når der ikke er markeret noget. */
+	function selectWordAtCaret() {
+		const selection = window.getSelection();
+		const node = selection?.anchorNode;
+		if (!node || node.nodeType !== Node.TEXT_NODE) return;
+		const text = node.textContent ?? '';
+		let start = selection.anchorOffset;
+		let end = start;
+		while (start > 0 && !/\s/.test(text[start - 1])) start--;
+		while (end < text.length && !/\s/.test(text[end])) end++;
+		if (start === end) return;
+		const range = document.createRange();
+		range.setStart(node, start);
+		range.setEnd(node, end);
+		selection.removeAllRanges();
+		selection.addRange(range);
+	}
+
+	function selectContents(node) {
+		const range = document.createRange();
+		range.selectNodeContents(node);
+		const selection = window.getSelection();
+		selection.removeAllRanges();
+		selection.addRange(range);
+	}
+
+	function toggleCode() {
+		editor?.focus();
+		const selection = window.getSelection();
+		if (!selection?.rangeCount) return;
+
+		// Inde i en kodeblok er alting allerede kode; en <code> derinde kan hverken
+		// ses eller skrives ned, for en hegnet blok er tekst hele vejen igennem.
+		const block = currentBlock();
+		if (block?.tagName === 'PRE') return;
+
+		const existing = codeAround();
+		if (existing) {
+			// Ud igen: teksten bliver stående, mærkerne forsvinder. Markeringen lægges
+			// om den, så et tryk mere sætter den tilbage — knappen er en kontakt.
+			const text = document.createTextNode(existing.textContent ?? '');
+			existing.replaceWith(text);
+			selectContents(text);
+			readState();
+			changed();
+			return;
+		}
+
+		// Uden en markering er det ordet, markøren står i. Det er det, ⌘B gør i et
+		// tekstprogram, og bedre end et tomt <code>, der ikke kan ses og ikke kan
+		// skrives ned.
+		if (selection.isCollapsed) selectWordAtCaret();
+		const live = window.getSelection();
+		const text = live.toString();
+		if (!text) return;
+
+		// Bygget som en node frem for med `insertHTML`.
+		//
+		// Chromium renser den HTML, den får dér, gennem den samme vej som en
+		// indsætning: `<code>` kom ud som et `<span>` med skrifttypen og farven
+		// skrevet ind i sig, og et span er ikke noget, htmlToMarkdown kan skrive ned
+		// som kode. Målt — mærket forsvandt hver gang, og noten så rigtig ud, indtil
+		// den blev gemt.
+		const range = live.getRangeAt(0);
+		range.deleteContents();
+		const code = document.createElement('code');
+		code.textContent = text;
+		range.insertNode(code);
+
+		// Markøren efter mærket, ikke inde i det: ellers bliver det næste ord, man
+		// skriver, også til kode.
+		const after = document.createRange();
+		after.setStartAfter(code);
+		after.collapse(true);
+		live.removeAllRanges();
+		live.addRange(after);
+
+		readState();
+		changed();
+	}
+
+	/**
 	 * Steps out of a code block on Enter.
 	 *
 	 * A <pre> is preformatted, so the browser answers Enter by inserting a <br> and
@@ -223,7 +328,11 @@
 				underline: document.queryCommandState('underline'),
 				strike: document.queryCommandState('strikeThrough'),
 				bullet: document.queryCommandState('insertUnorderedList'),
-				numbered: document.queryCommandState('insertOrderedList')
+				numbered: document.queryCommandState('insertOrderedList'),
+				// Læst af DOM'en og ikke af execCommand: der findes ingen kommando
+				// for kode, hvilket er hele grunden til at knappen er skrevet i
+				// hånden herunder.
+				code: !!codeAround()
 			};
 		} catch {
 			// Some browsers throw on queryCommandState with no selection. The toolbar
@@ -641,6 +750,9 @@
 		if (key === 'u') {
 			event.preventDefault();
 			apply('underline');
+		} else if (key === 'e') {
+			event.preventDefault();
+			toggleCode();
 		} else if (key === 'x' && event.shiftKey) {
 			event.preventDefault();
 			apply('strikeThrough');
@@ -788,19 +900,50 @@
 		<button class:on={active.strike} onclick={() => apply('strikeThrough')} aria-label={t('notes.strike')}>
 			<s>S</s>
 		</button>
+		<!-- `</>` hører til her, mellem de andre mærker, fordi kode er et mærke som
+		     fed og kursiv. Den sad på kildevisningen, og det var en fælde: tegnet
+		     betyder kode overalt ellers, så folk markerede et ord og fik hele noten
+		     om til Markdown. -->
+		<button
+			class:on={active.code}
+			onclick={toggleCode}
+			title="⌘E"
+			aria-pressed={!!active.code}
+			aria-label={t('notes.code')}
+		>
+			<span class="codemark">&lt;/&gt;</span>
+		</button>
 
 		<span class="sep" aria-hidden="true"></span>
 
 		<!-- Kilden. Til højre for de andre, fordi den ikke er et format men en
-		     anden måde at se det hele på. -->
+		     anden måde at se det hele på — og med Markdown-mærket på, som er præcis
+		     det, den viser. Et tegn, ingen forveksler med et format. -->
 		<button
 			class="src"
 			class:on={asSource}
 			onclick={toggleSource}
 			aria-pressed={asSource}
 			aria-label={t('notes.showSource')}
-			title={t('notes.showSource')}>&lt;/&gt;</button
+			title={t('notes.showSource')}
 		>
+			<svg viewBox="0 0 208 128" aria-hidden="true">
+				<rect
+					x="5"
+					y="5"
+					width="198"
+					height="118"
+					rx="14"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="12"
+				/>
+				<path
+					d="M30 98V30h20l20 25 20-25h20v68H90V59L70 84 50 59v39zM155 98l-30-33h20V30h20v35h20z"
+					fill="currentColor"
+				/>
+			</svg>
+		</button>
 	</div>
 
 	{#if asSource}
@@ -1132,9 +1275,22 @@
 		resize: none;
 	}
 
-	.src {
+	/* Kodeknappen bærer sit eget tegn i monospace — `</>` sat med brødskriften
+	   ligner en tastefejl frem for et mærke. */
+	.codemark {
 		font-family: var(--font-mono);
 		font-size: var(--text-xs);
+	}
+
+	.src {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.src svg {
+		width: 17px;
+		height: auto;
 	}
 
 	/* The document styles. These are the whole of "it should look like Apple Notes":
