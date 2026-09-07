@@ -108,7 +108,7 @@ curl -X POST https://todo.example.dk/api/v1/tasks/quick-add \
 | Method | Path | |
 |---|---|---|
 | `GET` | `/today` | Overdue and due today, in your timezone. |
-| `GET` | `/upcoming?days=7` | One entry per day, empty days included. |
+| `GET` | `/upcoming?days=7` | One entry per day, empty days included. Up to 31; over that is capped. |
 | `GET` | `/search?q=` | Across everything you can see. |
 | `GET` `POST` | `/filters` | |
 | `GET` | `/filters/{id}/tasks` | Run one. |

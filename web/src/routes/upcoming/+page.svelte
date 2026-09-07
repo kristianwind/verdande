@@ -1,6 +1,6 @@
 <script>
 	/**
-	 * Kommende: the next seven days as a list, one week as a grid, or the month.
+	 * Kommende: a run of days as a list, one week as a grid, or the month.
 	 *
 	 * The views ask for different things and none is a subset of the others — seven
 	 * days from today, against a chosen week, against six whole weeks around a
@@ -15,7 +15,7 @@
 	 * A week that straddles the 31st and the 1st has both days in the same row.
 	 */
 	import { api } from '$lib/api.js';
-	import { app, upcomingView } from '$lib/stores.svelte.js';
+	import { app, upcomingView, UPCOMING_DAYS } from '$lib/stores.svelte.js';
 	import { TASK, startDrag, carries, dragged, accept } from '$lib/dnd.js';
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
@@ -24,9 +24,12 @@
 
 	let days = $state([]);
 
+	// Reads `upcomingView.days` inside the effect on purpose: that is what makes
+	// choosing a longer horizon reload, rather than extending the strip with days
+	// nobody asked the server about.
 	$effect(() => {
 		if (upcomingView.mode !== 'list') return;
-		api.upcoming().then((data) => {
+		api.upcoming(upcomingView.days).then((data) => {
 			days = data.days;
 			app.tasks = data.days.flatMap((d) => d.tasks);
 		});
@@ -51,6 +54,21 @@
 		if (diff === 0) return t('task.today');
 		if (diff === 1) return t('task.tomorrow');
 		return day.toLocaleDateString(tag(), { weekday: 'long', day: 'numeric', month: 'short' });
+	}
+
+	// A month of headings repeats every weekday four times, and "mandag 6. okt"
+	// alone does not say which mandag. The week number is the label that does, and
+	// it only earns its place once the strip is longer than a week.
+	function weekOf(date) {
+		if (upcomingView.days <= 7) return null;
+		const day = new Date(date + 'T00:00:00');
+		// ISO weeks: Thursday decides which year and which week a row belongs to.
+		const thursday = new Date(day);
+		thursday.setDate(day.getDate() - ((day.getDay() + 6) % 7) + 3);
+		const firstThursday = new Date(thursday.getFullYear(), 0, 4);
+		firstThursday.setDate(firstThursday.getDate() - ((firstThursday.getDay() + 6) % 7) + 3);
+		const n = 1 + Math.round((thursday - firstThursday) / (7 * 86400000));
+		return t('view.weekNumber', { n });
 	}
 
 	// Reading tasks back out of the store keeps a completed row disappearing
@@ -82,6 +100,19 @@
 <div class="view" class:wide={upcomingView.mode !== 'list'}>
 	<header>
 		<h1>{t('view.upcoming')}</h1>
+		{#if upcomingView.mode === 'list'}
+			<!-- Only the list takes a horizon. A week grid is a week and a month grid
+			     is a month; there is no fortnight for them to show. -->
+			<div class="views" role="group" aria-label={t('view.horizon')}>
+				{#each UPCOMING_DAYS as n}
+					<button
+						class:active={upcomingView.days === n}
+						onclick={() => upcomingView.setDays(n)}
+						aria-pressed={upcomingView.days === n}>{t('view.days', { n })}</button
+					>
+				{/each}
+			</div>
+		{/if}
 		<div class="views" role="group" aria-label={t('view.mode')}>
 			{#each [['list', t('view.list')], ['week', t('view.week')], ['calendar', t('view.month')]] as [value, label]}
 				<button
@@ -102,6 +133,7 @@
 	{:else}
 		{#each days as day (day.date)}
 			{@const tasks = live(day.date)}
+			{@const week = weekOf(day.date)}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<section
 				class:over={over === day.date}
@@ -109,7 +141,10 @@
 				ondragleave={() => (over = null)}
 				ondrop={(e) => onDrop(e, day.date)}
 			>
-				<h2>{heading(day.date)}</h2>
+				<h2>
+					{heading(day.date)}
+					{#if week}<span class="week">{week}</span>{/if}
+				</h2>
 				{#if tasks.length}
 					{#each tasks as task (task.id)}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -210,6 +245,10 @@
 	}
 
 	h2 {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--s2);
 		font-size: var(--text-xs);
 		font-weight: 560;
 		text-transform: uppercase;
@@ -218,6 +257,14 @@
 		padding: 0 var(--s2) var(--s2);
 		border-bottom: 1px solid var(--line);
 		margin-bottom: var(--s2);
+	}
+
+	/* Lighter than the day it sits beside: it is there to be found when you are
+	   lost in the fourth week, not read on every row. */
+	.week {
+		font-weight: 400;
+		letter-spacing: 0.04em;
+		opacity: 0.7;
 	}
 
 	/* An em dash rather than "ingen opgaver": seven repetitions of a sentence is

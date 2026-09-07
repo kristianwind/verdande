@@ -451,6 +451,8 @@ export const da = {
 	'view.filterEmpty': 'Ingenting matcher lige nu.',
 	'view.filterFailed': 'Filteret kunne ikke køres.',
 	'view.upcoming': 'Kommende',
+	'view.horizon': 'Periode',
+	'view.days': '{n} dage',
 	'view.mode': 'Visning',
 	'view.list': 'Liste',
 	'view.week': 'Uge',
