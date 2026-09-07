@@ -23,7 +23,7 @@ export const da = {
 	// Deling med enkeltpersoner, ved siden af projektet.
 	'notes.groupSharedWithMe': 'Delt med mig',
 	'notes.linkOpen': 'Åbn',
-	'notes.linkMissing': 'Noten blev ikke fundet.',
+	'notes.linkMissing': 'Noten findes ikke, eller den er ikke delt med dig.',
 	'notes.sharedBy': 'Delt af {name}',
 	'notes.sharePeople': 'Del med personer',
 	'notes.sharePick': 'Vælg en person …',
@@ -76,7 +76,8 @@ export const da = {
 	'notes.copied': 'Kopieret',
 	'notes.copyFailed': 'Kunne ikke kopiere',
 	'notes.strike': 'Gennemstreget',
-	'notes.showSource': 'Vis som kode',
+	'notes.code': 'Kode',
+	'notes.showSource': 'Vis kilden (Markdown)',
 	'notes.source': 'Notens kildetekst',
 	'notes.styleTitle': 'Titel',
 	'notes.styleHeading': 'Overskrift',

@@ -2838,6 +2838,142 @@ test('en note kan deles med en person direkte, og dukker op hos dem', async ({ b
 	expect(trouble).toEqual([]);
 });
 
+/**
+ * Note-links i en delt note.
+ *
+ * Meldt af en, der havde en note delt med sig: linkene i den gjorde ingenting.
+ * Det var to ting. Opslaget faldt tilbage på det første søgeresultat, når titlen
+ * ikke passede — og i en delt note er det første resultat næsten altid noten selv,
+ * fordi den nævner den titel, den linker til. Så åbnede linket den note, man
+ * allerede stod i, hvilket ser ud som ingenting. Og når det så endelig ikke fandt
+ * noget, sagde beskeden "blev ikke fundet", som var den forkerte grund: noten
+ * findes, den er bare ikke delt med.
+ */
+test('note links i en delt note fører til den rigtige note, eller siger hvorfor ikke', async ({
+	browser,
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+
+	await page.goto('/indstillinger/brugere');
+	await page.getByLabel('E-mailadresse').fill('link@example.dk');
+	await page.getByRole('button', { name: 'Send invitation' }).click();
+	const link = await page.locator('.link-out').textContent();
+
+	const gæstCtx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const gæst = await gæstCtx.newPage();
+	await gæst.goto(link);
+	await gæst.getByLabel('Navn', { exact: true }).fill('Linnea');
+	await gæst.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
+	await gæst.getByRole('button', { name: 'Opret konto' }).click();
+	await expect(gæst.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+	const noterURL = new URL('/noter', link).href;
+
+	// Ejeren skriver to noter: en, der bliver delt, og en, der ikke gør — og den
+	// delte peger på den anden.
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('link', { name: 'Noter', exact: true }).click();
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	await page.getByRole('textbox', { name: 'Notens tekst' }).click();
+	await page.keyboard.type('Prisliste for foraaret');
+	await page.getByRole('textbox', { name: 'Notens tekst' }).blur();
+
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	await page.getByRole('textbox', { name: 'Notens tekst' }).click();
+	await page.keyboard.type('Aftale om levering\n');
+	await page.keyboard.type('[[Prisliste for foraaret]]');
+	await page.getByRole('textbox', { name: 'Notens tekst' }).blur();
+
+	// Gæsten har en note af sin egen, som hun kan pege på.
+	await gæst.goto(noterURL);
+	await gæst.getByRole('button', { name: 'Ny note' }).click();
+	await gæst.getByRole('textbox', { name: 'Notens tekst' }).click();
+	await gæst.keyboard.type('Linneas egne maal');
+	await gæst.getByRole('textbox', { name: 'Notens tekst' }).blur();
+
+	await page.locator('.notes').getByRole('button', { name: /Aftale om levering/ }).click();
+	await page.locator('.sharewrap > button').click();
+	const share = page.locator('.sharepanel');
+	await expect(share).toBeVisible();
+	await share.locator('.addshare select').first().selectOption({ label: 'Linnea' });
+	await share.getByRole('button', { name: 'Tilføj' }).click();
+	const row = share.locator('.sharelist li').filter({ hasText: 'Linnea' });
+	await expect(row).toBeVisible();
+	await row.locator('select').selectOption('editor');
+
+	// Hun skriver sit eget link ind i den delte note.
+	await gæst.goto(noterURL);
+	await gæst.locator('.notes').getByRole('button', { name: /Aftale om levering/ }).click();
+	const body = gæst.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(body).toContainText('Prisliste for foraaret');
+	await body.click();
+	await gæst.keyboard.press('Control+End');
+	await gæst.keyboard.type('\n[[Linneas egne maal]]');
+	await body.blur();
+	await expect(gæst.locator('footer .hint')).toHaveText('Gemt');
+
+	await gæst.goto(noterURL);
+	await gæst.locator('.notes').getByRole('button', { name: /Aftale om levering/ }).click();
+	const delt = gæst.getByRole('textbox', { name: 'Notens tekst' });
+
+	// Hendes eget link fører derhen, det siger.
+	await delt.locator('a.notelink', { hasText: 'Linneas egne maal' }).click();
+	await expect(gæst.getByRole('textbox', { name: 'Notens tekst' })).toContainText(
+		'Linneas egne maal'
+	);
+
+	// Ejerens link peger på en note, hun ikke har fået. Den må ikke lande et
+	// tilfældigt sted — og den må sige hvorfor.
+	await gæst.locator('.notes').getByRole('button', { name: /Aftale om levering/ }).click();
+	const igen = gæst.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(igen).toContainText('Prisliste for foraaret');
+	await igen.locator('a.notelink', { hasText: 'Prisliste for foraaret' }).click();
+	await expect(gæst.locator('.toast')).toContainText('ikke delt med dig');
+	// Stadig i den delte note: linket flyttede hende ingen steder hen.
+	await expect(gæst.getByRole('textbox', { name: 'Notens tekst' })).toContainText(
+		'Aftale om levering'
+	);
+
+	await gæstCtx.close();
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * `</>` er kode, ikke kilde.
+ *
+ * Sådan blev den læst af den første, der så den — markér et ord, tryk på tegnet,
+ * og hele noten skiftede til Markdown. Tegnet betyder kode i ethvert andet
+ * program, så det er knappen, der skal give efter, ikke brugeren.
+ */
+test('</> sætter markeringen som kode, og kilden har sin egen knap', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const body = page.getByRole('textbox', { name: 'Notens tekst' });
+	await body.click();
+	await page.keyboard.type('Kodenote\n');
+	await page.keyboard.type('kør kommandoen npm først');
+
+	// Markér ét ord og gør det til kode.
+	await page.keyboard.press('Shift+Home');
+	await page.keyboard.press('Shift+ArrowRight');
+	await page.getByRole('button', { name: 'Kode', exact: true }).click();
+	await expect(body.locator('code')).toHaveCount(1);
+
+	// Noten er stadig rig tekst — kildevisningen er ikke slået til.
+	await expect(page.locator('textarea.source')).toHaveCount(0);
+
+	// Og den anden knap gør stadig det, den altid har gjort: viser filen, med
+	// baktikkerne i, som er beviset på at koden nåede hele vejen ned.
+	await body.blur();
+	await expect(page.locator('footer .hint')).toHaveText('Gemt');
+	await page.getByRole('button', { name: /Vis kilden/ }).click();
+	await expect(page.locator('textarea.source')).toHaveValue(/`/);
+
+	expect(trouble).toEqual([]);
+});
+
 test('udseendet kan skiftes uafhængigt af temaet, og overlever en genindlæsning', async ({
 	page
 }) => {
