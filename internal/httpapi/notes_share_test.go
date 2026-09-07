@@ -46,7 +46,7 @@ func TestSharedNoteReachesTheOtherPerson(t *testing.T) {
 	// Share it as a viewer.
 	resp, _ := owner.do(t, "POST", "/api/v1/notes/"+noteID+"/shares",
 		map[string]string{"user_id": sofie, "role": "viewer"})
-	if resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("share: status %d", resp.StatusCode)
 	}
 
@@ -92,7 +92,7 @@ func TestSharedEditorCanWriteButNotGiveAway(t *testing.T) {
 
 	noteID := owner.createNote(t, "# Delt\noprindelig")
 	if resp, _ := owner.do(t, "POST", "/api/v1/notes/"+noteID+"/shares",
-		map[string]string{"user_id": sofie, "role": "editor"}); resp.StatusCode != http.StatusNoContent {
+		map[string]string{"user_id": sofie, "role": "editor"}); resp.StatusCode != http.StatusOK {
 		t.Fatalf("share as editor failed")
 	}
 
@@ -193,7 +193,104 @@ func TestShareRejectsUnknownAndSelf(t *testing.T) {
 		t.Errorf("sharing with oneself: %d, want 422", resp.StatusCode)
 	}
 	if resp, _ := owner.do(t, "POST", "/api/v1/notes/"+noteID+"/shares",
-		map[string]string{"user_id": me, "role": "owner"}); resp.StatusCode == http.StatusNoContent {
+		map[string]string{"user_id": me, "role": "owner"}); resp.StatusCode == http.StatusOK {
 		t.Error("a note was shared at the owner role")
+	}
+}
+
+// De noter, en delt note peger på, følger med — og holder op igen.
+//
+// Det var meldt som en fejl den anden vej rundt: linkene i en delt note førte
+// ingen steder hen, fordi det, de pegede på, ikke var delt. Prøven går hele vejen
+// rundt om svaret på det — dybden, teksten der ændrer sig bagefter, det der ikke
+// må følge med, og vejen tilbage.
+func TestSharedNoteTakesItsLinksWithIt(t *testing.T) {
+	owner := newTestServer(t)
+	owner.bootstrap(t)
+	other := owner.newUser(t, "sofie@example.dk", "Sofie")
+	sofie := userID(t, owner, "sofie@example.dk")
+
+	// Prisliste peger videre på Leveringstider, så kæden er to led lang.
+	deep := owner.createNote(t, "# Leveringstider\nfire dage")
+	linked := owner.createNote(t, "# Prisliste\nog [[Leveringstider]]")
+	apart := owner.createNote(t, "# Bankoplysninger\nikke til deling")
+	noteID := owner.createNote(t, "# Aftale om levering\nse [[Prisliste]]")
+
+	reachable := func(id string) bool {
+		resp, _ := other.do(t, "GET", "/api/v1/notes/"+id, nil)
+		return resp.StatusCode == http.StatusOK
+	}
+
+	resp, out := owner.do(t, "POST", "/api/v1/notes/"+noteID+"/shares",
+		map[string]string{"user_id": sofie, "role": "viewer"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("share: status %d", resp.StatusCode)
+	}
+	// Svaret siger, hvad der fulgte med — hele kæden, ikke kun første led. En
+	// deling, der stille tog to noter mere med, ville være rigtig og alligevel ikke
+	// til at overskue.
+	follows, _ := out["follows"].([]any)
+	if len(follows) != 2 {
+		t.Fatalf("delingen nævnte %d noter, der fulgte med, want 2: %v", len(follows), out["follows"])
+	}
+
+	if !reachable(linked) {
+		t.Error("noten, den delte note peger på, fulgte ikke med")
+	}
+	if !reachable(deep) {
+		t.Error("kæden stoppede efter ét led")
+	}
+	if reachable(apart) {
+		t.Error("en note, ingen peger på, blev delt")
+	}
+
+	// Skrevet bagefter tæller også. Et link i dag i en note delt i går skal føre
+	// samme sted hen for begge.
+	senere := owner.createNote(t, "# Rabatter\nti procent")
+	if reachable(senere) {
+		t.Fatal("en helt ny note var delt, før noget pegede på den")
+	}
+	if resp, _ := owner.do(t, "PATCH", "/api/v1/notes/"+noteID,
+		map[string]any{"body": "# Aftale om levering\nse [[Prisliste]] og [[Rabatter]]"}); resp.StatusCode != http.StatusOK {
+		t.Fatal("kunne ikke skrive videre i den delte note")
+	}
+	if !reachable(senere) {
+		t.Error("et link skrevet efter delingen fulgte ikke med")
+	}
+
+	// Og vejen tilbage: tages delingen tilbage, følger det med, den tog med sig.
+	if resp, _ := owner.do(t, "DELETE", "/api/v1/notes/"+noteID+"/shares/"+sofie, nil); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("unshare: status %d", resp.StatusCode)
+	}
+	if reachable(linked) || reachable(deep) || reachable(senere) {
+		t.Error("det, der fulgte med delingen, blev stående, da den blev taget tilbage")
+	}
+}
+
+// En medredaktør kan ikke dele ejerens noter med sig selv ved at skrive et link.
+//
+// Det er den ene vej, "linkene følger med" kunne blive til en rettighedsfejl: et
+// link peger på en titel, og enhver, der må rette i en delt note, kan skrive en
+// titel. Derfor regnes delingerne kun om, når ejeren selv har gemt.
+func TestAnEditorCannotShareTheOwnersNotesWithThemselves(t *testing.T) {
+	owner := newTestServer(t)
+	owner.bootstrap(t)
+	other := owner.newUser(t, "sofie@example.dk", "Sofie")
+	sofie := userID(t, owner, "sofie@example.dk")
+
+	secret := owner.createNote(t, "# Bankoplysninger\nreg og konto")
+	noteID := owner.createNote(t, "# Fælles\nintet link her")
+	if resp, _ := owner.do(t, "POST", "/api/v1/notes/"+noteID+"/shares",
+		map[string]string{"user_id": sofie, "role": "editor"}); resp.StatusCode != http.StatusOK {
+		t.Fatal("share as editor failed")
+	}
+
+	// Hun skriver linket selv, i den note hun har fået lov at rette i.
+	if resp, _ := other.do(t, "PATCH", "/api/v1/notes/"+noteID,
+		map[string]any{"body": "# Fælles\nse [[Bankoplysninger]]"}); resp.StatusCode != http.StatusOK {
+		t.Fatal("medredaktøren kunne ikke skrive")
+	}
+	if resp, _ := other.do(t, "GET", "/api/v1/notes/"+secret, nil); resp.StatusCode == http.StatusOK {
+		t.Error("en medredaktør delte ejerens note med sig selv ved at skrive et link")
 	}
 }

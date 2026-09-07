@@ -77,12 +77,37 @@ func (s *Server) handleListNoteShares(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, "list note shares", err)
 		return
 	}
+	// Regnet forfra, én gang, og læst to veje ud af det samme svar: hvem der har
+	// *denne* note, fordi en anden peger på den, og hvilke noter der omvendt følger
+	// med den her. To udregninger af det samme er to, der kan blive uenige.
+	//
+	// Og forfra frem for læst af basen, så panelet viser det, der gælder nu — også
+	// når linkene er skrevet af en anden og delingerne derfor ikke er regnet om
+	// siden.
+	following, err := s.db.SyncLinkedShares(r.Context(), userFrom(r.Context()).ID)
+	if err != nil {
+		s.internal(w, r, "sync linked shares", err)
+		return
+	}
+	via := map[string]string{}
+	for _, l := range following {
+		if l.NoteID == n.ID {
+			via[l.UserID] = l.Via
+		}
+	}
+
 	out := make([]noteShareJSON, 0, len(shares))
 	already := map[string]bool{}
 	for _, sh := range shares {
+		// Panelet skal kunne sige forskel: en deling, nogen har valgt, tages tilbage
+		// ved at fjerne den — en, der er fulgt med, ved at fjerne linket eller den
+		// deling, den kom fra. En knap, der lover det første og gør det andet, er
+		// værre end ingen knap.
 		out = append(out, noteShareJSON{
-			User: personJSON{ID: sh.User.ID, Name: sh.User.Name, AvatarColor: sh.User.AvatarColor},
-			Role: string(sh.Role),
+			User:   personJSON{ID: sh.User.ID, Name: sh.User.Name, AvatarColor: sh.User.AvatarColor},
+			Role:   string(sh.Role),
+			Linked: via[sh.User.ID] != "",
+			Via:    via[sh.User.ID],
 		})
 		already[sh.User.ID] = true
 	}
@@ -103,12 +128,41 @@ func (s *Server) handleListNoteShares(w http.ResponseWriter, r *http.Request) {
 		cand = append(cand, personJSON{ID: p.ID, Name: p.Name, AvatarColor: p.AvatarColor})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"shares": out, "candidates": cand})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"shares":     out,
+		"candidates": cand,
+		"follows":    followsOf(following, n.ID),
+	})
+}
+
+// followsOf er de noter, der følger med *denne* note — én linje pr. note, ikke én
+// pr. note og person. Panelet spørger på vegne af noten, og svaret "Prisliste
+// følger med" er det samme, hvem det så end deles med.
+func followsOf(all []store.LinkedShare, noteID string) []followJSON {
+	seen := map[string]bool{}
+	out := []followJSON{}
+	for _, l := range all {
+		if l.ViaID != noteID || seen[l.NoteID] {
+			continue
+		}
+		seen[l.NoteID] = true
+		out = append(out, followJSON{NoteID: l.NoteID, Title: l.Title})
+	}
+	return out
+}
+
+type followJSON struct {
+	NoteID string `json:"note_id"`
+	Title  string `json:"title"`
 }
 
 type noteShareJSON struct {
 	User personJSON `json:"user"`
 	Role string     `json:"role"`
+	// Sat, når personen har noten, fordi en anden delt note peger på den — ikke
+	// fordi nogen har delt netop den. `via` er den note, der peger.
+	Linked bool   `json:"linked"`
+	Via    string `json:"via,omitempty"`
 }
 
 type shareNoteRequest struct {
@@ -159,7 +213,15 @@ func (s *Server) handleShareNote(w http.ResponseWriter, r *http.Request) {
 		s.storeError(w, r, "share note", err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+
+	// Og det, noten peger på, følger med. Svaret siger hvad — en deling, der stille
+	// tog tre noter mere med, ville være rigtig og alligevel ikke til at overskue.
+	followed, err := s.db.SyncLinkedShares(r.Context(), userFrom(r.Context()).ID)
+	if err != nil {
+		s.internal(w, r, "sync linked shares", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"follows": followsOf(followed, n.ID)})
 }
 
 // handleUnshareNote takes a person's access away again.
@@ -175,6 +237,13 @@ func (s *Server) handleUnshareNote(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.db.UnshareNote(r.Context(), n.ID, chi.URLParam(r, "userID")); err != nil {
 		s.internal(w, r, "unshare note", err)
+		return
+	}
+	// Det, der fulgte med, følger også med tilbage. Regnet forfra: de udledte rækker
+	// skrives om fra bunden, så en note, der stadig kan nås fra en anden deling,
+	// bliver stående, og en, der ikke kan, forsvinder.
+	if _, err := s.db.SyncLinkedShares(r.Context(), userFrom(r.Context()).ID); err != nil {
+		s.internal(w, r, "sync linked shares", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

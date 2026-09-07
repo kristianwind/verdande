@@ -204,7 +204,47 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, "create note", err)
 		return
 	}
+	// En ny note kan være den, en delt note hele tiden har peget på: linket er
+	// skrevet som en titel, og titlen fandtes ikke før nu.
+	//
+	// Kun når der står noget i den. En tom note har ingen titel, og et link peger på
+	// en titel — så der er intet at regne, og det kostede alligevel: udregningen
+	// åbner hver eneste af ejerens noter, og den lå her mellem "Ny note" og det
+	// svar, fladen venter på for at kunne tegne editoren. Halvfems millisekunder er
+	// nok til at nå at taste den første linje ind i den forrige note, som så blev
+	// tegnet væk. Målt i e2e-prøven for monospace, der begyndte at tabe sin titel.
+	if strings.TrimSpace(n.Body) != "" {
+		s.followLinks(r, n)
+	}
 	writeJSON(w, http.StatusCreated, n)
+}
+
+// followLinks holder de udledte delinger i takt med teksten.
+//
+// De noter, en delt note peger på, følger med — og teksten kan ændre sig, efter
+// delingen er sat. Et link skrevet i dag i en note, der blev delt i går, skal føre
+// samme sted hen for begge.
+//
+// Kun ejerens egne gemninger regner om, og det er ikke en optimering. Et link
+// peger på en titel, og en medredaktør må skrive i teksten — så hvis enhver
+// gemning talte med, kunne den, man har delt en note med, skrive
+// `[[Bankoplysninger]]` ind i den og dermed dele den med sig selv.
+//
+// Det lukker ikke hullet helt, og det skal siges frem for at lyde lukket: skriver
+// medredaktøren linket, og gemmer ejeren bagefter sin egen note, følger den note
+// med dér. Det, der står tilbage mod det, er synlighed — linket står som tekst i
+// ejerens egen note, og delingspanelet viser hver note, der er fulgt med, og hvem
+// der har den. En stille eskalering er det ikke; en, man kan overse, er den.
+//
+// Fejler det, siges det i loggen og ikke til den, der gemte: noten *er* gemt, og
+// et svar, der lyder som om den ikke er, ville få dem til at skrive den igen.
+func (s *Server) followLinks(r *http.Request, n *store.Note) {
+	if n == nil || n.CreatedBy != userFrom(r.Context()).ID {
+		return
+	}
+	if _, err := s.db.SyncLinkedShares(r.Context(), n.CreatedBy); err != nil {
+		s.log.Error("sync linked shares", "err", err, "note", n.ID)
+	}
 }
 
 func (s *Server) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
@@ -242,6 +282,7 @@ func (s *Server) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
 		}
 		n.ProjectID = *body.ProjectID
 	}
+	before := n.Body
 	if body.Body != nil {
 		n.Body = *body.Body
 	}
@@ -249,11 +290,39 @@ func (s *Server) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
 		n.Pinned = *body.Pinned
 	}
 
+	// Læst før gemningen, sammenlignet efter. En gemning er en tastepause, ikke en
+	// begivenhed, så de fleste af dem ændrer intet af det her — og udregningen
+	// åbner hver eneste af ejerens noter, fordi titlerne er forseglet. Den skal
+	// køre, når svaret kan være blevet et andet, og ellers ikke.
+	wasLinking := store.LinksIn(before)
+	wasTitled := n.Title
+
 	if err := s.db.SaveNote(r.Context(), n); err != nil {
 		s.internal(w, r, "update note", err)
 		return
 	}
+	// Titlen tæller med: den *er* første linje, så en omskrevet overskrift flytter
+	// det, andres links peger på, uden at et eneste link er rørt.
+	if n.Title != wasTitled || !sameLinks(wasLinking, store.LinksIn(n.Body)) {
+		s.followLinks(r, n)
+	}
 	writeJSON(w, http.StatusOK, n)
+}
+
+func sameLinks(a, b []store.NoteLink) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	in := make(map[store.NoteLink]bool, len(a))
+	for _, l := range a {
+		in[l] = true
+	}
+	for _, l := range b {
+		if !in[l] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) handleDeleteNote(w http.ResponseWriter, r *http.Request) {
@@ -279,6 +348,9 @@ func (s *Server) handleDeleteNote(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, "delete note", err)
 		return
 	}
+	// En note i papirkurven er ikke længere et udgangspunkt for noget. Det, den tog
+	// med sig, skal derfor heller ikke blive stående hos dem, den blev delt med.
+	s.followLinks(r, n)
 	w.WriteHeader(http.StatusNoContent)
 }
 

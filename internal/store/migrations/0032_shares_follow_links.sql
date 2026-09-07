@@ -1,0 +1,22 @@
+-- De noter, en delt note peger på, følger med delingen.
+--
+-- Et `[[link]]` i en note, der er delt, pegede indtil nu på noget, modtageren
+-- ikke havde fået. Linket stod der, kunne ses, og førte ingen steder hen — meldt
+-- af den første, der prøvede at læse en delt note, og med rette: den, der deler
+-- en note, deler det, noten *siger*, og et link er en del af det, den siger.
+--
+-- Rækken er den samme som en almindelig deling. `linked` er den ene forskel: den
+-- siger, at rækken ikke er valgt af nogen, men udledt af, hvad noten peger på.
+-- Det gør to ting muligt, som en boolsk værdi ellers sjældent gør sig fortjent
+-- til. Fladen kan sige *hvorfor* en person har den note — "den fulgte med" er en
+-- anden sætning end "du delte den". Og udledningen kan regnes forfra hver gang:
+-- de udledte rækker må slettes og skrives igen efter hver ændring, mens de
+-- valgte aldrig røres. Uden skellet ville en oprydning enten lade forældede
+-- delinger blive stående eller fjerne dem, ejeren selv havde sat.
+--
+-- Kun ejerens egne noter følger med. Et link peger på en *titel*, og titler kan
+-- skrives af enhver, der må rette i noten — så hvis et link kunne hente hvad som
+-- helst, ville en medredaktør kunne skrive `[[Bankoplysninger]]` og læse med.
+-- Opslaget sker derfor kun blandt de noter, ejeren selv ejer, og deling af dem
+-- har ejeren allerede ret til.
+ALTER TABLE note_shares ADD COLUMN linked INTEGER NOT NULL DEFAULT 0;
