@@ -64,6 +64,60 @@ function watchForTrouble(page) {
 	return trouble;
 }
 
+/**
+ * Kommendes liste kan se længere frem end en uge.
+ *
+ * Syv dage er stadig det, den åbner på — det er den vandring, der er værd at gå om
+ * morgenen. Men "hvornår bliver den her måned travl" er et andet spørgsmål, og
+ * månedsgitteret svarer på det med form frem for med rækkefølge. Derfor kan
+ * listen sættes til 14 og 30 dage, og valget bliver liggende: horisonten er et
+ * spørgsmål om, hvor langt man planlægger, ikke om hvilken skærm man sidder ved —
+ * men det er den samme slags valg som gitter eller liste, så det ligger samme sted.
+ */
+test('Kommende kan se en måned frem, og horisonten huskes', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const box = page.getByLabel('Ny opgave');
+	await box.fill('skifte olie om 20 dage');
+	await box.press('Enter');
+	await expect(box).toHaveValue('');
+
+	await page.goto('/upcoming');
+	await page.getByRole('button', { name: 'Liste', exact: true }).click();
+
+	const days = page.locator('section:has(> h2)');
+	const task = page.getByText('skifte olie', { exact: true });
+
+	// Syv dage er udgangspunktet, og opgaven ligger uden for dem. At den er væk her
+	// er halvdelen af prøven: uden den kunne de tredive dage nedenfor være syv, der
+	// tilfældigvis viste den.
+	await expect(days).toHaveCount(7);
+	await expect(task).toBeHidden();
+
+	await page.getByRole('button', { name: '30 dage', exact: true }).click();
+	await expect(days).toHaveCount(30);
+	await expect(task).toBeVisible();
+
+	// Ugenummeret står kun, når strimlen er længere end en uge — ellers siger det
+	// ingenting, man ikke kunne se i forvejen.
+	await expect(days.first().getByText(/uge \d+/i)).toBeVisible();
+
+	// Og valget overlever en genindlæsning.
+	await page.reload();
+	await expect(days).toHaveCount(30);
+	await expect(
+		page.getByRole('button', { name: '30 dage', exact: true }),
+		'horisonten blev ikke husket'
+	).toHaveAttribute('aria-pressed', 'true');
+
+	await page.getByRole('button', { name: '7 dage', exact: true }).click();
+	await expect(days).toHaveCount(7);
+	await expect(days.first().getByText(/uge \d+/i)).toBeHidden();
+
+	expect(trouble).toEqual([]);
+});
+
 test('hurtig tilføjelse opretter en opgave, og den kan lukkes', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 	await page.goto('/');

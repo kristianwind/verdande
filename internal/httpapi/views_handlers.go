@@ -51,7 +51,8 @@ type upcomingDay struct {
 	Tasks []taskJSON `json:"tasks"`
 }
 
-// handleUpcoming returns the next seven days, one entry per day.
+// handleUpcoming returns the next `days` days, one entry per day, seven by default
+// and at most a month.
 //
 // Empty days are included on purpose: the view is a calendar strip, and a Thursday
 // missing from the response because nothing is due would collapse the layout and
@@ -65,10 +66,14 @@ func (s *Server) handleUpcoming(w http.ResponseWriter, r *http.Request) {
 	from := start.Format("2006-01-02")
 	to := start.AddDate(0, 0, days-1).Format("2006-01-02")
 
+	// The row limit follows the window rather than sitting at a constant, or a
+	// month asked for with the same ceiling as a week would truncate the last days
+	// silently — and a day cut off the end of the answer looks exactly like a day
+	// with nothing due.
 	tasks, err := s.db.ListTasks(r.Context(), user.ID, store.TaskFilter{
 		DueFrom:   from,
 		DueBefore: to,
-		Limit:     1000,
+		Limit:     200 * days,
 	})
 	if err != nil {
 		s.internal(w, r, "upcoming", err)

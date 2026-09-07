@@ -446,6 +446,8 @@ export const en = {
 	'view.filterEmpty': 'Nothing matches right now.',
 	'view.filterFailed': 'The filter could not be run.',
 	'view.upcoming': 'Upcoming',
+	'view.horizon': 'Range',
+	'view.days': '{n} days',
 	'view.mode': 'View',
 	'view.list': 'List',
 	'view.week': 'Week',

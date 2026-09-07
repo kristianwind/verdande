@@ -865,8 +865,8 @@ class SidebarLayout {
 export const sidebar = new SidebarLayout();
 
 /**
- * Whether Kommende shows the next seven days as a list, one week as a grid, or the
- * whole month.
+ * Whether Kommende shows a run of days as a list, one week as a grid, or the whole
+ * month.
  *
  * In localStorage rather than on the account, and for the same reason as the
  * sidebar's width: a grid of seven columns needs room, and the answer on a phone is
@@ -878,24 +878,48 @@ export const sidebar = new SidebarLayout();
  */
 const UPCOMING_MODES = ['list', 'week', 'calendar'];
 
+/**
+ * How far the list looks ahead, in days.
+ *
+ * Seven days is a week's horizon and answers "what is coming"; thirty answers
+ * "when does this month get busy", which is the question a month grid answers by
+ * shape but not in order. The list is the only mode that takes a horizon — the
+ * grids are anchored to a week and a month, and a fortnight is neither.
+ *
+ * The server caps the window at 31 days, so nothing here may exceed that.
+ */
+export const UPCOMING_DAYS = [7, 14, 30];
+
 class UpcomingView {
-	mode = $state(read());
+	mode = $state(readChoice('verdande:upcoming', UPCOMING_MODES, 'list'));
+	days = $state(readChoice('verdande:upcoming-days', UPCOMING_DAYS, 7, Number));
 
 	set(next) {
 		if (!UPCOMING_MODES.includes(next)) return;
 		this.mode = next;
-		try {
-			localStorage.setItem('verdande:upcoming', next);
-		} catch {
-			// Private browsing; the choice simply will not persist.
-		}
+		writeChoice('verdande:upcoming', next);
+	}
+
+	setDays(next) {
+		const n = Number(next);
+		if (!UPCOMING_DAYS.includes(n)) return;
+		this.days = n;
+		writeChoice('verdande:upcoming-days', n);
 	}
 }
 
-function read() {
-	if (typeof localStorage === 'undefined') return 'list';
-	const stored = localStorage.getItem('verdande:upcoming');
-	return UPCOMING_MODES.includes(stored) ? stored : 'list';
+function readChoice(key, allowed, fallback, parse = String) {
+	if (typeof localStorage === 'undefined') return fallback;
+	const stored = parse(localStorage.getItem(key));
+	return allowed.includes(stored) ? stored : fallback;
+}
+
+function writeChoice(key, value) {
+	try {
+		localStorage.setItem(key, String(value));
+	} catch {
+		// Private browsing; the choice simply will not persist.
+	}
 }
 
 export const upcomingView = new UpcomingView();

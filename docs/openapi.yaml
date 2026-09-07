@@ -2365,7 +2365,12 @@ paths:
       tags: [views]
       summary: The next few days, empty ones included.
       parameters:
-        - { name: days, in: query, schema: { type: integer, default: 7 } }
+        - {
+            name: days,
+            in: query,
+            description: "How many days to return, counting today. Above the maximum is capped, not refused.",
+            schema: { type: integer, default: 7, minimum: 1, maximum: 31 },
+          }
       responses:
         "200":
           description: OK

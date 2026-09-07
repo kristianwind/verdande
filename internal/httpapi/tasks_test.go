@@ -285,6 +285,49 @@ func TestTodayAndUpcoming(t *testing.T) {
 	}
 }
 
+// The horizon is the list's, and it is asked for per request: seven days is the
+// default, thirty is what Kommende offers for "when does this month get busy", and
+// anything past the cap is trimmed rather than refused — a client that asks for a
+// year gets a month, not a 400.
+func TestUpcomingHorizon(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, out := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content":  "om tyve dage",
+		"due_date": userDate(t, 20),
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create: %d %v", resp.StatusCode, out)
+	}
+
+	count := func(query string) (int, int) {
+		t.Helper()
+		_, view := ts.do(t, "GET", "/api/v1/upcoming"+query, nil)
+		days, _ := view["days"].([]any)
+		var tasks int
+		for _, d := range days {
+			day, _ := d.(map[string]any)
+			list, _ := day["tasks"].([]any)
+			tasks += len(list)
+		}
+		return len(days), tasks
+	}
+
+	if n, found := count(""); n != 7 || found != 0 {
+		t.Errorf("default horizon returned %d days and %d tasks, want 7 and 0", n, found)
+	}
+	if n, found := count("?days=30"); n != 30 || found != 1 {
+		t.Errorf("days=30 returned %d days and %d tasks, want 30 and 1", n, found)
+	}
+	if n, _ := count("?days=365"); n != 31 {
+		t.Errorf("days=365 returned %d days, want it capped at 31", n)
+	}
+	if n, _ := count("?days=nonsense"); n != 7 {
+		t.Errorf("an unreadable days returned %d days, want the default 7", n)
+	}
+}
+
 func TestSearchFindsAcrossProjects(t *testing.T) {
 	ts := newTestServer(t)
 	ts.bootstrap(t)
