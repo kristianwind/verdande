@@ -527,7 +527,9 @@ func (s *Server) registerNoteTools(m *mcp.Server) {
 			"is lost. Two things in the text are read out of it and become links: " +
 			"`#Projekt` files the note against that project, so it appears on the " +
 			"project's page without anybody filing it there, and `[[Another note]]` " +
-			"links to a note by its title. Use this to bring notes in from elsewhere — " +
+			"links to a note by its title. A third, `@Navn`, shares the note with that " +
+			"person and tells them — so only write one when the note is meant for them. " +
+			"Use this to bring notes in from elsewhere — " +
 			"Apple Notes, OneNote, a folder of Markdown — one call per note.",
 		InputSchema: mcp.Schema(map[string]any{
 			"body":       mcp.Str("The note as Markdown. Its first line becomes the title, so start with one. #Projekt and [[note]] become links."),

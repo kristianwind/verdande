@@ -209,6 +209,21 @@
 	let shareInviteLink = $state('');
 	const ownsSelected = $derived(!!selected && selected.created_by === app.user?.id);
 
+	// Dem, et `@` kan betyde i den åbne note.
+	//
+	// I ejerens note er det dem, noten kan deles med, plus dem den allerede er delt
+	// med: en omtale af en, der læser med i forvejen, er en almindelig ting at
+	// skrive, og den giver dem besked selv om den ikke giver dem adgang.
+	//
+	// I en andens note er det dem, man deler projekter med. En medredaktørs omtale
+	// deler ikke noget — kun ejeren deler — så listen behøver ikke være instansens,
+	// og skal heller ikke være det.
+	const mentionable = $derived(
+		ownsSelected
+			? [...shareCandidates, ...shares.map((sh) => sh.user)]
+			: app.people.filter((p) => p.id !== app.user?.id)
+	);
+
 	// The whole of sharing — a project and named people — lives in a popover behind
 	// one button, so the note's footer stays a status and three buttons rather than
 	// a row that runs off its own width.
@@ -659,10 +674,44 @@
 			// Only if it is still the one on screen: switching notes mid-save must not
 			// drag the previous one's title back onto this one.
 			if (selected?.id === id) selected = saved;
+			await mentionsShared(id);
 		} catch (e) {
 			app.toast(humanMessage(e));
 		} finally {
 			saving = false;
+		}
+	}
+
+	/**
+	 * Hvem gemningen delte noten med, fordi de blev nævnt i den.
+	 *
+	 * Serveren siger det ikke i svaret på gemningen: en omtale er en sjælden ting
+	 * blandt mange gemninger, og en tastepause skal ikke koste et opslag i
+	 * delingerne, hver gang den falder. Panelet spørges i stedet — og kun når
+	 * teksten faktisk har et `@` i sig, som er den samme betingelse serveren selv
+	 * bruger for at kigge efter.
+	 *
+	 * Sagt frem for stiltiende. En note, der lige har delt sig selv med en, man
+	 * skrev navnet på, skal sige det — også når panelet er lukket.
+	 */
+	async function mentionsShared(id) {
+		if (!ownsSelected || !draft.includes('@')) return;
+		const known = new Set(shares.map((sh) => sh.user.id));
+		try {
+			const r = await api.noteShares(id);
+			if (selected?.id !== id) return;
+			shares = r.shares ?? [];
+			shareCandidates = r.candidates ?? [];
+			shareFollows = r.follows ?? [];
+			shareInvites = r.invites ?? [];
+			const added = shares.filter((sh) => !known.has(sh.user.id));
+			if (added.length) {
+				app.toast(
+					t('notes.mentionShared', { names: added.map((sh) => sh.user.name).join(', ') })
+				);
+			}
+		} catch {
+			// En liste, der ikke kunne hentes, er ikke en gemning, der gik galt.
 		}
 	}
 
@@ -1028,6 +1077,7 @@
 			<NoteEditor
 				note={selected}
 				notes={notes}
+				people={mentionable}
 				onopennote={(title) => openLink({ kind: 'note', target_id: title })}
 				onchange={(body) => {
 					draft = body;

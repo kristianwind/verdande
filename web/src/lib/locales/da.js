@@ -31,6 +31,7 @@ export const da = {
 	'notif.assigned': '{name} gav dig en opgave',
 	'notif.noteChanged': '{name} rettede en note',
 	'notif.noteShared': '{name} delte en note med dig',
+	'notif.mention': '{name} nævnte dig i en note',
 	'notif.comment': '{name} kommenterede',
 	'notif.justNow': 'lige nu',
 	'notif.minutes': '{n} min. siden',
@@ -62,6 +63,10 @@ export const da = {
 	'notes.inviteRevoke': 'Træk invitationen tilbage',
 	'notes.inviteRevoked': 'Invitationen til {email} er trukket tilbage.',
 	'notes.inviteNoMail': 'Instansen kan ikke sende post. Giv linket videre selv:',
+	// Omtale. `@Navn` i en note deler den med den, der bliver nævnt — sagt her,
+	// fordi det sker uden at nogen åbner delepanelet.
+	'notes.syntaxPerson': 'en person',
+	'notes.mentionShared': 'Noten er delt med {names}, fordi du nævnte dem.',
 	'notes.shareOwnerOnly': 'Kun ejeren kan dele noten.',
 	'notes.save': 'Gem',
 	'notes.format': 'Formatér',
