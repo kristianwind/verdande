@@ -26,6 +26,7 @@
 		'note.shared': 'notif.noteShared',
 		'note.mention': 'notif.mention',
 		'daily.plan': 'notif.dailyPlan',
+		'update.available': 'notif.update',
 		comment: 'notif.comment'
 	};
 
@@ -52,6 +53,9 @@
 	function follow(n) {
 		open = false;
 		if (!n.read) app.markRead(n.id);
+		// En ny version hører ingen steder hen i data — den fører hen, hvor knappen
+		// til at gøre noget ved den sidder.
+		if (n.kind === 'update.available') return goto('/indstillinger/notifikationer');
 		if (n.note_id) goto(`/noter?note=${n.note_id}`);
 		else if (n.task_id) app.openDetail(n.task_id);
 		else if (n.project_id) goto(`/projekt/${n.project_id}`);

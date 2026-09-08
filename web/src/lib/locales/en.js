@@ -30,6 +30,7 @@ export const en = {
 	'notif.noteShared': '{name} shared a note with you',
 	'notif.mention': '{name} mentioned you in a note',
 	'notif.dailyPlan': "Today's plan",
+	'notif.update': 'A new version is out',
 	'notif.comment': '{name} commented',
 	'notif.justNow': 'just now',
 	'notif.minutes': '{n} min ago',
