@@ -11,6 +11,7 @@
 	import TaskDetail from '$lib/components/TaskDetail.svelte';
 	import { t } from '$lib/i18n.svelte.js';
 	import { setBadge } from '$lib/badge.js';
+	import BeaconNotice from '$lib/components/BeaconNotice.svelte';
 
 	let { children } = $props();
 
@@ -192,6 +193,13 @@
 			</header>
 
 			<div class="content">
+				<!-- Sagt uopfordret, første gang en administrator er logget ind: hvad
+				     denne installation melder ind, og hvordan man siger nej.
+				     Øverst i indholdet og ikke svævende over det — en rude, der
+				     ligger oven på arbejdet, dækker knapper, og en besked, der er i
+				     vejen, bliver klikket væk uden at blive læst. Komponenten tegner
+				     ingenting, når der ikke er noget at fortælle. -->
+				<BeaconNotice />
 				{@render children()}
 			</div>
 		</main>

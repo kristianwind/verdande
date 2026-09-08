@@ -512,6 +512,12 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				// installation and it either phones home or it does not.
 				r.Get("/beacon/settings", s.handleBeaconStatus)
 				r.Put("/beacon/settings", s.handleSetBeacon)
+				// Beskeden om, hvad der bliver sendt, og svaret på den. I samme
+				// gruppe som resten: den, der kan slå beaconet fra, er den, der
+				// skal have beskeden, og at spørge alle andre ville være at
+				// stille et spørgsmål, de ikke kan svare på.
+				r.Get("/beacon/notice", s.handleBeaconNotice)
+				r.Post("/beacon/notice", s.handleAckBeaconNotice)
 				// A backup file is a complete copy of the database, so this whole
 				// group is sessions-only as well as administrators-only: a leaked
 				// token must not be able to download everybody's data.

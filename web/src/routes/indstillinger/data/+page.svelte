@@ -534,6 +534,18 @@
 		<pre class="payload">{t('beacon.exactly')}
 {JSON.stringify({ instance_id: beacon.instance_id, version: beacon.version }, null, 2)}</pre>
 
+		{#if beacon.last_error}
+			<!-- Et beacon, der ikke kan nå sin collector, fejler ellers i fuldstændig
+			     tavshed: det prøver igen i morgen, og "sidst sendt" bliver bare ved
+			     med at blive ældre. Ikke en fejl, der skal afbryde nogen — en linje,
+			     hvor siden ellers påstår, at alt er sendt. -->
+			<p class="hint">
+				{t('beacon.lastError', {
+					when: new Date(beacon.last_error_at).toLocaleString(tag()),
+					why: beacon.last_error
+				})}
+			</p>
+		{/if}
 		{#if beacon.last_ping_at}
 			<p class="hint">{t('beacon.lastPing', { when: new Date(beacon.last_ping_at).toLocaleString(tag()) })}</p>
 		{/if}
@@ -592,6 +604,20 @@
 				/>
 				<span>{t('beacon.publish')}</span>
 			</label>
+
+			{#if beacon.publish_count}
+				<div class="field">
+					<label for="publishmin">{t('beacon.publishMin')}</label>
+					<input
+						id="publishmin"
+						type="number"
+						min="0"
+						value={beacon.publish_min}
+						onchange={(e) => saveBeacon({ publish_min: Number(e.currentTarget.value) })}
+					/>
+					<p class="hint">{t('beacon.publishMinHint')}</p>
+				</div>
+			{/if}
 			<p class="hint">{t('beacon.publishHint')}</p>
 		{/if}
 	{/if}

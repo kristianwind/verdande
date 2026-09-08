@@ -87,6 +87,22 @@ export const en = {
 	'beacon.active7': 'Active 7 days',
 	'beacon.active30': 'Active 30 days',
 	'beacon.byVersion': 'By version (30 days):',
+	// The notice said unprompted the first time. The values are in it rather than
+	// the word 'anonymous': a promise about telemetry is worth exactly as much as
+	// the reader's ability to check it.
+	'beacon.noticeTitle': 'This installation reports that it exists',
+	'beacon.noticeBody':
+		'Once a day Verdande sends two values to the project, so it can see how many installations there are. Exactly these two — nothing else, no IP is stored, nothing about what you use it for:',
+	'beacon.noticeTo': 'Sent to {url}',
+	'beacon.noticeKeep': 'Keep it on',
+	'beacon.noticeStop': 'Turn it off',
+	'beacon.noticeMore': 'Read more',
+	'beacon.noticeKept': 'Thank you. You can always turn it off under Settings → Data.',
+	'beacon.noticeStopped': 'Reporting is off. Nothing is being sent.',
+	'beacon.lastError': 'The last attempt did not arrive ({when}): {why}',
+	'beacon.publishMin': 'Publish only from',
+	'beacon.publishMinHint':
+		'Below that number nothing is answered. A small number mostly says how little it takes to move it — and one that falls would read as “fewer people use this now”, even when it was a release that went wrong.',
 	'beacon.publish': 'Publish the count at /api/v1/beacon/count',
 	'beacon.publishHint': 'No login, cached for a minute. Reports installations seen in the last 30 days — not a running total, which would only ever climb.',
 	'notes.newHere': 'New note',

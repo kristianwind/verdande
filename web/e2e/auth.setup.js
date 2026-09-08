@@ -28,5 +28,20 @@ setup('opret den første konto og log ind', async ({ page }) => {
 	await expect(page.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'I dag' })).toBeVisible();
 
+	// Beaconet er slået til som udgangspunkt, og det bliver sagt uopfordret her —
+	// det er hele grunden til, at et default-on er til at forsvare. Prøvet her,
+	// fordi det er det eneste sted, en helt frisk installation bliver logget ind
+	// på for første gang, og fordi beskeden ellers ville stå i vejen for hver
+	// eneste prøve nedenfor og skulle klikkes væk uden at nogen havde set efter,
+	// om den overhovedet sagde det rigtige.
+	const notice = page.getByRole('region', { name: /melder, at den findes/ });
+	await expect(notice).toBeVisible();
+	// Værdierne står i beskeden, ikke ordet "anonymt": et løfte om telemetri er
+	// præcis så meget værd som læserens mulighed for at efterprøve det.
+	await expect(notice.getByText('instance_id')).toBeVisible();
+	await expect(notice.getByText('version')).toBeVisible();
+	await notice.getByRole('button', { name: 'Behold den' }).click();
+	await expect(notice).toBeHidden();
+
 	await page.context().storageState({ path: AUTH_FILE });
 });
