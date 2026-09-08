@@ -173,13 +173,22 @@ func (s *Server) SyncMailbox(ctx context.Context, user *store.User, m *store.Mai
 		return 0, err
 	}
 
+	// Ét spørgsmål til modellen for hele gennemløbet, inden der bliver skrevet
+	// noget. Er der ingen model, er kortet tomt, og hver opgave hedder afsender og
+	// emne, som den altid har gjort.
+	forAI := make([]mailForAI, 0, len(messages))
+	for _, msg := range messages {
+		forAI = append(forAI, mailForAI{From: msg.From, Subject: msg.Subject, Snippet: msg.Snippet})
+	}
+	written := s.mailTaskLines(ctx, user, forAI)
+
 	created := 0
 	highest := m.LastUID
 	// The uids of the mails that actually became tasks. Only those get unflagged,
 	// and only after the task is committed: a flag removed from a mail whose task
 	// was never written is a mail nobody will ever see again.
 	done := make([]uint32, 0, len(messages))
-	for _, msg := range messages {
+	for i, msg := range messages {
 		if ctx.Err() != nil {
 			// What was made so far is already committed and counted, and the marker
 			// below has to be written for it: a run that created tasks and forgot how
@@ -206,6 +215,11 @@ func (s *Server) SyncMailbox(ctx context.Context, user *store.User, m *store.Mai
 			// one server, and two accounts will hand out the same small numbers.
 			SourceKey: fmt.Sprintf("imap:%s:%s:%d", m.Host, m.Folder, msg.UID),
 		}
+		// Og modellens linje, hvis den skrev en til netop den her. Emnet bliver
+		// stående i beskrivelsen: har den misforstået mailen, skal det oprindelige
+		// kunne læses ved siden af.
+		s.applyMailLine(ctx, user, task, written[i], content)
+
 		if err := s.db.CreateTask(ctx, task, nil); err != nil {
 			if errors.Is(err, store.ErrDuplicate) {
 				// Already a task. Still count it as read, or last_uid never moves

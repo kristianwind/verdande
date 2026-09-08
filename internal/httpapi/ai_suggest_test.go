@@ -187,3 +187,48 @@ func (ts *testServer) quickTask(t *testing.T, text string) string {
 	}
 	return id
 }
+
+// Svaret på et spørgsmål bærer, hvad det står på — og kun det, det faktisk brugte.
+// En liste over alt, der blev kigget i, er ikke en henvisning.
+func TestAskingAnswersFromYourOwnNotes(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ts.useModel(t, fakeModel(t, `{"answer": "Du lovede Anders prislisten fredag.", "sources": [1]}`))
+
+	ts.createNote(t, "# Møde med Anders\njeg sender prislisten fredag")
+	ts.createNote(t, "# Noget helt andet\nanders er ikke nævnt her")
+
+	resp, out := ts.do(t, "POST", "/api/v1/ai/ask", map[string]any{"question": "hvad lovede jeg Anders?"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("spørg: %d %v", resp.StatusCode, out)
+	}
+	if out["answer"] != "Du lovede Anders prislisten fredag." {
+		t.Errorf("svar = %v", out["answer"])
+	}
+	sources, _ := out["sources"].([]any)
+	if len(sources) != 1 {
+		t.Fatalf("kilder = %v, want én", sources)
+	}
+	src := sources[0].(map[string]any)
+	if src["kind"] != "note" || src["title"] != "Møde med Anders" {
+		t.Errorf("kilde = %v", src)
+	}
+}
+
+// Et spørgsmål, der ikke rammer noget, får ikke et opfundet svar. Man spørger om
+// sine egne noter, fordi man ikke selv kan huske det, og kan derfor ikke se, at
+// svaret var gættet.
+func TestAskingAboutNothingAnswersNothing(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ts.useModel(t, fakeModel(t, `{"answer": "det burde du huske", "sources": []}`))
+
+	resp, out := ts.do(t, "POST", "/api/v1/ai/ask",
+		map[string]any{"question": "kvadratrodenafenbanan"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("spørg: %d", resp.StatusCode)
+	}
+	if out["answer"] != "" {
+		t.Errorf("der blev svaret uden noget at svare ud fra: %v", out["answer"])
+	}
+}

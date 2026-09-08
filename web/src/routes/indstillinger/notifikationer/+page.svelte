@@ -86,6 +86,39 @@
 
 	// --- the list -----------------------------------------------------------------
 
+	// Dagens plan: én besked om morgenen om det, der venter. Slået fra som
+	// udgangspunkt — en besked klokken syv, man ikke har bedt om, er ikke en hjælp.
+	let plan = $state(null);
+	let planBusy = $state(false);
+
+	$effect(() => {
+		api
+			.planSettings()
+			.then((p) => (plan = p))
+			.catch(() => {});
+	});
+
+	async function savePlan(change) {
+		try {
+			plan = await api.setPlanSettings(change);
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
+	async function sendPlanNow() {
+		if (planBusy) return;
+		planBusy = true;
+		try {
+			const r = await api.planNow();
+			app.toast(r.sent ? t('ai.planSent') : t('ai.planNothing'));
+		} catch (e) {
+			app.toast(humanMessage(e));
+		} finally {
+			planBusy = false;
+		}
+	}
+
 	let notifications = $state([]);
 	let unread = $state(0);
 	let loading = $state(true);
@@ -179,6 +212,45 @@
 		api.version().then((v) => (version = v)).catch(() => {});
 	});
 </script>
+
+<section class="panel">
+	<header>
+		<h2>{t('ai.plan')}</h2>
+		<p class="hint">{t('ai.planHint')}</p>
+	</header>
+
+	{#if plan}
+		<label class="check">
+			<input
+				type="checkbox"
+				checked={plan.enabled}
+				onchange={(e) => savePlan({ enabled: e.currentTarget.checked })}
+			/>
+			<span>{t('ai.plan')}</span>
+		</label>
+
+		{#if plan.enabled}
+			<div class="field">
+				<label for="planhour">{t('ai.planHour')}</label>
+				<select
+					id="planhour"
+					value={plan.hour}
+					onchange={(e) => savePlan({ hour: Number(e.currentTarget.value) })}
+				>
+					{#each Array.from({ length: 24 }, (_, i) => i) as hour (hour)}
+						<option value={hour}>{String(hour).padStart(2, '0')}:00</option>
+					{/each}
+				</select>
+			</div>
+
+			<!-- En indstilling, man skal vente til i morgen for at se virkningen af,
+			     er en indstilling, ingen tør slå til. -->
+			<button class="secondary" disabled={planBusy} onclick={sendPlanNow}>
+				{t('ai.planNow')}
+			</button>
+		{/if}
+	{/if}
+</section>
 
 <section class="panel">
 	<header>

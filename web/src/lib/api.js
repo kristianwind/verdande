@@ -485,6 +485,13 @@ export const api = {
 	aiApplyToTask: (taskId, line) => post('/ai/inbox/tidy/apply', { task_id: taskId, line }),
 	aiNoteActions: (noteId) => post(`/ai/notes/${noteId}/actions`),
 	aiCreateFromNote: (noteId, line) => post(`/ai/notes/${noteId}/actions/apply`, { line }),
+	// Spørg om sine egne noter og opgaver. Basen finder kandidaterne, modellen
+	// læser dem — svaret bærer, hvad det står på.
+	aiAsk: (question) => post('/ai/ask', { question }),
+	// Dagens plan om morgenen.
+	planSettings: () => get('/ai/plan'),
+	setPlanSettings: (body) => put('/ai/plan', body),
+	planNow: () => post('/ai/plan/now'),
 
 	version: () => get('/version'),
 

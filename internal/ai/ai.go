@@ -484,6 +484,104 @@ the task came from, so it can be checked.`, language, known, language, today)
 	return c.suggestions(ctx, system, "Note:\n"+note)
 }
 
+// DailyPlan skriver morgenens to-tre linjer.
+//
+// Tallene er talt i basen og gives med som kendsgerninger, modellen ikke må regne
+// om. En plan, der siger fire opgaver, hvor der er tre, er værre end ingen plan —
+// og en model, der tæller en liste, tæller den forkert af og til.
+//
+// Det ene sted, den må mene noget, er hvad man skulle begynde med, og hvad der
+// kunne vente. Det er dét, der gør det til en plan frem for en optælling.
+func (c *Client) DailyPlan(ctx context.Context, tasks []string, due, overdue int, locale string) (string, error) {
+	language := languageOf(locale)
+
+	system := fmt.Sprintf(`You write somebody's morning note about their own day.
+
+Write in %s. At most three short lines, no greeting, no sign-off, no
+encouragement. Say what to start with and why. Name at most one thing that could
+wait or be dropped, and only if something obviously can.
+
+These numbers are counted for you and are facts: %d due today, %d overdue. Do not
+recount them, do not contradict them, and do not list every task back.`,
+		language, due, overdue)
+
+	return c.Complete(ctx, system, []Message{
+		{Role: "user", Content: "The tasks:\n" + strings.Join(tasks, "\n")},
+	})
+}
+
+// Ask svarer på et spørgsmål ud fra de tekststykker, den får med — og kun dem.
+//
+// Svaret skal bære sine kilder, og det er derfor svaret er JSON og ikke prosa: en
+// model, der skriver "[3]" midt i en sætning, gør det af og til, og en, der
+// afleverer nummeret i et felt, gør det hver gang. Fladen skal kunne lave et link,
+// ikke lede efter kantede parenteser i en tekst.
+//
+// "Det står der ikke" er et rigtigt svar. En model, der hellere gætter end
+// skuffer, er ubrugelig til netop det her: man spørger om sine egne noter, fordi
+// man ikke selv kan huske det, og har derfor ingen mulighed for at se, at svaret
+// var opfundet.
+func (c *Client) Ask(ctx context.Context, question string, passages []string, locale string) (string, []int, error) {
+	language := languageOf(locale)
+
+	system := fmt.Sprintf(`You answer a question from somebody's own notes and tasks.
+
+Use only the passages given. If they do not answer the question, say so plainly —
+that is a useful answer, and a guess is not: the person is asking because they
+cannot remember, so they cannot tell an invented answer from a real one.
+
+Write in %s, at most four short lines. Reply with a JSON object and nothing else:
+{"answer": "...", "sources": [1, 3]} where sources are the numbers of the
+passages the answer actually rests on, and nothing else.`, language)
+
+	prompt := "Question: " + question + "\n\nPassages:\n" + strings.Join(passages, "\n\n")
+
+	reply, err := c.Complete(ctx, system, []Message{{Role: "user", Content: prompt}})
+	if err != nil {
+		return "", nil, err
+	}
+
+	var out struct {
+		Answer  string `json:"answer"`
+		Sources []int  `json:"sources"`
+	}
+	if err := json.Unmarshal([]byte(extractObject(reply)), &out); err != nil {
+		// Et svar, der ikke er JSON, er stadig et svar. Teksten er det, personen
+		// spurgte om; henvisningerne er det, der går tabt, og det er en dårligere
+		// dag end en fejlmeddelelse ville være.
+		return strings.TrimSpace(reply), nil, nil
+	}
+	return strings.TrimSpace(out.Answer), out.Sources, nil
+}
+
+// TasksFromMail skriver én opgavelinje pr. mail.
+//
+// Emnefeltet er skrevet til at blive genkendt i en indbakke, ikke til at blive
+// gjort noget ved: "SV: SV: Vedr. levering uge 12" siger, hvilken tråd det er, og
+// intet om, hvad man skal. Modellen skriver den handling, mailen beder om — og
+// lader være, hvis den ikke beder om nogen.
+func (c *Client) TasksFromMail(ctx context.Context, mails []string, today, locale string) ([]Suggestion, error) {
+	language := languageOf(locale)
+
+	system := fmt.Sprintf(`You turn emails into the tasks they ask for.
+
+For each numbered email, write the line the recipient would have typed for
+themselves — what they have to DO, in %s, starting with a verb. Keep the sender's
+name in it when it matters who it is about. Not a summary of the email: the
+action it asks for.
+
+The line may carry a date in plain %s, and p1..p4 for priority, but only when the
+email itself says so — "before friday" in the text is a date, an email that merely
+sounds urgent is not. Today is %s.
+
+Reply with a JSON array and nothing else — no prose, no code fence. Each element
+is {"line": "N. ..."} keeping the number the email was given, so the line can be
+put back on the right one. Leave an email out entirely if it asks for nothing.`,
+		language, language, today)
+
+	return c.suggestions(ctx, system, "Emails:\n"+strings.Join(mails, "\n"))
+}
+
 // suggestions er den fælles halvdel: spørg, læs svaret som JSON, og smid det væk,
 // der ikke er en linje.
 //
@@ -521,22 +619,42 @@ func languageOf(locale string) string {
 	return "Danish"
 }
 
+// unfence tager svaret ud af den kodeblok, modeller pakker det ind i, uanset hvor
+// omhyggeligt de bliver bedt om at lade være.
+func unfence(reply string) string {
+	reply = strings.TrimSpace(reply)
+	fence := strings.Index(reply, "```")
+	if fence < 0 {
+		return reply
+	}
+	rest := reply[fence+3:]
+	if newline := strings.IndexByte(rest, '\n'); newline >= 0 {
+		rest = rest[newline+1:]
+	}
+	if end := strings.Index(rest, "```"); end >= 0 {
+		return strings.TrimSpace(rest[:end])
+	}
+	return reply
+}
+
+// extractObject er extractJSON for et objekt frem for en liste. Samme problem,
+// samme løsning: modeller pakker svar ind i en kodeblok, hvor omhyggeligt de end
+// bliver bedt om at lade være.
+func extractObject(reply string) string {
+	reply = unfence(reply)
+	start := strings.IndexByte(reply, '{')
+	end := strings.LastIndexByte(reply, '}')
+	if start >= 0 && end > start {
+		return reply[start : end+1]
+	}
+	return reply
+}
+
 // extractJSON pulls an array out of a reply that may have been wrapped in a code
 // fence or preceded by a sentence, which models do however firmly they are asked
 // not to.
 func extractJSON(reply string) string {
-	reply = strings.TrimSpace(reply)
-
-	if fence := strings.Index(reply, "```"); fence >= 0 {
-		rest := reply[fence+3:]
-		if newline := strings.IndexByte(rest, '\n'); newline >= 0 {
-			rest = rest[newline+1:]
-		}
-		if end := strings.Index(rest, "```"); end >= 0 {
-			reply = strings.TrimSpace(rest[:end])
-		}
-	}
-
+	reply = unfence(reply)
 	start := strings.IndexByte(reply, '[')
 	end := strings.LastIndexByte(reply, ']')
 	if start >= 0 && end > start {

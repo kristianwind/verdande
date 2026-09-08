@@ -25,6 +25,7 @@
 		'note.changed': 'notif.noteChanged',
 		'note.shared': 'notif.noteShared',
 		'note.mention': 'notif.mention',
+		'daily.plan': 'notif.dailyPlan',
 		comment: 'notif.comment'
 	};
 

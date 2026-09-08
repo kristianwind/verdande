@@ -49,6 +49,11 @@ type Runner struct {
 	// layer, which owns the VAPID keys and the subscription list.
 	Push func(userID, title, body, projectID string)
 
+	// DailyPlans sender morgenens plan til dem, der har bedt om en. Sat af
+	// serveren af samme grund som SendBeacon: opsætningen, tidszonen og
+	// AI-nøglen ligger derovre, og jobbet skal ikke kende nogen af delene.
+	DailyPlans func(ctx context.Context) error
+
 	// SendBeacon reports this installation to the collector, if it is switched on
 	// and a day has passed. Supplied by the HTTP layer for the same reason as the
 	// syncs: that is where the instance settings and the version live.
@@ -89,6 +94,10 @@ func (r *Runner) Start(ctx context.Context) {
 	// the same reason: a container asleep at the scheduled minute would otherwise
 	// skip the day. SendBeacon decides whether a day has passed.
 	r.every(ctx, "beacon", time.Hour, r.sendBeacon)
+	// Dagens plan. Hver time, sendt højst én gang om dagen pr. person — samme
+	// form som ovenstående, og af samme grund. Timen er personens egen: klokken
+	// syv er syv forskellige steder.
+	r.every(ctx, "dailyplan", time.Hour, r.dailyPlans)
 }
 
 func (r *Runner) Wait() { r.wg.Wait() }
@@ -121,6 +130,13 @@ func (r *Runner) every(ctx context.Context, name string, interval time.Duration,
 			}
 		}
 	}()
+}
+
+func (r *Runner) dailyPlans(ctx context.Context) error {
+	if r.DailyPlans == nil {
+		return nil
+	}
+	return r.DailyPlans(ctx)
 }
 
 // sendBeacon reports that this installation exists, at most once a day.

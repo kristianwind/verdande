@@ -104,6 +104,7 @@ func run() error {
 	runner.SyncCalendars = api.SyncCalendars
 	runner.Push = api.PushToUser
 	runner.SendBeacon = api.SendBeacon
+	runner.DailyPlans = api.DailyPlans
 	runner.Start(jobCtx)
 
 	srv := &http.Server{
