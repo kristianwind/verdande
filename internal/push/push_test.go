@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -63,4 +64,26 @@ func testVAPID(t *testing.T) VAPID {
 		t.Fatal(err)
 	}
 	return VAPID{Public: pub, Private: priv, Subject: "mailto:kristian@example.dk"}
+}
+
+// Tallet til mærket på ikonet skal med i beskeden — og skal blive væk, når der
+// ikke er noget at sige. Service-workeren læser netop det: er `unread` ikke et
+// tal, står mærket, som det stod, frem for at blive nulstillet af en tælling, der
+// ikke lykkedes.
+func TestPayloadCarriesTheUnreadCount(t *testing.T) {
+	with, err := json.Marshal(Payload{Title: "hej", Unread: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(with), `"unread":3`) {
+		t.Errorf("payload = %s, want the unread count in it", with)
+	}
+
+	without, err := json.Marshal(Payload{Title: "hej"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(without), "unread") {
+		t.Errorf("payload = %s, want no count when there is none to send", without)
+	}
 }

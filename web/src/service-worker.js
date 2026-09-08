@@ -145,6 +145,19 @@ self.addEventListener('push', (event) => {
 	}
 
 	const title = payload.title || 'verdande';
+	// Mærket på appens ikon — i Dock'en på en Mac, på proceslinjen på en pc.
+	//
+	// Sat her, fordi det her er det eneste, der kører, når appen ikke er åben: det
+	// er netop dér, et tal på ikonet er det, der siger, at der er noget nyt. Tallet
+	// kommer med beskeden frem for at blive talt op her; en service-worker husker
+	// ingenting mellem to opvågninger, så et mærke, den selv talte, ville kun kunne
+	// gå opad.
+	//
+	// Kan browseren ikke sætte mærker, sker der ingenting. Det er ikke en fejl at
+	// melde om: beskeden selv kom frem, og den er hovedsagen.
+	if (typeof payload.unread === 'number' && 'setAppBadge' in self.navigator) {
+		self.navigator.setAppBadge(payload.unread).catch(() => {});
+	}
 	event.waitUntil(
 		self.registration.showNotification(title, {
 			body: payload.body || '',

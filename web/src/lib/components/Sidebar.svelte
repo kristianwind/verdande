@@ -1,6 +1,7 @@
 <script>
 	import { app, sidebar, projectName } from '$lib/stores.svelte.js';
 	import { api } from '$lib/api.js';
+	import { clearBadge } from '$lib/badge.js';
 	import { TASK, PROJECT, GROUP, NOTE, startDrag, carries, dragged, accept } from '$lib/dnd.js';
 	import { COLORS, colorVar } from '$lib/colors.js';
 	import { focusOnMount } from '$lib/focus.js';
@@ -31,6 +32,9 @@
 
 	async function signOut() {
 		await api.logout();
+		// Mærket på ikonet er den forriges ulæste. Det står i Dock'en, også når
+		// ingen er logget ind, så det skal væk sammen med resten af dem.
+		clearBadge();
 		// Empty the offline data cache before leaving: the service worker keeps the
 		// last-seen task and note lists so a network drop does not blank the app, and
 		// the next person to sign in on this browser must not find them.
