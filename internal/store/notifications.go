@@ -75,7 +75,12 @@ func (db *DB) ListNotifications(ctx context.Context, userID string, limit int) (
 		FROM notifications n
 		LEFT JOIN users u ON u.id = n.actor_id
 		WHERE n.user_id = ?
-		ORDER BY n.created_at DESC
+		-- Tiden er sekunder, og to ting kan ske i det samme sekund: en note bliver
+		-- delt og rettet i samme håndbevægelse. Uden andet at falde tilbage på
+		-- afgør basen selv, hvilken der står øverst, og klokken viser dem i den
+		-- rækkefølge, den nu engang fandt dem i. id'et er tidsordnet, så det er
+		-- den rigtige afgørelse at give den — og den er den samme hver gang.
+		ORDER BY n.created_at DESC, n.id DESC
 		LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, err

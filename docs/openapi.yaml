@@ -3126,6 +3126,13 @@ paths:
                   candidates:
                     type: array
                     items: { $ref: "#/components/schemas/Person" }
+                  invites:
+                    description: >
+                      Addresses invited to the note that have not been taken up yet.
+                      There is no account behind them, so there is no name or colour
+                      to show — the address is all there is until they arrive.
+                    type: array
+                    items: { $ref: "#/components/schemas/NoteInvite" }
                   follows:
                     description: >
                       The notes this one points at with [[links]], which are shared
@@ -3137,6 +3144,11 @@ paths:
       tags: [notes]
       summary: Share a note with a person, or change the role they hold.
       description: >
+        The person is named either by `user_id` — somebody picked from the
+        candidates — or by `email`. An address that already has an account is
+        shared with straight away; one that does not gets an invitation, which
+        becomes the share the moment the account is created (201).
+
         The notes this one points at with [[links]] are shared with the same person
         and the same role, so a link in a shared note leads somewhere. Only notes
         the sharer owns follow, and the response lists them.
@@ -3146,9 +3158,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [user_id]
+              description: One of user_id or email.
               properties:
                 user_id: { type: string }
+                email: { type: string, format: email }
                 role: { type: string, enum: [viewer, editor] }
       responses:
         "200":
@@ -3158,11 +3171,57 @@ paths:
               schema:
                 type: object
                 properties:
+                  user:
+                    description: >
+                      Who it was shared with. Sent back because a caller that shared
+                      by address does not otherwise know who it reached.
+                    $ref: "#/components/schemas/Person"
+                  role: { type: string, enum: [viewer, editor] }
                   follows:
                     type: array
                     items: { $ref: "#/components/schemas/NoteFollow" }
+        "201":
+          description: >
+            Invited. The address has no account yet, so a link that creates one and
+            the share together has been issued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invited: { $ref: "#/components/schemas/NoteInvite" }
+                  link:
+                    description: The signup link, shown so it can be passed on.
+                    type: string
+                  emailed:
+                    description: >
+                      False when the instance has no mail configured, which is when
+                      the link is the only way the invitation reaches anybody.
+                    type: boolean
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Validation" }
+
+  /api/v1/notes/{noteID}/invites/{inviteID}:
+    delete:
+      tags: [notes]
+      summary: Withdraw an invitation to a note before it is used.
+      description: >
+        The only way back. Only the token's hash is stored, so a link sent to the
+        wrong address cannot be looked up and invalidated — only the row it belongs
+        to can.
+      parameters:
+        - name: noteID
+          in: path
+          required: true
+          schema: { type: string }
+        - name: inviteID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Withdrawn }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /api/v1/notes/{noteID}/shares/{userID}:
     delete:
@@ -4071,6 +4130,16 @@ components:
       properties:
         note_id: { type: string }
         title: { type: string }
+
+    NoteInvite:
+      type: object
+      description: >
+        A share on a note that is waiting for an account. The address is the whole
+        of who the person is until they sign up.
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [viewer, editor] }
 
     Mailbox:
       type: object

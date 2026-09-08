@@ -120,6 +120,26 @@ func (s *Server) notifyAssigned(r *http.Request, t *store.Task) {
 	})
 }
 
+// notifyNoteShared tells somebody that a note is now theirs to read.
+//
+// Én besked, når delingen sker, og ikke noget bagefter: den, der får en note delt,
+// skal vide, at den er der. At den senere bliver rettet, er en anden besked — den
+// skriver notifyNoteChanged — og de to må ikke sige det samme om det samme.
+//
+// Ikke sammenlagt med noget. En deling sker én gang pr. person pr. note, så der er
+// ikke en gentagelse at folde sammen — og bliver rollen ændret bagefter, er det
+// ikke en ny note at læse.
+func (s *Server) notifyNoteShared(r *http.Request, n *store.Note, userID string) {
+	if n == nil || userID == "" {
+		return
+	}
+	actor := userFrom(r.Context())
+	s.notify(r, &store.Notification{
+		UserID: userID, ActorID: actor.ID, ProjectID: n.ProjectID, NoteID: n.ID,
+		Kind: "note.shared", Title: actor.Name + " delte en note med dig", Body: n.Title,
+	})
+}
+
 // notifyNoteChanged tells everybody who can see a note that somebody else wrote in
 // it — folded into one line per note while it is unread.
 //

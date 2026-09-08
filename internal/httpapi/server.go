@@ -353,6 +353,9 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Get("/{noteID}/shares", s.handleListNoteShares)
 				r.Post("/{noteID}/shares", s.handleShareNote)
 				r.Delete("/{noteID}/shares/{userID}", s.handleUnshareNote)
+				// En invitation til en note er en deling, der venter på en konto.
+				// Den kan tages tilbage indtil den bruges; se handleShareNote.
+				r.Delete("/{noteID}/invites/{inviteID}", s.handleDeleteNoteInvite)
 				r.Get("/{noteID}", s.handleGetNote)
 				r.Patch("/{noteID}", s.handleUpdateNote)
 				r.Delete("/{noteID}", s.handleDeleteNote)
