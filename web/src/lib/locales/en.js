@@ -74,6 +74,22 @@ export const en = {
 	'notes.sortUpdated': 'Last touched',
 	'notes.sortCreated': 'Created',
 	'notes.sortTitle': 'Name',
+	// The AI's suggestions. The words have to make it plain that this proposes
+	// rather than edits: whoever says yes is the one deciding.
+	'ai.tidyInbox': 'Tidy up the inbox',
+	'ai.tidyTitle': 'Suggestions for the inbox',
+	'ai.tidyHint':
+		'How the lines could have read if they had been finished. Edit the ones you want to edit — nothing happens until you say yes.',
+	'ai.findActions': 'Find tasks in the note',
+	'ai.actionsTitle': 'Tasks in the note',
+	'ai.actionsHint':
+		'What somebody promised or was asked to do in the text. The quote under each line is the words it came from.',
+	'ai.thinking': 'Reading …',
+	'ai.nothingToSuggest': 'There is nothing to suggest.',
+	'ai.accept': 'Add',
+	'ai.skip': 'No thanks',
+	'ai.applied': 'Done.',
+	'ai.allDone': 'Nothing left to decide on.',
 	'beacon.title': 'Counting installations',
 	'beacon.hint': 'Once a day this installation reports that it exists, so the project can see how many people run it. It sends only the two values below — a random id and the version — and nothing else: no IP is stored, no names, no addresses, nothing about what you use it for. On by default, and you can turn it off here.',
 	'beacon.send': 'Send an anonymous daily report',

@@ -10,6 +10,7 @@
 	import TaskList from '$lib/components/TaskList.svelte';
 	import TaskRow from '$lib/components/TaskRow.svelte';
 	import QuickAdd from '$lib/components/QuickAdd.svelte';
+	import AISuggestions from '$lib/components/AISuggestions.svelte';
 	import BoardView from '$lib/components/BoardView.svelte';
 	import CalendarView from '$lib/components/CalendarView.svelte';
 	import { focusOnMount } from '$lib/focus.js';
@@ -31,6 +32,10 @@
 	let members = $state([]);
 	let showShare = $state(false);
 	let showLog = $state(false);
+	// Oprydningen i indbakken. Kun dér: det er den ene liste, der bliver fyldt med
+	// linjer, ingen nåede at skrive færdig, og derfor den ene, hvor det er værd at
+	// spørge en model om, hvordan de skulle have set ud.
+	let showTidy = $state(false);
 	let activity = $state([]);
 	let inviteEmail = $state('');
 	let inviteRole = $state('editor');
@@ -613,6 +618,18 @@
 							{completedView.shown ? t('view.hideDone') : t('view.showDone')}
 						</button>
 
+						{#if project.is_inbox}
+							<button
+								role="menuitem"
+								onclick={() => {
+									showTidy = !showTidy;
+									showMenu = false;
+								}}
+							>
+								{t('ai.tidyInbox')}
+							</button>
+						{/if}
+
 						{#if !project.is_inbox}
 							<button
 								role="menuitem"
@@ -664,6 +681,18 @@
 				{/if}
 			</div>
 		</header>
+
+		{#if showTidy}
+			<!-- Forslag, ikke rettelser. Hver linje står i et felt, man kan skrive
+			     i, og sker først, når nogen siger ja til den. -->
+			<AISuggestions
+				title={t('ai.tidyTitle')}
+				hint={t('ai.tidyHint')}
+				load={() => api.aiTidyInbox()}
+				apply={(row, line) => api.aiApplyToTask(row.task_id, line)}
+				onclose={() => (showTidy = false)}
+			/>
+		{/if}
 
 		{#if showLog}
 			<div class="panel">

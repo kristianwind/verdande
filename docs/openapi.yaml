@@ -3450,6 +3450,124 @@ paths:
           $ref: "#/components/responses/Conflict"
         "502": { $ref: "#/components/responses/Upstream" }
 
+  /api/v1/ai/inbox/tidy:
+    post:
+      tags: [integrations]
+      summary: Suggest how the loose tasks in the inbox could have been written.
+      description: |
+        Suggests, never writes. Each suggestion is the line the person would have
+        typed — quick-add syntax, the same one parser as everywhere else — so it
+        can be read and edited by whoever it is put to, rather than being a set of
+        fields a model filled in that you take or leave.
+
+        The model is given the projects that exist and may name no other: a
+        `#Project` it invented would create one by accident the first time
+        somebody said yes.
+      responses:
+        "200":
+          description: The suggestions, one per task, and none for a task already filed well.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items: { $ref: "#/components/schemas/AISuggestion" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/Upstream" }
+
+  /api/v1/ai/inbox/tidy/apply:
+    post:
+      tags: [integrations]
+      summary: Write one accepted suggestion into the task it is about.
+      description: |
+        The line is parsed here rather than in the browser, so "tomorrow" means
+        what it means everywhere else — and a suggestion edited by hand before it
+        was accepted is read exactly like one that was not.
+
+        Only what the line actually says is applied. A missing date means "the
+        line said nothing about a date", never "clear the one that is there". A
+        project the model invented moves nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [task_id, line]
+              properties:
+                task_id: { type: string }
+                line: { type: string }
+      responses:
+        "200":
+          description: The task as it now stands.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /api/v1/ai/notes/{noteID}/actions:
+    parameters:
+      - { name: noteID, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [integrations]
+      summary: Pull what somebody committed to out of a note.
+      description: |
+        Only things somebody committed to or was asked to do — a heading is not a
+        task, a topic discussed is not a task. An empty array is a useful answer
+        and a made-up list is not.
+
+        Each suggestion quotes the words it came from, so a wrong one can be seen
+        through rather than merely being wrong.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items: { $ref: "#/components/schemas/AISuggestion" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/Upstream" }
+
+  /api/v1/ai/notes/{noteID}/actions/apply:
+    parameters:
+      - { name: noteID, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [integrations]
+      summary: Create one accepted task from a note.
+      description: |
+        The note is not touched. Writing the link back into it would make the two
+        point at each other, and a text a program edits without being asked is a
+        text people stop trusting — so the task carries where it came from, as a
+        `[[note title]]` in its description, and the note is left alone.
+
+        The note's own project is the default; a `#Project` in the line wins,
+        because typing it is a choice and inheriting is a circumstance.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [line]
+              properties:
+                line: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Validation" }
+
   /api/v1/mcp:
     post:
       tags: [integrations]
@@ -4232,6 +4350,21 @@ components:
       properties:
         note_id: { type: string }
         title: { type: string }
+
+    AISuggestion:
+      type: object
+      description: >
+        One proposed line, in quick-add syntax, plus one sentence on why it looks
+        like that. Nothing has happened yet — a suggestion becomes something when
+        somebody says yes to it.
+      properties:
+        task_id:
+          type: string
+          description: >
+            The task the suggestion is about, when it is about one that already
+            exists. Absent when the suggestion is a new task.
+        line: { type: string, example: "Ring til Anders i morgen p1 #Firma" }
+        why: { type: string }
 
     NoteInvite:
       type: object

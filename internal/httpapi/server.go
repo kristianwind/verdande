@@ -352,6 +352,13 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Put("/settings", s.handleSetAISettings)
 				r.Post("/summary", s.handleAISummary)
 				r.Post("/tasks/{taskID}/split", s.handleAISplit)
+				// Forslag, ikke skrivninger. De to første svarer med linjer i
+				// quick-add-syntaks, som fladen viser frem; de to sidste er dét,
+				// der sker, når nogen siger ja til én af dem.
+				r.Post("/inbox/tidy", s.handleAITidyInbox)
+				r.Post("/inbox/tidy/apply", s.handleAIApplyToTask)
+				r.Post("/notes/{noteID}/actions", s.handleAINoteActions)
+				r.Post("/notes/{noteID}/actions/apply", s.handleAICreateFromNote)
 			})
 
 			r.Get("/version", s.handleVersion)

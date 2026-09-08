@@ -19,6 +19,7 @@
 	import { NOTE, startDrag } from '$lib/dnd.js';
 	import { colorVar } from '$lib/colors.js';
 	import NoteEditor from '$lib/components/NoteEditor.svelte';
+	import AISuggestions from '$lib/components/AISuggestions.svelte';
 
 	let notes = $state([]);
 
@@ -207,6 +208,9 @@
 	// Linket vises kun, når instansen ikke kan sende post. Så er det den eneste vej
 	// frem, og det skal kunne kopieres frem for at forsvinde.
 	let shareInviteLink = $state('');
+	// Opgaver, der ligger i notens tekst. Lukket, indtil nogen spørger: det koster
+	// et kald til en model, og de fleste noter er ikke referater.
+	let showActions = $state(false);
 	const ownsSelected = $derived(!!selected && selected.created_by === app.user?.id);
 
 	// Dem, et `@` kan betyde i den åbne note.
@@ -246,8 +250,9 @@
 
 	$effect(() => {
 		const id = selected?.id;
-		// Nulstil ved hvert skift, så den forrige notes folk ikke står et øjeblik
-		// under den nye.
+		// Nulstil ved hvert skift, så den forrige notes folk — og den forrige notes
+		// forslag — ikke står et øjeblik under den nye.
+		showActions = false;
 		shares = [];
 		shareCandidates = [];
 		shareFollows = [];
@@ -1086,6 +1091,16 @@
 				onsave={save}
 			/>
 
+			{#if showActions}
+				<AISuggestions
+					title={t('ai.actionsTitle')}
+					hint={t('ai.actionsHint')}
+					load={() => api.aiNoteActions(selected.id)}
+					apply={(row, line) => api.aiCreateFromNote(selected.id, line)}
+					onclose={() => (showActions = false)}
+				/>
+			{/if}
+
 			<footer>
 				<span class="hint">{saving ? t('notes.saving') : t('notes.saved')}</span>
 				{#if links.length}
@@ -1274,6 +1289,12 @@
 					{/if}
 
 					<button class="button" onclick={save}>{t('notes.save')}</button>
+					<!-- Det, nogen har lovet i et referat, står i teksten og ikke på
+					     listen. Knappen finder det frem som forslag; opgaverne bliver
+					     til noget, når man siger ja til dem. -->
+					<button class="button" onclick={() => (showActions = !showActions)}>
+						{t('ai.findActions')}
+					</button>
 					{#if ownsSelected}
 						<!-- Laid away, not thrown away: archive is the note leaving the list
 						     without leaving the account, and it reads "bring it back" once it

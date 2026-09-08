@@ -77,6 +77,22 @@ export const da = {
 	'notes.sortUpdated': 'Senest rørt',
 	'notes.sortCreated': 'Oprettet',
 	'notes.sortTitle': 'Navn',
+	// AI'ens forslag. Ordene skal gøre det klart, at der bliver foreslået og ikke
+	// rettet: den, der siger ja, er den, der bestemmer.
+	'ai.tidyInbox': 'Ryd op i indbakken',
+	'ai.tidyTitle': 'Forslag til indbakken',
+	'ai.tidyHint':
+		'Sådan kunne linjerne have set ud, hvis de var skrevet færdig. Ret i dem, du vil rette i — der sker først noget, når du siger ja.',
+	'ai.findActions': 'Find opgaver i noten',
+	'ai.actionsTitle': 'Opgaver i noten',
+	'ai.actionsHint':
+		'Det, nogen har lovet eller er blevet bedt om i teksten. Citatet under hver linje er de ord, den kom fra.',
+	'ai.thinking': 'Læser …',
+	'ai.nothingToSuggest': 'Der er ikke noget at foreslå.',
+	'ai.accept': 'Tilføj',
+	'ai.skip': 'Nej tak',
+	'ai.applied': 'Gjort.',
+	'ai.allDone': 'Ikke mere at tage stilling til.',
 	'beacon.title': 'Tælling af installationer',
 	'beacon.hint': 'Én gang i døgnet melder denne installation, at den findes, så projektet kan se hvor mange der bruger det. Der sendes kun de to værdier herunder — et tilfældigt id og versionen — og intet andet: ingen IP bliver gemt, ingen navne, ingen adresser, intet om hvad du bruger det til. Slået til som udgangspunkt, og du kan slå den fra her.',
 	'beacon.send': 'Send en anonym daglig melding',
