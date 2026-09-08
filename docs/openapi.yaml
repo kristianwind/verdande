@@ -3017,6 +3017,12 @@ paths:
     post:
       tags: [notes]
       summary: Write a note.
+      description: >
+        `#Projekt` files the note against a project and `[[Another note]]` links to
+        one. A third, `@Name`, shares the note with that person as a viewer and
+        tells them — only the owner's mentions share, and only a name that has just
+        appeared in the text counts, so a note saved on every typing pause does not
+        share itself twice.
       requestBody:
         required: true
         content:
@@ -3080,6 +3086,11 @@ paths:
     patch:
       tags: [notes]
       summary: Change a note. Every field is optional; what is sent is what changes.
+      description: >
+        A name written with an `@` that was not in the text before shares the note
+        with that person as a viewer and tells them. Only the owner's mentions
+        share — an editor may write the name, but giving somebody else's note away
+        is the owner's alone — and a role already granted is never lowered by one.
       requestBody:
         required: true
         content:

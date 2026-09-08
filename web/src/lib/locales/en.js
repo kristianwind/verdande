@@ -28,6 +28,7 @@ export const en = {
 	'notif.assigned': '{name} gave you a task',
 	'notif.noteChanged': '{name} edited a note',
 	'notif.noteShared': '{name} shared a note with you',
+	'notif.mention': '{name} mentioned you in a note',
 	'notif.comment': '{name} commented',
 	'notif.justNow': 'just now',
 	'notif.minutes': '{n} min ago',
@@ -59,6 +60,10 @@ export const en = {
 	'notes.inviteRevoke': 'Withdraw the invitation',
 	'notes.inviteRevoked': 'The invitation to {email} has been withdrawn.',
 	'notes.inviteNoMail': 'This instance cannot send mail. Pass the link on yourself:',
+	// A mention. `@Name` in a note shares it with the person named — said here,
+	// because it happens without anybody opening the share panel.
+	'notes.syntaxPerson': 'a person',
+	'notes.mentionShared': 'The note has been shared with {names}, because you named them.',
 	'notes.shareOwnerOnly': 'Only the owner can share the note.',
 	'notes.save': 'Save',
 	'notes.format': 'Format',

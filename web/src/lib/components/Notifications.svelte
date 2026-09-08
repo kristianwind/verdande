@@ -24,6 +24,7 @@
 		assigned: 'notif.assigned',
 		'note.changed': 'notif.noteChanged',
 		'note.shared': 'notif.noteShared',
+		'note.mention': 'notif.mention',
 		comment: 'notif.comment'
 	};
 

@@ -143,10 +143,13 @@ func (s *Server) notifyNoteShared(r *http.Request, n *store.Note, userID string)
 // notifyNoteChanged tells everybody who can see a note that somebody else wrote in
 // it — folded into one line per note while it is unread.
 //
+// `except` er dem, den samme gemning allerede har sagt noget mere præcist til:
+// den, der lige er blevet nævnt ved navn, skal ikke også høre, at noten er rettet.
+//
 // Skrevet som ét kald pr. modtager frem for ét pr. note, fordi sammenlægningen er
 // pr. person: to mennesker kan have læst den forrige besked på hvert sit tidspunkt,
 // og den ene skal have en ny linje, mens den anden får sin gamle rykket op.
-func (s *Server) notifyNoteChanged(r *http.Request, n *store.Note) {
+func (s *Server) notifyNoteChanged(r *http.Request, n *store.Note, except map[string]bool) {
 	if n == nil {
 		return
 	}
@@ -159,7 +162,7 @@ func (s *Server) notifyNoteChanged(r *http.Request, n *store.Note) {
 	title := actor.Name + " rettede en note"
 	body := n.Title
 	for _, userID := range audience {
-		if userID == actor.ID {
+		if userID == actor.ID || except[userID] {
 			continue
 		}
 		// Fold first, and only write a row when there was nothing to fold into.

@@ -215,6 +215,7 @@ func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
 	// tegnet væk. Målt i e2e-prøven for monospace, der begyndte at tabe sin titel.
 	if strings.TrimSpace(n.Body) != "" {
 		s.followLinks(r, n)
+		s.shareWithMentioned(r, n, "")
 	}
 	writeJSON(w, http.StatusCreated, n)
 }
@@ -245,6 +246,108 @@ func (s *Server) followLinks(r *http.Request, n *store.Note) {
 	if _, err := s.db.SyncLinkedShares(r.Context(), n.CreatedBy); err != nil {
 		s.log.Error("sync linked shares", "err", err, "note", n.ID)
 	}
+}
+
+// shareWithMentioned deler noten med dem, der er skrevet ind i den med et @.
+//
+// At nævne nogen i en note *er* at ville have dem til at læse den. Indtil nu var
+// det to handlinger — skriv navnet, åbn panelet, find personen, del — og den
+// anden blev glemt, så noten stod med en besked til en, der ikke kunne se den.
+//
+// Kun nye omtaler. Sammenlignet med teksten før gemningen på nøjagtig samme måde
+// som links, fordi en note gemmes ved hver tastepause: uden sammenligningen ville
+// hver eneste gemning være en ny deling og en ny besked om det samme navn.
+//
+// Kun ejerens omtaler deler. En medredaktør må skrive i noten, men ikke give den
+// videre — ellers kunne den, ejeren har delt med, skrive et navn og dermed dele
+// ejerens note med en, ejeren aldrig har hørt om. Det er den samme regel, panelet
+// følger: kun ejeren deler. En medredaktørs omtale er derfor tekst, og den giver
+// kun besked til en, der kan se noten i forvejen.
+//
+// Læser, ikke medredaktør. En omtale siger "se på det her", og det mindste, der
+// opfylder sætningen, er det rigtige at give — resten kan ejeren hæve i panelet,
+// og en rolle, der er hævet dér, sænkes ikke igen af en omtale.
+// Returnerer dem, der fik besked om omtalen, så den samme gemning ikke også
+// fortæller dem, at noten er blevet rettet.
+func (s *Server) shareWithMentioned(r *http.Request, n *store.Note, before string) map[string]bool {
+	told := map[string]bool{}
+	if n == nil || n.CreatedBy == "" {
+		return told
+	}
+	// Slået op mod alle konti på instansen — det er dem, noten kan deles med, og
+	// derfor dem, et navn kan betyde. Ejeren selv er ikke iblandt: en note kan ikke
+	// deles med den, der har den.
+	people, err := s.db.UsersForSharing(r.Context(), n.CreatedBy)
+	if err != nil {
+		s.log.Warn("people for mentions", "err", err, "note", n.ID)
+		return told
+	}
+
+	was := map[string]bool{}
+	for _, id := range store.MentionsIn(before, people) {
+		was[id] = true
+	}
+	fresh := []string{}
+	for _, id := range store.MentionsIn(n.Body, people) {
+		if !was[id] {
+			fresh = append(fresh, id)
+		}
+	}
+	if len(fresh) == 0 {
+		return told
+	}
+
+	actor := userFrom(r.Context())
+	owner := actor.ID == n.CreatedBy
+	shared := false
+	for _, id := range fresh {
+		if !owner {
+			continue
+		}
+		// En rolle, der allerede er sat, står. Omtalen skal give adgang til den, der
+		// ikke har nogen — ikke sætte en medredaktør ned til læser, fordi ejeren
+		// skrev deres navn i teksten.
+		if _, has, err := s.db.NoteShareRole(r.Context(), n.ID, id); err != nil {
+			s.log.Warn("mention share role", "err", err, "note", n.ID)
+			continue
+		} else if has {
+			continue
+		}
+		if err := s.db.ShareNote(r.Context(), n.ID, id, store.RoleViewer, actor.ID); err != nil {
+			s.log.Warn("share with mentioned", "err", err, "note", n.ID)
+			continue
+		}
+		shared = true
+	}
+	if shared {
+		// Og det, noten peger på, følger med delingen — samme vej som en deling
+		// sat i panelet.
+		s.followLinks(r, n)
+	}
+
+	// Besked til dem, der kan se noten. Efter delingen, så den, omtalen lige har
+	// givet adgang, er med — og kun til dem, så en medredaktørs omtale af en
+	// fremmed ikke bliver en besked om en note, de ikke kan åbne.
+	audience, err := s.db.NoteAudience(r.Context(), n.ID)
+	if err != nil {
+		s.log.Warn("note audience for mention", "err", err, "note", n.ID)
+		return told
+	}
+	canSee := map[string]bool{}
+	for _, id := range audience {
+		canSee[id] = true
+	}
+	for _, id := range fresh {
+		if !canSee[id] {
+			continue
+		}
+		s.notify(r, &store.Notification{
+			UserID: id, ActorID: actor.ID, ProjectID: n.ProjectID, NoteID: n.ID,
+			Kind: "note.mention", Title: actor.Name + " nævnte dig i en note", Body: n.Title,
+		})
+		told[id] = true
+	}
+	return told
 }
 
 func (s *Server) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
@@ -310,7 +413,11 @@ func (s *Server) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
 	// lagt i et projekt, er ikke en note, nogen har skrevet i — og en besked om
 	// det ville lære folk at overse dem alle sammen.
 	if before != n.Body {
-		s.notifyNoteChanged(r, n)
+		// Omtalerne først. Den, der lige er blevet nævnt, skal have "nævnte dig" og
+		// ikke også "rettede en note" om den samme gemning — det er én handling, og
+		// den ene sætning siger mere end den anden.
+		mentioned := s.shareWithMentioned(r, n, before)
+		s.notifyNoteChanged(r, n, mentioned)
 	}
 	writeJSON(w, http.StatusOK, n)
 }

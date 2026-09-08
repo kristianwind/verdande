@@ -20,7 +20,10 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { colorVar } from '$lib/colors.js';
 
-	let { note, notes = [], onchange, onsave, onopennote } = $props();
+	// `people` er dem, et `@` kan betyde: dem, noten kan deles med. Givet ind frem
+	// for hentet her, fordi siden allerede har listen — den står i delepanelet — og
+	// to hentninger af den samme liste er to, der kan blive uenige.
+	let { note, notes = [], people = [], onchange, onsave, onopennote } = $props();
 
 	let editor;
 	// Forslagslisten, så tastaturvalget kan rulle den frem.
@@ -87,6 +90,7 @@
 	const SYNTAX = [
 		{ mark: '#', what: 'notes.syntaxProject' },
 		{ mark: '[[', what: 'notes.syntaxNote' },
+		{ mark: '@', what: 'notes.syntaxPerson' },
 		{ mark: '⌘B', what: 'notes.bold' },
 		{ mark: '⌘U', what: 'notes.underline' }
 	];
@@ -509,6 +513,19 @@
 			return { kind: 'note', node, start: selection.anchorOffset - note[1].length, term: note[1] };
 		}
 
+		// Et navn kan have et mellemrum i sig, så ordet efter `@` må tage ét med:
+		// "Sofie J" skal kunne snævre listen ind til Sofie Jensen. Mere end ét ville
+		// læse sætningen efter navnet med.
+		const person = /(?:^|\s)@([\p{L}\p{N}._-]*(?:\s[\p{L}\p{N}._-]*)?)$/u.exec(before);
+		if (person) {
+			return {
+				kind: 'person',
+				node,
+				start: selection.anchorOffset - person[1].length,
+				term: person[1]
+			};
+		}
+
 		const project = /(?:^|\s)#([\p{L}\p{N}_-]*)$/u.exec(before);
 		if (project) {
 			return {
@@ -562,7 +579,12 @@
 		// pixels for hvert bogstav, mens listen snævres ind.
 		if (!suggestions.length) menuAt = tagPosition(partial);
 
-		suggestions = partial.kind === 'note' ? noteMatches(term) : projectMatches(term);
+		suggestions =
+			partial.kind === 'note'
+				? noteMatches(term)
+				: partial.kind === 'person'
+					? personMatches(term)
+					: projectMatches(term);
 		chosen = 0;
 	}
 
@@ -583,6 +605,16 @@
 		return notes
 			.filter((n) => n.id !== note?.id && n.title && n.title.toLowerCase().includes(term))
 			.map((n) => ({ id: n.id, kind: 'note', label: n.title }))
+			.sort((a, b) => rank(a.label, b.label, term));
+	}
+
+	// Dem, noten kan deles med. Ingen filtrering på, hvem der allerede har den: at
+	// nævne en, der læser med i forvejen, er en almindelig ting at gøre — og
+	// omtalen giver dem besked, selv om den ikke giver dem noget nyt.
+	function personMatches(term) {
+		return people
+			.filter((p) => p.name && p.name.toLowerCase().includes(term))
+			.map((p) => ({ id: p.id, kind: 'person', label: p.name, color: p.avatar_color }))
 			.sort((a, b) => rank(a.label, b.label, term));
 	}
 
@@ -1011,6 +1043,10 @@
 						{#if item.kind === 'note'}
 							<span class="dot note" aria-hidden="true">[[</span>
 							{item.label}
+						{:else if item.kind === 'person'}
+							<span class="dot" style="background: {colorVar(item.color)}" aria-hidden="true"
+							></span>
+							@{item.label}
 						{:else}
 							<span class="dot" style="background: {colorVar(item.color)}" aria-hidden="true"
 							></span>
