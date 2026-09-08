@@ -306,6 +306,12 @@ func (s *Server) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
 	if n.Title != wasTitled || !sameLinks(wasLinking, store.LinksIn(n.Body)) {
 		s.followLinks(r, n)
 	}
+	// Kun når teksten har flyttet sig. En note, der bliver stjernemarkeret eller
+	// lagt i et projekt, er ikke en note, nogen har skrevet i — og en besked om
+	// det ville lære folk at overse dem alle sammen.
+	if before != n.Body {
+		s.notifyNoteChanged(r, n)
+	}
 	writeJSON(w, http.StatusOK, n)
 }
 

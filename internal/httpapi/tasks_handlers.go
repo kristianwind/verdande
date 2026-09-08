@@ -245,6 +245,10 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	t.Labels = req.Labels
 	s.activity(r, t.ProjectID, t.ID, "task.created", map[string]any{"content": t.Content})
 	s.publish(t.ProjectID, "task.created", toTaskJSON(*t))
+	// Lavet til en anden med det samme. Det er den samme besked som at blive
+	// tildelt en, der allerede fandtes — hvad der ikke skal ske er, at den ene vej
+	// ind i "det her er dit nu" giver besked og den anden ikke.
+	s.notifyAssigned(r, t)
 	writeJSON(w, http.StatusCreated, toTaskJSON(*t))
 }
 
@@ -269,6 +273,17 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		if err := s.moveTaskToProject(r.Context(), taskID, *req.ProjectID, user.ID); err != nil {
 			writeError(w, http.StatusNotFound, CodeNotFound, err.Error())
 			return
+		}
+	}
+
+	// Læst før ændringen, og kun når der faktisk kommer en tildeling med i den:
+	// beskeden skal gå på *skiftet*, ikke på at feltet stod i forespørgslen. Den,
+	// der får en opgave tildelt igen, den allerede har, skal ikke have besked om
+	// det hver gang nogen retter en overskrift.
+	wasAssigned := ""
+	if req.AssigneeID != nil {
+		if before, err := s.db.GetTask(r.Context(), taskID, user.ID); err == nil {
+			wasAssigned = before.AssigneeID
 		}
 	}
 
@@ -324,6 +339,9 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	s.activity(r, t.ProjectID, t.ID, "task.updated", nil)
 	s.publish(t.ProjectID, "task.updated", toTaskJSON(*t))
+	if req.AssigneeID != nil && t.AssigneeID != wasAssigned {
+		s.notifyAssigned(r, t)
+	}
 	writeJSON(w, http.StatusOK, toTaskJSON(*t))
 }
 

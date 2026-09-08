@@ -22,6 +22,18 @@ export const da = {
 	'notes.unshared': 'Noten er din igen.',
 	// Deling med enkeltpersoner, ved siden af projektet.
 	'notes.groupSharedWithMe': 'Delt med mig',
+	// Klokken: hvad andre har gjort, som man skal vide. Sætningen skrives i fladen
+	// og ikke på serveren, så en engelsk flade også får en engelsk klokke.
+	'notif.title': 'Beskeder',
+	'notif.titleWithCount': 'Beskeder ({n} ulæste)',
+	'notif.empty': 'Ingen beskeder.',
+	'notif.markAllRead': 'Markér alle som læst',
+	'notif.assigned': '{name} gav dig en opgave',
+	'notif.noteChanged': '{name} rettede en note',
+	'notif.comment': '{name} kommenterede',
+	'notif.justNow': 'lige nu',
+	'notif.minutes': '{n} min. siden',
+	'notif.hours': '{n} t. siden',
 	'notes.linkOpen': 'Åbn',
 	'notes.linkMissing': 'Noten findes ikke, eller den er ikke delt med dig.',
 	'notes.sharedBy': 'Delt af {name}',

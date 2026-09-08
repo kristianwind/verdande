@@ -18,6 +18,7 @@ type Notification struct {
 	ActorName string
 	ProjectID string
 	TaskID    string
+	NoteID    string
 	Kind      string
 	Title     string
 	Body      string
@@ -32,12 +33,36 @@ func (db *DB) CreateNotification(ctx context.Context, n *Notification) error {
 	n.CreatedAt = time.Now().UTC()
 
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO notifications (id, user_id, actor_id, project_id, task_id, kind,
+		`INSERT INTO notifications (id, user_id, actor_id, project_id, task_id, note_id, kind,
 		                            title, body, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		n.ID, n.UserID, nullString(n.ActorID), nullString(n.ProjectID),
-		nullString(n.TaskID), n.Kind, n.Title, n.Body, n.CreatedAt.Unix())
+		nullString(n.TaskID), nullString(n.NoteID), n.Kind, n.Title, n.Body, n.CreatedAt.Unix())
 	return err
+}
+
+// BumpUnreadNoteNotification folds a second change to the same note into the first,
+// and says whether it found one to fold into.
+//
+// A note is saved on a typing pause, so writing a row per save would turn one
+// person editing one note for five minutes into a column of twenty identical
+// lines. Slået sammen, mens beskeden er ulæst: den rykker op som ny og siger hvem
+// der rørte den sidst.
+//
+// Kun mens den er ulæst — og det er hele reglen. Har man læst "Andreas rettede
+// Aftalen" og går videre, er den næste rettelse en ny ting at få at vide, ikke en
+// gentagelse af noget, man allerede har set.
+func (db *DB) BumpUnreadNoteNotification(ctx context.Context, userID, noteID, actorID, title, body string) (bool, error) {
+	res, err := db.ExecContext(ctx, `
+		UPDATE notifications
+		   SET created_at = ?, actor_id = ?, title = ?, body = ?
+		 WHERE user_id = ? AND note_id = ? AND kind = 'note.changed' AND read_at IS NULL`,
+		time.Now().UTC().Unix(), nullString(actorID), title, body, userID, noteID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 func (db *DB) ListNotifications(ctx context.Context, userID string, limit int) ([]Notification, error) {
@@ -46,7 +71,7 @@ func (db *DB) ListNotifications(ctx context.Context, userID string, limit int) (
 	}
 	rows, err := db.QueryContext(ctx, `
 		SELECT n.id, n.user_id, n.actor_id, COALESCE(u.name, ''), n.project_id, n.task_id,
-		       n.kind, n.title, n.body, n.read_at, n.created_at
+		       n.note_id, n.kind, n.title, n.body, n.read_at, n.created_at
 		FROM notifications n
 		LEFT JOIN users u ON u.id = n.actor_id
 		WHERE n.user_id = ?
@@ -60,14 +85,15 @@ func (db *DB) ListNotifications(ctx context.Context, userID string, limit int) (
 	out := []Notification{}
 	for rows.Next() {
 		var n Notification
-		var actorID, projectID, taskID sql.NullString
+		var actorID, projectID, taskID, noteID sql.NullString
 		var readAt sql.NullInt64
 		var created int64
 		if err := rows.Scan(&n.ID, &n.UserID, &actorID, &n.ActorName, &projectID,
-			&taskID, &n.Kind, &n.Title, &n.Body, &readAt, &created); err != nil {
+			&taskID, &noteID, &n.Kind, &n.Title, &n.Body, &readAt, &created); err != nil {
 			return nil, err
 		}
-		n.ActorID, n.ProjectID, n.TaskID = actorID.String, projectID.String, taskID.String
+		n.ActorID, n.ProjectID = actorID.String, projectID.String
+		n.TaskID, n.NoteID = taskID.String, noteID.String
 		if readAt.Valid {
 			v := time.Unix(readAt.Int64, 0).UTC()
 			n.ReadAt = &v
