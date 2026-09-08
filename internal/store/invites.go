@@ -16,6 +16,7 @@ type Invite struct {
 	ID        string
 	Email     string
 	ProjectID string // empty for an invite to the instance rather than to a project
+	NoteID    string // set when the invite is to a single note
 	Role      Role
 	CreatedBy string
 	CreatedAt time.Time
@@ -68,36 +69,46 @@ func (db *DB) CreateFirstAdmin(ctx context.Context, u *User, inboxName string) e
 	})
 }
 
-// CreateInvite issues an invite and returns the token for the emailed link.
-// projectID may be empty, which invites somebody to the instance rather than to a
-// particular project.
+// CreateInvite issues an invite to a project and returns the token for the emailed
+// link. projectID may be empty, which invites somebody to the instance rather than
+// to a particular project.
 func (db *DB) CreateInvite(ctx context.Context, email, projectID string, role Role, createdBy string, ttl time.Duration) (string, *Invite, error) {
-	if !role.Valid() {
-		return "", nil, fmt.Errorf("store: %q is not a role", role)
+	return db.createInvite(ctx, &Invite{Email: email, ProjectID: projectID, Role: role, CreatedBy: createdBy}, ttl)
+}
+
+// CreateNoteInvite issues an invite to a single note.
+//
+// Same row, same token, same link as a project invite — the difference is only
+// what the person gets when they arrive, and that is settled in AcceptInvite. A
+// second table for "invited to a note" would have meant a second signup path to
+// keep in step with this one, and the two would drift the first time either was
+// touched.
+func (db *DB) CreateNoteInvite(ctx context.Context, email, noteID string, role Role, createdBy string, ttl time.Duration) (string, *Invite, error) {
+	if noteID == "" {
+		return "", nil, errors.New("store: a note invite needs a note")
+	}
+	return db.createInvite(ctx, &Invite{Email: email, NoteID: noteID, Role: role, CreatedBy: createdBy}, ttl)
+}
+
+func (db *DB) createInvite(ctx context.Context, inv *Invite, ttl time.Duration) (string, *Invite, error) {
+	if !inv.Role.Valid() {
+		return "", nil, fmt.Errorf("store: %q is not a role", inv.Role)
 	}
 	token, err := auth.NewToken()
 	if err != nil {
 		return "", nil, err
 	}
 	now := time.Now().UTC()
-	inv := &Invite{
-		ID:        NewID(),
-		Email:     NormalizeEmail(email),
-		ProjectID: projectID,
-		Role:      role,
-		CreatedBy: createdBy,
-		CreatedAt: now,
-		ExpiresAt: now.Add(ttl),
-	}
+	inv.ID = NewID()
+	inv.Email = NormalizeEmail(inv.Email)
+	inv.CreatedAt = now
+	inv.ExpiresAt = now.Add(ttl)
 
-	var project any
-	if projectID != "" {
-		project = projectID
-	}
 	_, err = db.ExecContext(ctx,
-		`INSERT INTO invites (id, email, project_id, role, token_hash, created_by, created_at, expires_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		inv.ID, inv.Email, project, string(inv.Role), auth.HashToken(token),
+		`INSERT INTO invites (id, email, project_id, note_id, role, token_hash, created_by, created_at, expires_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		inv.ID, inv.Email, nullString(inv.ProjectID), nullString(inv.NoteID),
+		string(inv.Role), auth.HashToken(token),
 		inv.CreatedBy, inv.CreatedAt.Unix(), inv.ExpiresAt.Unix())
 	if err != nil {
 		return "", nil, err
@@ -112,14 +123,14 @@ func (db *DB) InviteByToken(ctx context.Context, token string) (*Invite, error) 
 		return nil, ErrInviteInvalid
 	}
 	var inv Invite
-	var projectID sql.NullString
+	var projectID, noteID sql.NullString
 	var created, expires int64
 	var accepted sql.NullInt64
 
 	err := db.QueryRowContext(ctx,
-		`SELECT id, email, project_id, role, created_by, created_at, expires_at, accepted_at
+		`SELECT id, email, project_id, note_id, role, created_by, created_at, expires_at, accepted_at
 		 FROM invites WHERE token_hash = ?`, auth.HashToken(token)).
-		Scan(&inv.ID, &inv.Email, &projectID, &inv.Role, &inv.CreatedBy, &created, &expires, &accepted)
+		Scan(&inv.ID, &inv.Email, &projectID, &noteID, &inv.Role, &inv.CreatedBy, &created, &expires, &accepted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrInviteInvalid
 	}
@@ -131,6 +142,7 @@ func (db *DB) InviteByToken(ctx context.Context, token string) (*Invite, error) 
 	}
 
 	inv.ProjectID = projectID.String
+	inv.NoteID = noteID.String
 	inv.CreatedAt = time.Unix(created, 0).UTC()
 	inv.ExpiresAt = time.Unix(expires, 0).UTC()
 	return &inv, nil
@@ -144,10 +156,16 @@ type PendingInvite struct {
 	Email       string
 	ProjectID   string
 	ProjectName string
-	Role        Role
-	InvitedBy   string
-	CreatedAt   time.Time
-	ExpiresAt   time.Time
+	// NoteID is set for an invitation to a single note. The note is named by its
+	// id and never by its title: titles are sealed in the database, and a private
+	// note's first line is not something an administrator's user list should
+	// spell out. That there is an account on its way is the administrator's
+	// business; what it was invited to read is not.
+	NoteID    string
+	Role      Role
+	InvitedBy string
+	CreatedAt time.Time
+	ExpiresAt time.Time
 }
 
 // ListPendingInvites returns invites that are neither accepted nor expired.
@@ -159,7 +177,8 @@ type PendingInvite struct {
 // able to say which it is.
 func (db *DB) ListPendingInvites(ctx context.Context) ([]PendingInvite, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT i.id, i.email, COALESCE(i.project_id, ''), COALESCE(p.name, ''), i.role,
+		SELECT i.id, i.email, COALESCE(i.project_id, ''), COALESCE(p.name, ''),
+		       COALESCE(i.note_id, ''), i.role,
 		       COALESCE(u.name, ''), i.created_at, i.expires_at
 		FROM invites i
 		LEFT JOIN projects p ON p.id = i.project_id
@@ -175,8 +194,8 @@ func (db *DB) ListPendingInvites(ctx context.Context) ([]PendingInvite, error) {
 	for rows.Next() {
 		var p PendingInvite
 		var created, expires int64
-		if err := rows.Scan(&p.ID, &p.Email, &p.ProjectID, &p.ProjectName, &p.Role,
-			&p.InvitedBy, &created, &expires); err != nil {
+		if err := rows.Scan(&p.ID, &p.Email, &p.ProjectID, &p.ProjectName, &p.NoteID,
+			&p.Role, &p.InvitedBy, &created, &expires); err != nil {
 			return nil, err
 		}
 		p.CreatedAt = time.Unix(created, 0).UTC()
@@ -200,12 +219,16 @@ func (db *DB) DeleteInvite(ctx context.Context, inviteID string) error {
 	return nil
 }
 
-// AcceptInvite marks the invite used and grants the membership it promised, in one
+// AcceptInvite marks the invite used and grants what it promised, in one
 // transaction. Splitting the two would allow a signup to fail partway and leave a
 // live invite behind, which is a link that still works after it has been used.
 //
 // The UPDATE is guarded on accepted_at IS NULL, so two requests racing with the
-// same link produce one membership and one failure rather than two memberships.
+// same link produce one grant and one failure rather than two.
+//
+// What is granted depends on what the invite was to: a project membership, a share
+// on a single note, or — when it carries neither — nothing beyond the account the
+// caller has just created.
 func (db *DB) AcceptInvite(ctx context.Context, inviteID, userID string) error {
 	return db.Tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx,
@@ -218,13 +241,40 @@ func (db *DB) AcceptInvite(ctx context.Context, inviteID, userID string) error {
 			return ErrInviteInvalid
 		}
 
-		var projectID sql.NullString
+		var projectID, noteID sql.NullString
 		var role Role
+		var invitedBy string
 		if err := tx.QueryRowContext(ctx,
-			`SELECT project_id, role FROM invites WHERE id = ?`, inviteID).
-			Scan(&projectID, &role); err != nil {
+			`SELECT project_id, note_id, role, created_by FROM invites WHERE id = ?`, inviteID).
+			Scan(&projectID, &noteID, &role, &invitedBy); err != nil {
 			return err
 		}
+
+		if noteID.Valid && noteID.String != "" {
+			// created_by is the person who invited, not the person arriving: the row
+			// records who did the sharing, the same as a share made from the panel.
+			//
+			// The note may have been deleted between the invite and the signup. The
+			// foreign key would refuse the row and take the whole signup with it, so
+			// the note is looked up first and a share on a note that is gone is
+			// simply not made — the account is still worth creating.
+			var alive int
+			if err := tx.QueryRowContext(ctx,
+				`SELECT count(*) FROM notes WHERE id = ? AND deleted_at IS NULL AND created_by <> ?`,
+				noteID.String, userID).Scan(&alive); err != nil {
+				return err
+			}
+			if alive == 0 {
+				return nil
+			}
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO note_shares (note_id, user_id, role, created_by, created_at)
+				VALUES (?, ?, ?, ?, ?)
+				ON CONFLICT (note_id, user_id) DO UPDATE SET role = excluded.role`,
+				noteID.String, userID, string(role), invitedBy, time.Now().Unix())
+			return err
+		}
+
 		if !projectID.Valid || projectID.String == "" {
 			return nil // an invite to the instance, with no project attached
 		}
@@ -238,6 +288,81 @@ func (db *DB) AcceptInvite(ctx context.Context, inviteID, userID string) error {
 			projectID.String, userID, string(role), time.Now().Unix())
 		return err
 	})
+}
+
+// --- invitationer til én note ----------------------------------------------------
+
+// NoteInvite is somebody who has been invited to a note and has not arrived yet.
+// The email address is the whole of who they are — there is no account to name
+// them by, which is the entire reason the row exists.
+type NoteInvite struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Role      Role      `json:"role"`
+	CreatedAt time.Time `json:"-"`
+	ExpiresAt time.Time `json:"-"`
+}
+
+// ListNoteInvites is who has been invited to a note and not yet taken it up.
+//
+// The panel needs them beside the people who *are* on the note: without this, an
+// invitation sent yesterday is invisible, and the owner sends it again — a second
+// link to the same inbox, and no way to take either back.
+//
+// Expired ones are left out, the same rule the administrator's list follows: an
+// invite past its date is not something anybody can act on.
+func (db *DB) ListNoteInvites(ctx context.Context, noteID string) ([]NoteInvite, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, email, role, created_at, expires_at
+		FROM invites
+		WHERE note_id = ? AND accepted_at IS NULL AND expires_at > ?
+		ORDER BY created_at`, noteID, time.Now().Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []NoteInvite{}
+	for rows.Next() {
+		var i NoteInvite
+		var created, expires int64
+		if err := rows.Scan(&i.ID, &i.Email, &i.Role, &created, &expires); err != nil {
+			return nil, err
+		}
+		i.CreatedAt = time.Unix(created, 0).UTC()
+		i.ExpiresAt = time.Unix(expires, 0).UTC()
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+// DeleteNoteInvite withdraws an invitation to a note, and refuses to withdraw
+// anything else.
+//
+// The note id is part of the WHERE rather than checked beforehand: the owner has
+// been established for *this* note, and one statement that can only touch this
+// note's rows cannot be talked into deleting a project invite by id.
+func (db *DB) DeleteNoteInvite(ctx context.Context, noteID, inviteID string) error {
+	res, err := db.ExecContext(ctx,
+		`DELETE FROM invites WHERE id = ? AND note_id = ?`, inviteID, noteID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// PendingNoteInvite reports whether this address already has a live invitation to
+// this note, so a second attempt can say so instead of sending a second link.
+func (db *DB) PendingNoteInvite(ctx context.Context, noteID, email string) (bool, error) {
+	var n int
+	err := db.QueryRowContext(ctx, `
+		SELECT count(*) FROM invites
+		WHERE note_id = ? AND email = ? AND accepted_at IS NULL AND expires_at > ?`,
+		noteID, NormalizeEmail(email), time.Now().Unix()).Scan(&n)
+	return n > 0, err
 }
 
 // --- password resets ----------------------------------------------------------

@@ -199,6 +199,14 @@
 	let sharePick = $state('');
 	let shareRole = $state('viewer');
 	let shareBusy = $state(false);
+	// De inviterede: delinger, der venter på, at der bliver oprettet en konto.
+	// De står i panelet ved siden af dem, der er kommet — ellers er en invitation
+	// sendt i går usynlig, og så sender man den igen.
+	let shareInvites = $state([]);
+	let shareEmail = $state('');
+	// Linket vises kun, når instansen ikke kan sende post. Så er det den eneste vej
+	// frem, og det skal kunne kopieres frem for at forsvinde.
+	let shareInviteLink = $state('');
 	const ownsSelected = $derived(!!selected && selected.created_by === app.user?.id);
 
 	// The whole of sharing — a project and named people — lives in a popover behind
@@ -228,6 +236,9 @@
 		shares = [];
 		shareCandidates = [];
 		shareFollows = [];
+		shareInvites = [];
+		shareEmail = '';
+		shareInviteLink = '';
 		sharePick = '';
 		if (!id || selected.created_by !== app.user?.id) return;
 		let alive = true;
@@ -238,6 +249,7 @@
 				shares = r.shares ?? [];
 				shareCandidates = r.candidates ?? [];
 				shareFollows = r.follows ?? [];
+				shareInvites = r.invites ?? [];
 			})
 			.catch(() => {});
 		return () => {
@@ -271,6 +283,54 @@
 			app.toast(humanMessage(e));
 		} finally {
 			shareBusy = false;
+		}
+	}
+
+	/**
+	 * Deling med en adresse frem for et navn i listen.
+	 *
+	 * Ét felt til begge udfald. Man skriver adressen på den, der skal læse med, og
+	 * det er serveren, der ved, om der er en konto bag: er der det, bliver det en
+	 * deling med det samme, og ellers en invitation, der bliver til en deling, når
+	 * kontoen oprettes. At skulle vide det på forhånd — og vælge det rigtige felt —
+	 * er at skulle vide noget om instansens brugerliste for at dele en note.
+	 */
+	async function inviteByEmail() {
+		if (!selected || !shareEmail.trim() || shareBusy) return;
+		shareBusy = true;
+		shareInviteLink = '';
+		try {
+			const r = await api.shareNoteByEmail(selected.id, shareEmail.trim(), shareRole);
+			if (r?.invited) {
+				shareInvites = [...shareInvites, r.invited];
+				// Kan instansen ikke sende post, er linket det eneste, der findes:
+				// vist frem for slugt, så det kan gives videre ad anden vej.
+				if (!r.emailed && r.link) shareInviteLink = r.link;
+				app.toast(t('notes.invited', { email: r.invited.email }));
+			} else if (r?.user) {
+				shares = [...shares, { user: r.user, role: r.role ?? shareRole }].sort((a, b) =>
+					byName(a.user, b.user)
+				);
+				shareCandidates = shareCandidates.filter((p) => p.id !== r.user.id);
+				shareFollows = r?.follows ?? shareFollows;
+				app.toast(t('notes.sharedToast', { name: r.user.name ?? '' }));
+			}
+			shareEmail = '';
+		} catch (e) {
+			app.toast(humanMessage(e));
+		} finally {
+			shareBusy = false;
+		}
+	}
+
+	async function revokeInvite(inviteId, email) {
+		try {
+			await api.revokeNoteInvite(selected.id, inviteId);
+			shareInvites = shareInvites.filter((i) => i.id !== inviteId);
+			shareInviteLink = '';
+			app.toast(t('notes.inviteRevoked', { email }));
+		} catch (e) {
+			app.toast(humanMessage(e));
 		}
 	}
 
@@ -1083,6 +1143,25 @@
 													>{i < shareFollows.length - 1 ? ', ' : ''}{/each}
 											</p>
 										{/if}
+										{#if shareInvites.length}
+											<!-- Sendt, ikke taget imod endnu. Adressen er alt, hvad der findes
+											     om personen indtil de dukker op — der er hverken navn eller
+											     farve at vise, og det er selve pointen med linjen. -->
+											<ul class="invited">
+												{#each shareInvites as inv (inv.id)}
+													<li>
+														<span class="who">{inv.email}</span>
+														<span class="pending">{t('notes.invitePending')}</span>
+														<button
+															class="unshare"
+															onclick={() => revokeInvite(inv.id, inv.email)}
+															title={t('notes.inviteRevoke')}
+															aria-label={t('notes.inviteRevoke')}>×</button
+														>
+													</li>
+												{/each}
+											</ul>
+										{/if}
 										{#if shareCandidates.length}
 											<div class="addshare">
 												<select bind:value={sharePick}>
@@ -1103,6 +1182,40 @@
 													{t('notes.shareAdd')}
 												</button>
 											</div>
+										{/if}
+										<!-- Og den, der ikke står i listen. Ét felt til begge udfald: har
+										     adressen en konto, bliver det en deling med det samme, og ellers
+										     en invitation. Hvem der har en konto, er ikke noget, man skal
+										     vide for at dele en note. -->
+										<form
+											class="addshare byemail"
+											onsubmit={(e) => {
+												e.preventDefault();
+												inviteByEmail();
+											}}
+										>
+											<input
+												bind:value={shareEmail}
+												type="email"
+												placeholder={t('notes.shareEmailPlaceholder')}
+												aria-label={t('notes.shareByEmail')}
+											/>
+											<select bind:value={shareRole} aria-label={t('notes.shareRole')}>
+												<option value="viewer">{t('notes.shareRoleViewer')}</option>
+												<option value="editor">{t('notes.shareRoleEditor')}</option>
+											</select>
+											<button class="button" type="submit" disabled={!shareEmail || shareBusy}>
+												{t('notes.shareInvite')}
+											</button>
+										</form>
+										{#if shareInviteLink}
+											<!-- Ingen post at sende det med. Så er linket det eneste, der
+											     findes, og det skal kunne læses og kopieres frem for at blive
+											     lovet i en besked, der ikke kom af sted. -->
+											<p class="invitelink">
+												{t('notes.inviteNoMail')}
+												<input readonly value={shareInviteLink} onclick={(e) => e.target.select()} />
+											</p>
 										{/if}
 									</section>
 								</div>
@@ -1980,6 +2093,63 @@
 	}
 	.followlink:hover {
 		text-decoration: underline;
+	}
+
+	/* De inviterede. Samme form som listen ovenover, fordi det er den samme slags
+	   linje — en person, noten er delt med — og forskellen er, at de ikke er kommet
+	   endnu. Den forskel siges med ordet til højre, ikke med en anden form. */
+	.invited {
+		list-style: none;
+		margin: 2px 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.invited li {
+		display: flex;
+		align-items: center;
+		gap: var(--s1);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+	}
+
+	.invited .who {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.invited .pending {
+		margin-left: auto;
+		color: var(--ink-faint);
+		white-space: nowrap;
+	}
+
+	/* Adressefeltet får sin egen række af samme grund som personvælgeren: en
+	   e-mailadresse klemt ned ved siden af en rolle og en knap bliver et felt, man
+	   ikke kan læse det, man har skrevet i. */
+	.byemail input {
+		flex: 1 1 100%;
+		min-width: 0;
+		font-size: var(--text-xs);
+		padding: 2px var(--s1);
+	}
+
+	.invitelink {
+		margin: var(--s1) 0 0;
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		line-height: 1.5;
+	}
+
+	.invitelink input {
+		width: 100%;
+		margin-top: 2px;
+		font-size: var(--text-xs);
+		padding: 2px var(--s1);
 	}
 
 	.addshare {

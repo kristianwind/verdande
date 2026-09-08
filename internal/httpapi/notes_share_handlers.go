@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -128,9 +129,23 @@ func (s *Server) handleListNoteShares(w http.ResponseWriter, r *http.Request) {
 		cand = append(cand, personJSON{ID: p.ID, Name: p.Name, AvatarColor: p.AvatarColor})
 	}
 
+	// De inviterede står ved siden af dem, der er kommet. Uden dem er en
+	// invitation sendt i går usynlig, og så sender man den igen — endnu et link til
+	// den samme indbakke, og ingen af dem til at trække tilbage.
+	invites, err := s.db.ListNoteInvites(r.Context(), n.ID)
+	if err != nil {
+		s.internal(w, r, "list note invites", err)
+		return
+	}
+	pending := make([]noteInviteJSON, 0, len(invites))
+	for _, i := range invites {
+		pending = append(pending, noteInviteJSON{ID: i.ID, Email: i.Email, Role: string(i.Role)})
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"shares":     out,
 		"candidates": cand,
+		"invites":    pending,
 		"follows":    followsOf(following, n.ID),
 	})
 }
@@ -167,10 +182,33 @@ type noteShareJSON struct {
 
 type shareNoteRequest struct {
 	UserID string `json:"user_id"`
-	Role   string `json:"role"`
+	// Email deles der med, når personen ikke er at finde i listen — enten fordi
+	// man kender adressen bedre end navnet, eller fordi der ikke er nogen konto at
+	// finde endnu.
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
+// noteInviteJSON er en deling, der venter på en konto. Der er ikke noget navn og
+// ingen farve at vise: adressen er alt, hvad der findes om personen indtil de
+// dukker op.
+type noteInviteJSON struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
 }
 
 // handleShareNote grants a person a role on a note, or changes the role they hold.
+//
+// Der er to måder at sige, hvem det er. `user_id` er den, man har peget på i
+// listen. `email` er den, man kender adressen på — og det er den, der også virker,
+// når personen ikke har nogen konto: så bliver delingen til en invitation, der
+// venter, og bliver til en rigtig deling i det øjeblik, kontoen bliver oprettet.
+//
+// Det er ikke en ny magt til nogen. Enhver, der ejer et projekt, kunne i forvejen
+// invitere en fremmed ind på instansen pr. e-mail; det her er den samme handling
+// på en note, der ellers krævede tre skridt og en ventetid: invitér til instansen,
+// vent på at de opretter sig, find noten frem, del den.
 func (s *Server) handleShareNote(w http.ResponseWriter, r *http.Request) {
 	var req shareNoteRequest
 	if err := decodeJSON(w, r, &req); err != nil {
@@ -194,34 +232,134 @@ func (s *Server) handleShareNote(w http.ResponseWriter, r *http.Request) {
 		writeFieldErrors(w, map[string]string{"role": "must be viewer or editor"})
 		return
 	}
-	if req.UserID == "" {
+
+	me := userFrom(r.Context())
+	email := store.NormalizeEmail(req.Email)
+
+	if req.UserID == "" && email == "" {
 		writeFieldErrors(w, map[string]string{"user_id": "required"})
 		return
 	}
+
+	// En adresse, der viser sig at høre til en konto, er den konto. At sende dem
+	// gennem en oprettelsesside, de ikke kan komme igennem, ville være en blindgyde
+	// — samme regel som en projektinvitation følger.
+	if req.UserID == "" {
+		if !strings.Contains(email, "@") {
+			writeFieldErrors(w, map[string]string{"email": "must be an email address"})
+			return
+		}
+		if email == store.NormalizeEmail(me.Email) {
+			writeFieldErrors(w, map[string]string{"email": "you already have this note"})
+			return
+		}
+		existing, err := s.db.UserByEmail(r.Context(), email)
+		if err != nil {
+			s.inviteToNote(w, r, n, email, role)
+			return
+		}
+		req.UserID = existing.ID
+	}
+
 	// The recipient must be a real account and not the sharer themselves; ShareNote
 	// refuses the owner, and a made-up id should not reach it.
-	if req.UserID == userFrom(r.Context()).ID {
+	if req.UserID == me.ID {
 		writeFieldErrors(w, map[string]string{"user_id": "you already have this note"})
 		return
 	}
-	if _, err := s.db.PersonByID(r.Context(), req.UserID); err != nil {
+	person, err := s.db.PersonByID(r.Context(), req.UserID)
+	if err != nil {
 		writeError(w, http.StatusNotFound, CodeNotFound, "no such person")
 		return
 	}
 
-	if err := s.db.ShareNote(r.Context(), n.ID, req.UserID, role, userFrom(r.Context()).ID); err != nil {
+	if err := s.db.ShareNote(r.Context(), n.ID, req.UserID, role, me.ID); err != nil {
 		s.storeError(w, r, "share note", err)
 		return
 	}
+	s.notifyNoteShared(r, n, req.UserID)
 
 	// Og det, noten peger på, følger med. Svaret siger hvad — en deling, der stille
 	// tog tre noter mere med, ville være rigtig og alligevel ikke til at overskue.
-	followed, err := s.db.SyncLinkedShares(r.Context(), userFrom(r.Context()).ID)
+	followed, err := s.db.SyncLinkedShares(r.Context(), me.ID)
 	if err != nil {
 		s.internal(w, r, "sync linked shares", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"follows": followsOf(followed, n.ID)})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"follows": followsOf(followed, n.ID),
+		// Personen sendes med retur, fordi fladen kan have delt med en adresse og
+		// derfor ikke selv ved, hvem den ramte.
+		"user": personJSON{ID: person.ID, Name: person.Name, AvatarColor: person.AvatarColor},
+		"role": string(role),
+	})
+}
+
+// inviteToNote sends a link that creates an account and the share at once.
+//
+// Linket vises i svaret, når der ikke er nogen post at sende det med. En
+// invitation, der forsvandt, fordi instansen ikke har en SMTP-server, ville se ud
+// som om den var sendt — og først blive opdaget som ikke-sendt af den, der ventede
+// på den.
+func (s *Server) inviteToNote(w http.ResponseWriter, r *http.Request, n *store.Note, email string, role store.Role) {
+	me := userFrom(r.Context())
+
+	// En anden invitation til den samme note i den samme indbakke er ikke en
+	// invitation mere: det er to links, der gør det samme, og kun det ene kan
+	// trækkes tilbage ad gangen.
+	pending, err := s.db.PendingNoteInvite(r.Context(), n.ID, email)
+	if err != nil {
+		s.internal(w, r, "pending note invite", err)
+		return
+	}
+	if pending {
+		writeError(w, http.StatusConflict, CodeConflict, "that address has already been invited to this note")
+		return
+	}
+
+	token, inv, err := s.db.CreateNoteInvite(r.Context(), email, n.ID, role, me.ID, s.cfg.InviteTTL)
+	if err != nil {
+		s.internal(w, r, "create note invite", err)
+		return
+	}
+	link := s.cfg.BaseURL + "/invite?token=" + token
+
+	emailed := false
+	if s.mail.Configured() {
+		if err := s.mail.SendNoteInvite(r.Context(), email, me.Name, n.Title, link, s.cfg.InviteTTL); err != nil {
+			s.log.Error("send note invite", "err", err, "to", email)
+		} else {
+			emailed = true
+		}
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"invited": noteInviteJSON{ID: inv.ID, Email: inv.Email, Role: string(inv.Role)},
+		"link":    link,
+		"emailed": emailed,
+	})
+}
+
+// handleDeleteNoteInvite withdraws an invitation before it is used.
+//
+// Det er den eneste vej tilbage. Kun aftrykket af tokenet er gemt, så et link, der
+// er sendt til den forkerte adresse, kan ikke findes frem og gøres ugyldigt — det
+// kan kun rækken, det hører til.
+func (s *Server) handleDeleteNoteInvite(w http.ResponseWriter, r *http.Request) {
+	n, err := s.db.Note(r.Context(), chi.URLParam(r, "noteID"))
+	if err != nil {
+		s.internal(w, r, "get note", err)
+		return
+	}
+	if n == nil || !s.ownsNote(r, n) {
+		writeError(w, http.StatusNotFound, CodeNotFound, "no such note")
+		return
+	}
+	if err := s.db.DeleteNoteInvite(r.Context(), n.ID, chi.URLParam(r, "inviteID")); err != nil {
+		s.storeError(w, r, "delete note invite", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleUnshareNote takes a person's access away again.

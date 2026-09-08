@@ -109,14 +109,22 @@ func TestEditingASharedNoteNotifiesTheOthers(t *testing.T) {
 		t.Fatal("del noten")
 	}
 
+	// Selve delingen er den første besked: Sofie skal vide, at noten er der, før
+	// nogen retter i den. Den tælles med i alt, hvad der følger.
+	if list, unread := notifications(t, other); len(list) != 1 || unread != 1 ||
+		firstOf(t, list)["kind"] != "note.shared" {
+		t.Fatalf("delingen gav %d beskeder (%v ulæste): %v", len(list), unread, list)
+	}
+
 	// Ejeren skriver. Sofie skal høre det.
 	if resp, _ := owner.do(t, "PATCH", "/api/v1/notes/"+noteID,
 		map[string]any{"body": "# Aftale om levering\nanden linje"}); resp.StatusCode != http.StatusOK {
 		t.Fatal("ret noten")
 	}
 	list, unread := notifications(t, other)
-	if unread != 1 || len(list) != 1 {
-		t.Fatalf("Sofie fik %d beskeder (%v ulæste), want 1", len(list), unread)
+	if unread != 2 || len(list) != 2 {
+		t.Fatalf("Sofie fik %d beskeder (%v ulæste), want 2 — delingen og rettelsen",
+			len(list), unread)
 	}
 	n := firstOf(t, list)
 	if n["kind"] != "note.changed" || n["note_id"] != noteID {
@@ -132,8 +140,9 @@ func TestEditingASharedNoteNotifiesTheOthers(t *testing.T) {
 			t.Fatal("ret noten igen")
 		}
 	}
-	if list, unread := notifications(t, other); len(list) != 1 || unread != 1 {
-		t.Errorf("tre gemninger blev til %d beskeder, want 1", len(list))
+	if list, unread := notifications(t, other); len(list) != 2 || unread != 2 {
+		t.Errorf("tre gemninger blev til %d beskeder, want 2 — delingen og én rettelse",
+			len(list))
 	}
 
 	// Læst, og så en rettelse mere: dét er en ny ting at få at vide.
@@ -144,8 +153,8 @@ func TestEditingASharedNoteNotifiesTheOthers(t *testing.T) {
 		map[string]any{"body": "# Aftale om levering\nefter læsningen"}); resp.StatusCode != http.StatusOK {
 		t.Fatal("ret noten efter læsningen")
 	}
-	if list, unread := notifications(t, other); len(list) != 2 || unread != 1 {
-		t.Errorf("efter læsningen gav en rettelse %d beskeder (%v ulæste), want 2 og 1", len(list), unread)
+	if list, unread := notifications(t, other); len(list) != 3 || unread != 1 {
+		t.Errorf("efter læsningen gav en rettelse %d beskeder (%v ulæste), want 3 og 1", len(list), unread)
 	}
 
 	// Ejeren har ikke fået besked om sine egne rettelser undervejs.
@@ -171,8 +180,8 @@ func TestEditingASharedNoteNotifiesTheOthers(t *testing.T) {
 		map[string]any{"pinned": true}); resp.StatusCode != http.StatusOK {
 		t.Fatal("stjernemarkér")
 	}
-	if list, _ := notifications(t, other); len(list) != 2 {
-		t.Errorf("en stjernemarkering gav besked: %d beskeder, want 2", len(list))
+	if list, _ := notifications(t, other); len(list) != 3 {
+		t.Errorf("en stjernemarkering gav besked: %d beskeder, want 3", len(list))
 	}
 }
 

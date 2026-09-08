@@ -38,11 +38,30 @@ func New(cfg config.SMTP, baseURL string, log *slog.Logger) *Sender {
 func (s *Sender) Configured() bool { return s.cfg.Configured() }
 
 func (s *Sender) SendInvite(ctx context.Context, to, inviterName, projectName, link string, ttl time.Duration) error {
-	subject := fmt.Sprintf("%s har delt noget med dig i verdande", inviterName)
 	what := "verdande"
 	if projectName != "" {
 		what = "projektet “" + projectName + "”"
 	}
+	return s.sendInvite(ctx, to, inviterName, what, link, ttl)
+}
+
+// SendNoteInvite is the same letter about a single note.
+//
+// The title is in the mail because it is what makes the invitation mean anything —
+// "Kristian har inviteret dig til noten “Aftale om levering”" is a sentence
+// somebody can decide about, where "til en note" is one they have to click a link
+// to understand. It travels no further than the address the owner typed, which is
+// the address they chose to share the note with.
+func (s *Sender) SendNoteInvite(ctx context.Context, to, inviterName, noteTitle, link string, ttl time.Duration) error {
+	what := "en note"
+	if noteTitle != "" {
+		what = "noten “" + noteTitle + "”"
+	}
+	return s.sendInvite(ctx, to, inviterName, what, link, ttl)
+}
+
+func (s *Sender) sendInvite(ctx context.Context, to, inviterName, what, link string, ttl time.Duration) error {
+	subject := fmt.Sprintf("%s har delt noget med dig i verdande", inviterName)
 	body := fmt.Sprintf(`Hej
 
 %s har inviteret dig til %s.

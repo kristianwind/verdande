@@ -23,6 +23,7 @@
 	const KINDS = {
 		assigned: 'notif.assigned',
 		'note.changed': 'notif.noteChanged',
+		'note.shared': 'notif.noteShared',
 		comment: 'notif.comment'
 	};
 

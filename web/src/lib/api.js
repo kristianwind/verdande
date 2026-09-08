@@ -454,7 +454,12 @@ export const api = {
 	// path. Owner only; the list call also returns who it can still be shared with.
 	noteShares: (id) => get(`/notes/${id}/shares`),
 	shareNote: (id, userId, role) => post(`/notes/${id}/shares`, { user_id: userId, role }),
+	// Deling ved adresse. Har adressen en konto, bliver det en almindelig deling —
+	// svaret siger hvem — og ellers en invitation, der venter på, at kontoen bliver
+	// oprettet.
+	shareNoteByEmail: (id, email, role) => post(`/notes/${id}/shares`, { email, role }),
 	unshareNote: (id, userId) => del(`/notes/${id}/shares/${userId}`),
+	revokeNoteInvite: (id, inviteId) => del(`/notes/${id}/invites/${inviteId}`),
 
 	// Mailboxes read over IMAP. Each belongs to the person who connected it, so
 	// there is no instance-wide registration behind these the way Gmail has one.
