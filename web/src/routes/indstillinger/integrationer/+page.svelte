@@ -289,6 +289,9 @@
 
 	let feedURL = $state('');
 	let mailAddress = $state('');
+	// Krogen ind i indbakken: den URL, en genvej på telefonen eller et script kan
+	// skubbe en linje tekst til.
+	let hookURL = $state('');
 	/** Null until loaded, so the warning does not flash before the answer is in. */
 	let mailConfigured = $state(null);
 
@@ -300,6 +303,10 @@
 				mailAddress = r.address;
 				mailConfigured = r.configured;
 			})
+			.catch(() => {});
+		api
+			.getHookURL()
+			.then((r) => (hookURL = r.url))
 			.catch(() => {});
 	});
 
@@ -318,6 +325,15 @@
 			const r = await api.rotateMailAddress();
 			mailAddress = r.address;
 			mailConfigured = r.configured;
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
+	async function rotateHook() {
+		if (!confirm(t('int.newHookQuestion'))) return;
+		try {
+			hookURL = (await api.rotateHookURL()).url;
 		} catch (e) {
 			app.toast(humanMessage(e));
 		}
@@ -671,6 +687,38 @@
 	<div class="row">
 		<button class="secondary" onclick={() => copy(mailAddress)}>{t('int.copy')}</button>
 		<button class="danger" onclick={rotateMail}>{t('int.newAddress')}</button>
+	</div>
+</section>
+
+<section class="panel">
+	<header>
+		<h2>{t('int.hookToTask')}</h2>
+		<p class="hint">
+			{t('int.hookHint')}
+		</p>
+	</header>
+
+	<div class="field">
+		<label for="hook">{t('int.yourHook')}</label>
+		<input id="hook" class="mono" value={hookURL} readonly />
+		<p class="hint">
+			{t('int.hookHow')}
+		</p>
+	</div>
+
+	<!-- Vist som den kommando, den er. Den, der skal sætte det op, skal kunne
+	     prøve det af ét sted, før de bygger genvejen på telefonen — og se, at
+	     kroppen bare er den linje, opgaven skal hedde. -->
+	<div class="field">
+		<label for="hookcurl">{t('int.hookExample')}</label>
+		<textarea id="hookcurl" class="mono" rows="3" readonly
+			>{`curl -X POST ${hookURL} \\\n  -H "Content-Type: text/plain" \\\n  -d "Ring til Anders i morgen p1 #Firma"`}</textarea
+		>
+	</div>
+
+	<div class="row">
+		<button class="secondary" onclick={() => copy(hookURL)}>{t('int.copy')}</button>
+		<button class="danger" onclick={rotateHook}>{t('int.newHook')}</button>
 	</div>
 </section>
 

@@ -2718,6 +2718,25 @@ paths:
       responses:
         "200": { $ref: "#/components/responses/MailAddress" }
 
+  /api/v1/hook-url:
+    get:
+      tags: [integrations]
+      summary: Your personal address for pushing a task in from somewhere else.
+      description: >
+        Minted on first ask. Its own token rather than the mail one: the two are
+        the same kind of secret, but they leak separately — a URL that has been
+        sitting in a shortcut on a lost phone has to be replaceable without
+        changing the address other people have in their address books.
+      responses:
+        "200": { $ref: "#/components/responses/HookURL" }
+
+  /api/v1/hook-url/rotate:
+    post:
+      tags: [integrations]
+      summary: Issue a new push address, retiring the old one at once.
+      responses:
+        "200": { $ref: "#/components/responses/HookURL" }
+
   /api/v1/notifications:
     get:
       tags: [integrations]
@@ -3741,6 +3760,69 @@ paths:
                   task_id: { type: string }
         "404": { description: "No such address. Identical to a malformed one, deliberately." }
 
+  /inbound/hook/{token}:
+    post:
+      tags: [integrations]
+      summary: Push a task into somebody's inbox from another program.
+      description: |
+        The token in the path is the whole credential — the caller is a shortcut on
+        a phone or a script, and neither can sign in. A token here can do one
+        thing: create a task in that person's inbox. An API token can do everything,
+        which is why this is not one.
+
+        The body is read three ways, because those are the three you meet: JSON from
+        a service, a form field from a webhook form, and plain text from a shortcut
+        that just sends what was selected. The first line becomes the task and the
+        rest sits underneath it, and the line goes through the quick-add parser — so
+        "Ring til Anders i morgen p1 #Firma" means here what it means in the box at
+        the top of the app.
+
+        POST only. A GET would be easier to call, and that is exactly the problem:
+        a browser prefetch, a link check in a chat, and a revisited history entry
+        would all create tasks nobody asked for.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+              description: First line the task, the rest its description.
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                title: { description: Same as text. }
+                content: { description: Same as text. }
+                note: { type: string }
+                body: { description: Same as note. }
+                description: { description: Same as note. }
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                note: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id: { type: string }
+                  content: { type: string }
+        "404": { description: "No such address. Identical to a malformed one, deliberately." }
+        "422": { $ref: "#/components/responses/Validation" }
+        "429": { description: Too many pushes; the address is rate limited. }
+
   /oauth/gmail/callback:
     get:
       tags: [integrations]
@@ -4006,6 +4088,15 @@ components:
               warnings:
                 type: array
                 items: { type: string }
+
+    HookURL:
+      description: The address another program pushes to.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              url: { type: string }
 
   schemas:
     Calendar:

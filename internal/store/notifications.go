@@ -330,6 +330,52 @@ func (db *DB) SetMailToken(ctx context.Context, userID, token string) error {
 	return err
 }
 
+// --- krogen ind i indbakken ------------------------------------------------------
+
+// EnsureHookToken returns the token in the person's webhook URL, minting one the
+// first time it is asked for.
+//
+// Sit eget token frem for mailens. De to er den samme slags hemmelighed, men de
+// slipper ud hver for sig: en URL, der har ligget i en genvej på en telefon, der
+// blev væk, skal kunne skiftes uden at mailadressen — som står i andres
+// adressebøger — skifter med.
+func (db *DB) EnsureHookToken(ctx context.Context, userID string) (string, error) {
+	var token sql.NullString
+	err := db.QueryRowContext(ctx, `SELECT hook_token FROM users WHERE id = ?`, userID).Scan(&token)
+	if err != nil {
+		return "", err
+	}
+	if token.Valid && token.String != "" {
+		return token.String, nil
+	}
+
+	fresh, err := auth.NewToken()
+	if err != nil {
+		return "", err
+	}
+	if err := db.SetHookToken(ctx, userID, fresh); err != nil {
+		return "", err
+	}
+	return fresh, nil
+}
+
+func (db *DB) SetHookToken(ctx context.Context, userID, token string) error {
+	_, err := db.ExecContext(ctx,
+		`UPDATE users SET hook_token = ?, updated_at = ? WHERE id = ?`,
+		token, time.Now().Unix(), userID)
+	return err
+}
+
+// UserByHookToken is who a webhook call is on behalf of. Tokenet er hele
+// legitimationen, så et tomt et er et nej med det samme frem for et opslag, der
+// kunne ramme en række, hvor søjlen aldrig er sat.
+func (db *DB) UserByHookToken(ctx context.Context, token string) (*User, error) {
+	if token == "" {
+		return nil, ErrNotFound
+	}
+	return db.scanUser(ctx, `SELECT `+userColumns+` FROM users WHERE hook_token = ?`, token)
+}
+
 func (db *DB) UserByMailToken(ctx context.Context, token string) (*User, error) {
 	if token == "" {
 		return nil, ErrNotFound
