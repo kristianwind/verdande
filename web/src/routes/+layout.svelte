@@ -11,6 +11,7 @@
 	import TaskDetail from '$lib/components/TaskDetail.svelte';
 	import { t } from '$lib/i18n.svelte.js';
 	import { setBadge } from '$lib/badge.js';
+	import BeaconNotice from '$lib/components/BeaconNotice.svelte';
 
 	let { children } = $props();
 
@@ -207,6 +208,11 @@
 	</div>
 
 	<CommandPalette bind:open={paletteOpen} />
+
+	<!-- Sagt uopfordret, første gang en administrator er logget ind: hvad denne
+	     installation melder ind, og hvordan man siger nej. Komponenten tegner
+	     ingenting, når der ikke er noget at fortælle. -->
+	<BeaconNotice />
 
 	<!-- Mounted here rather than in each view, so a task opens the same way from
 	     Today, a project, a label or a saved filter. -->

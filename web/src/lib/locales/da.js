@@ -90,6 +90,22 @@ export const da = {
 	'beacon.active7': 'Aktive 7 dage',
 	'beacon.active30': 'Aktive 30 dage',
 	'beacon.byVersion': 'Efter version (30 dage):',
+	// Beskeden, der bliver sagt uopfordret første gang. Værdierne står i den, ikke
+	// ordet 'anonymt': et løfte om telemetri er præcis så meget værd som
+	// læserens mulighed for at efterprøve det.
+	'beacon.noticeTitle': 'Denne installation melder, at den findes',
+	'beacon.noticeBody':
+		'Én gang i døgnet sender Verdande to værdier til projektet, så det kan ses, hvor mange installationer der er. Præcis de her to — intet andet, ingen IP bliver gemt, intet om hvad du bruger det til:',
+	'beacon.noticeTo': 'Sendes til {url}',
+	'beacon.noticeKeep': 'Behold den',
+	'beacon.noticeStop': 'Slå den fra',
+	'beacon.noticeMore': 'Læs mere',
+	'beacon.noticeKept': 'Tak. Du kan altid slå den fra under Indstillinger → Data.',
+	'beacon.noticeStopped': 'Meldingen er slået fra. Der bliver ikke sendt noget.',
+	'beacon.lastError': 'Sidste forsøg nåede ikke frem ({when}): {why}',
+	'beacon.publishMin': 'Offentliggør først fra',
+	'beacon.publishMinHint':
+		'Under det tal svares der ingenting. Et lille tal fortæller mest om, hvor lidt der skal til at flytte det — og et, der falder, ville blive læst som “færre bruger det nu”, også når det var en udrulning, der gik galt.',
 	'beacon.publish': 'Offentliggør tallet på /api/v1/beacon/count',
 	'beacon.publishHint': 'Uden login, mellemlagret et minut. Viser installationer set de seneste 30 dage — ikke et løbende total, som kun ville stige.',
 	'notes.newHere': 'Ny note',

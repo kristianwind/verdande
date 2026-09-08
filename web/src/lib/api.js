@@ -280,6 +280,11 @@ export const api = {
 
 	beacon: () => get('/beacon/settings'),
 	setBeacon: (body) => put('/beacon/settings', body),
+	// Beskeden om, hvad installationen melder ind, og svaret på den. `keep` sendes
+	// altid — en tom krop måtte ikke kunne betyde "slå det fra", og serveren
+	// afviser den derfor.
+	beaconNotice: () => get('/beacon/notice'),
+	answerBeaconNotice: (keep) => post('/beacon/notice', { keep }),
 
 	listBackups: () => get('/backups'),
 	runBackup: () => post('/backups'),

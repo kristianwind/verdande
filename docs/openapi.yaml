@@ -1564,7 +1564,15 @@ paths:
               schema:
                 type: object
                 properties:
-                  installs: { type: integer }
+                  installs:
+                    type: [integer, "null"]
+                    description: |
+                      Null below the collector's floor (`publish_min`, 25 by
+                      default). A number that *falls* cannot be published as a
+                      fact — a bad release, a DNS change that quietly stops the
+                      pings, or lost rows all look like "fewer people use this
+                      now" — and a small number mostly says how little it takes
+                      to move it.
                   window_days: { type: integer }
         "404":
           description: Not a collector, or not published.
@@ -1590,7 +1598,19 @@ paths:
                   version: { type: string }
                   is_collector: { type: boolean }
                   publish_count: { type: boolean }
+                  publish_min:
+                    type: integer
+                    description: The floor under the published count.
                   last_ping_at: { type: string, format: date-time }
+                  last_error:
+                    type: string
+                    description: |
+                      Why the last attempt did not arrive; absent when the last
+                      one did. Shown rather than only logged: a beacon that
+                      cannot reach its collector otherwise fails in complete
+                      silence, and the only trace is a "last sent" date that
+                      quietly gets older.
+                  last_error_at: { type: string, format: date-time }
     put:
       tags: [auth]
       summary: Turn the beacon off, or point it somewhere else. Administrators only.
@@ -1610,11 +1630,73 @@ paths:
                     make the server reach inside its own network.
                 is_collector: { type: boolean }
                 publish_count: { type: boolean }
+                publish_min: { type: integer, minimum: 0 }
       responses:
         "200":
           description: The configuration as it now stands.
         "422":
           description: The collector address is not an http or https URL.
+
+  /api/v1/beacon/notice:
+    get:
+      tags: [auth]
+      summary: Whether the disclosure is still owed, and what it says. Administrators only.
+      description: |
+        The beacon is on by default, and that is only defensible if it is said
+        unprompted. A settings page where it is stated fully is not the same as
+        saying it: that page is opened by people who already suspect there is
+        something to read.
+
+        The three values are in the response — the real id, the real version, the
+        real collector address — so the notice can show what is sent rather than
+        say "anonymous data" and ask to be believed.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pending:
+                    type: boolean
+                    description: False once anybody has answered, panel-wide.
+                  enabled: { type: boolean }
+                  instance_id: { type: string }
+                  version: { type: string }
+                  collector_url: { type: string }
+    post:
+      tags: [auth]
+      summary: Answer the notice. Administrators only.
+      description: |
+        One call for both answers — "keep it on" and "turn it off" are the same
+        act, somebody deciding, and two endpoints would mean one of them could
+        forget to record that a decision was made.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keep]
+              properties:
+                keep:
+                  type: boolean
+                  description: |
+                    Required, and rejected when absent. An empty body must not be
+                    able to mean "turn it off": an opt-out nobody chose is as much
+                    a broken promise as an opt-in nobody chose.
+      responses:
+        "200":
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled: { type: boolean }
+        "422":
+          description: No answer was given.
 
   /api/v1/panel/restart:
     post:
