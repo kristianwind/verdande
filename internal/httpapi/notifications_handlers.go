@@ -19,6 +19,7 @@ type notificationJSON struct {
 	ActorName string `json:"actor_name,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
 	TaskID    string `json:"task_id,omitempty"`
+	NoteID    string `json:"note_id,omitempty"`
 	Kind      string `json:"kind"`
 	Title     string `json:"title"`
 	Body      string `json:"body,omitempty"`
@@ -44,8 +45,8 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 	for _, n := range list {
 		out = append(out, notificationJSON{
 			ID: n.ID, ActorName: n.ActorName, ProjectID: n.ProjectID, TaskID: n.TaskID,
-			Kind: n.Kind, Title: n.Title, Body: n.Body, Read: n.ReadAt != nil,
-			CreatedAt: n.CreatedAt.Format(time.RFC3339),
+			NoteID: n.NoteID, Kind: n.Kind, Title: n.Title, Body: n.Body,
+			Read: n.ReadAt != nil, CreatedAt: n.CreatedAt.Format(time.RFC3339),
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"notifications": out, "unread": unread})
@@ -75,8 +76,9 @@ func (s *Server) notify(r *http.Request, n *store.Notification) {
 	}
 
 	s.hub.PublishToUser(n.UserID, "notification", notificationJSON{
-		ID: n.ID, ProjectID: n.ProjectID, TaskID: n.TaskID, Kind: n.Kind,
-		Title: n.Title, Body: n.Body, CreatedAt: n.CreatedAt.Format(time.RFC3339),
+		ID: n.ID, ActorName: n.ActorName, ProjectID: n.ProjectID, TaskID: n.TaskID,
+		NoteID: n.NoteID, Kind: n.Kind, Title: n.Title, Body: n.Body,
+		CreatedAt: n.CreatedAt.Format(time.RFC3339),
 	})
 
 	// Detached from the request: a push round trip to Google or Mozilla has no
@@ -98,6 +100,66 @@ func (s *Server) notifyProject(r *http.Request, projectID, taskID, actorID, kind
 		s.notify(r, &store.Notification{
 			UserID: userID, ActorID: actorID, ProjectID: projectID, TaskID: taskID,
 			Kind: kind, Title: title, Body: body,
+		})
+	}
+}
+
+// notifyAssigned tells somebody a task is now theirs.
+//
+// Kun ved *skiftet*, og kun til den, der får den. En opgave, der bliver rørt ti
+// gange bagefter, er stadig den samme besked — og den, der uddelegerer, ved godt
+// hvad de lige har gjort.
+func (s *Server) notifyAssigned(r *http.Request, t *store.Task) {
+	if t == nil || t.AssigneeID == "" {
+		return
+	}
+	actor := userFrom(r.Context())
+	s.notify(r, &store.Notification{
+		UserID: t.AssigneeID, ActorID: actor.ID, ProjectID: t.ProjectID, TaskID: t.ID,
+		Kind: "assigned", Title: actor.Name + " gav dig en opgave", Body: t.Content,
+	})
+}
+
+// notifyNoteChanged tells everybody who can see a note that somebody else wrote in
+// it — folded into one line per note while it is unread.
+//
+// Skrevet som ét kald pr. modtager frem for ét pr. note, fordi sammenlægningen er
+// pr. person: to mennesker kan have læst den forrige besked på hvert sit tidspunkt,
+// og den ene skal have en ny linje, mens den anden får sin gamle rykket op.
+func (s *Server) notifyNoteChanged(r *http.Request, n *store.Note) {
+	if n == nil {
+		return
+	}
+	actor := userFrom(r.Context())
+	audience, err := s.db.NoteAudience(r.Context(), n.ID)
+	if err != nil {
+		s.log.Warn("note audience for notification", "err", err, "note", n.ID)
+		return
+	}
+	title := actor.Name + " rettede en note"
+	body := n.Title
+	for _, userID := range audience {
+		if userID == actor.ID {
+			continue
+		}
+		// Fold first, and only write a row when there was nothing to fold into.
+		// Den anden vej rundt — skriv, og ryd op bagefter — efterlader et vindue,
+		// hvor klokken siger to.
+		folded, err := s.db.BumpUnreadNoteNotification(r.Context(), userID, n.ID, actor.ID, title, body)
+		if err != nil {
+			s.log.Warn("fold note notification", "err", err, "note", n.ID)
+			continue
+		}
+		if folded {
+			// Klokken skal stadig vide det: tallet er uændret, men linjen er rykket
+			// op og siger nu et andet navn. Uden det her opdager en åben fane først
+			// den sammenlagte rettelse ved næste genindlæsning.
+			s.hub.PublishToUser(userID, "notification.folded", map[string]any{"note_id": n.ID})
+			continue
+		}
+		s.notify(r, &store.Notification{
+			UserID: userID, ActorID: actor.ID, ProjectID: n.ProjectID, NoteID: n.ID,
+			Kind: "note.changed", Title: title, Body: body,
 		})
 	}
 }

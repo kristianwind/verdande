@@ -4560,12 +4560,22 @@ components:
 
     Notification:
       type: object
+      description: >
+        Something somebody else did that you need to know about. `kind` says what
+        happened and the client composes the sentence from it, so the bell follows
+        the reader's language; `title` is the server's own Danish wording, used for
+        Web Push, which has no dictionary to look words up in.
       properties:
         id: { type: string }
         actor_name: { type: string }
         project_id: { type: string }
         task_id: { type: string }
-        kind: { type: string }
+        note_id:
+          description: Set on a notification about a note — a shared note somebody else edited.
+          type: string
+        kind:
+          type: string
+          enum: [assigned, note.changed, comment]
         title: { type: string }
         body: { type: string }
         read: { type: boolean }

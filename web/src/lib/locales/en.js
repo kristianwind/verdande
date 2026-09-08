@@ -18,6 +18,19 @@ export const en = {
 	'notes.unshared': 'The note is yours again.',
 	// Sharing with individual people, alongside the project.
 	'notes.groupSharedWithMe': 'Shared with me',
+	// The bell: what other people did that you need to know about. The sentence is
+	// composed here rather than on the server, so an English interface gets an
+	// English bell.
+	'notif.title': 'Notifications',
+	'notif.titleWithCount': 'Notifications ({n} unread)',
+	'notif.empty': 'Nothing yet.',
+	'notif.markAllRead': 'Mark all as read',
+	'notif.assigned': '{name} gave you a task',
+	'notif.noteChanged': '{name} edited a note',
+	'notif.comment': '{name} commented',
+	'notif.justNow': 'just now',
+	'notif.minutes': '{n} min ago',
+	'notif.hours': '{n} h ago',
 	'notes.linkOpen': 'Open',
 	'notes.linkMissing': 'That note does not exist, or it is not shared with you.',
 	'notes.sharedBy': 'Shared by {name}',

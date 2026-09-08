@@ -1,6 +1,7 @@
 <script>
 	import '../app.css';
 	import { app, theme, sidebar } from '$lib/stores.svelte.js';
+	import Notifications from '$lib/components/Notifications.svelte';
 	import { connectivity } from '$lib/connectivity.svelte.js';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
@@ -168,6 +169,8 @@
 					<span>{t('nav.search')}</span>
 					<kbd>⌘K</kbd>
 				</button>
+
+				<Notifications />
 
 				<button
 					class="theme"

@@ -372,3 +372,41 @@ func (db *DB) SyncLinkedShares(ctx context.Context, ownerID string) ([]LinkedSha
 	})
 	return out, nil
 }
+
+// NoteAudience is everybody who can see a note: its owner, the people it is shared
+// with — chosen or followed along a link — and the members of the project it is
+// filed in.
+//
+// Ét spørgsmål frem for tre, fordi svaret skal være en mængde og ikke tre lister,
+// der skal lægges sammen bagefter: en person kan både eje projektet og have noten
+// delt direkte, og to beskeder om den samme rettelse er én for mange.
+//
+// The note's own row is joined rather than passed in, so a caller cannot ask about
+// a note that has been deleted and get an audience for it anyway.
+func (db *DB) NoteAudience(ctx context.Context, noteID string) ([]string, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT created_by FROM notes WHERE id = ? AND deleted_at IS NULL AND created_by IS NOT NULL
+		UNION
+		SELECT user_id FROM note_shares WHERE note_id = ?
+		UNION
+		SELECT p.owner_id FROM notes n JOIN projects p ON p.id = n.project_id
+		 WHERE n.id = ? AND n.deleted_at IS NULL AND p.deleted_at IS NULL
+		UNION
+		SELECT m.user_id FROM notes n JOIN project_members m ON m.project_id = n.project_id
+		 WHERE n.id = ? AND n.deleted_at IS NULL`,
+		noteID, noteID, noteID, noteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}

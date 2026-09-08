@@ -108,6 +108,7 @@ class AppState {
 			this.groups = groups;
 			this.people = people;
 			this.connect();
+			this.loadNotifications();
 		} catch (e) {
 			this.user = null;
 		} finally {
@@ -145,10 +146,64 @@ class AppState {
 		socket.onerror = () => socket.close();
 	}
 
+	// --- klokken -----------------------------------------------------------------
+	//
+	// Beskederne ligger i butikken frem for i komponenten, fordi de kommer to veje:
+	// hentet, når man lander, og skubbet over websocket'en, mens man sidder der. En
+	// klokke, der kun kendte den første, ville stå på nul, indtil man genindlæste —
+	// og en besked, man skal genindlæse for at se, er ikke en besked.
+
+	notifications = $state([]);
+	unread = $state(0);
+
+	async loadNotifications() {
+		try {
+			const r = await api.listNotifications();
+			this.notifications = r.notifications ?? [];
+			this.unread = r.unread ?? 0;
+		} catch {
+			// En klokke, der ikke kunne hentes, er ikke værd at afbryde nogen for.
+		}
+	}
+
+	/** Marks one read, or all of them when no id is given. */
+	async markRead(id) {
+		const previous = this.notifications;
+		const wasUnread = this.unread;
+		this.notifications = this.notifications.map((n) =>
+			!id || n.id === id ? { ...n, read: true } : n
+		);
+		this.unread = this.notifications.filter((n) => !n.read).length;
+		try {
+			await api.markNotificationsRead(id);
+		} catch {
+			this.notifications = previous;
+			this.unread = wasUnread;
+		}
+	}
+
 	/** Applies a change made by somebody else. */
 	#applyRemote(event) {
 		const task = event.payload;
 		switch (event.type) {
+			// Beskeder kommer på personens egen kanal, ikke projektets: en note delt
+			// med én person hører ikke til noget projekt, og der er intet rum at
+			// udsende den i.
+			case 'notification':
+				this.notifications = [
+					{ ...event.payload, read: false },
+					...this.notifications.filter((n) => n.id !== event.payload?.id)
+				].slice(0, 30);
+				this.unread = this.notifications.filter((n) => !n.read).length;
+				break;
+
+			// En rettelse, der er lagt oven i en besked, man allerede har. Tallet er
+			// uændret; linjen er en anden. Hentet frem for flettet, fordi serveren
+			// har det rigtige svar og listen er tredive rækker.
+			case 'notification.folded':
+				this.loadNotifications();
+				break;
+
 			case 'task.created':
 			case 'task.updated':
 			case 'task.completed':
