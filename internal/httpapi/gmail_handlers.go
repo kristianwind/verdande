@@ -332,7 +332,16 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 		projectID = inbox
 	}
 
-	created := 0
+	// Hentet først, skrevet bagefter. To gennemløb frem for ét, fordi modellen
+	// skal se hele bunken på én gang: ét spørgsmål for femogtyve mails frem for
+	// femogtyve spørgsmål er den samme oplysning til en femogtyvendedel af
+	// ventetiden — og et gennemløb, der tager fem minutter, overlapper med det
+	// næste.
+	type fetched struct {
+		id  string
+		msg gmail.Message
+	}
+	var pending []fetched
 	for _, id := range ids {
 		if seen[id] {
 			continue
@@ -340,13 +349,27 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 		// A spent budget ends the run rather than turning into twenty-five failed
 		// fetches logged one at a time.
 		if ctx.Err() != nil {
-			return created, ctx.Err()
+			return 0, ctx.Err()
 		}
 		msg, err := client.Get(ctx, id)
 		if err != nil {
 			s.log.Warn("gmail get message", "err", err, "id", id)
 			continue
 		}
+		pending = append(pending, fetched{id: id, msg: msg})
+	}
+
+	forAI := make([]mailForAI, 0, len(pending))
+	for _, f := range pending {
+		forAI = append(forAI, mailForAI{
+			From: gmail.SenderName(f.msg.From), Subject: f.msg.Subject, Snippet: f.msg.Snippet,
+		})
+	}
+	written := s.mailTaskLines(ctx, user, forAI)
+
+	created := 0
+	for i, f := range pending {
+		id, msg := f.id, f.msg
 
 		subject := strings.TrimSpace(msg.Subject)
 		if subject == "" {
@@ -367,6 +390,9 @@ func (s *Server) SyncGmail(ctx context.Context, user *store.User) (int, error) {
 			// key exists to prevent.
 			SourceKey: "gmail:thread:" + msg.ThreadID,
 		}
+		// Og modellens linje, hvis den skrev en til netop den her mail.
+		s.applyMailLine(ctx, user, task, written[i], sender+": "+subject)
+
 		if err := s.db.CreateTask(ctx, task, nil); err != nil {
 			if errors.Is(err, store.ErrDuplicate) {
 				// Somebody got there first — an earlier sweep, or another

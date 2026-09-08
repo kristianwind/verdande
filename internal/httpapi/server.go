@@ -359,6 +359,16 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Post("/inbox/tidy/apply", s.handleAIApplyToTask)
 				r.Post("/notes/{noteID}/actions", s.handleAINoteActions)
 				r.Post("/notes/{noteID}/actions/apply", s.handleAICreateFromNote)
+				// Dagens plan: indstillingen, og en knap til at se den nu. En
+				// indstilling, man skal vente til i morgen for at se virkningen af,
+				// er en indstilling, ingen tør slå til.
+				r.Get("/plan", s.handleGetPlanSettings)
+				r.Put("/plan", s.handleSetPlanSettings)
+				r.Post("/plan/now", s.handlePlanNow)
+				// Spørg om sine egne noter og opgaver i almindeligt sprog. Basen
+				// finder kandidaterne, modellen læser dem — og svaret bærer, hvad
+				// det er bygget på.
+				r.Post("/ask", s.handleAIAsk)
 			})
 
 			r.Get("/version", s.handleVersion)

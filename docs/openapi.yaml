@@ -3650,6 +3650,115 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Validation" }
 
+  /api/v1/ai/plan:
+    get:
+      tags: [integrations]
+      summary: Whether a morning plan is sent, and at what hour.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DailyPlanSettings" }
+    put:
+      tags: [integrations]
+      summary: Turn the morning plan on or off, or move the hour.
+      description: |
+        The hour is local to the person. Moving it clears the "already sent today"
+        mark, so somebody who moves the plan from 07 to 16 gets it this afternoon
+        rather than tomorrow — a setting whose effect you have to wait a day to
+        see is a setting nobody dares turn on.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                hour: { type: integer, minimum: 0, maximum: 23 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DailyPlanSettings" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /api/v1/ai/plan/now:
+    post:
+      tags: [integrations]
+      summary: Send today's plan now, to whoever asks.
+      description: |
+        The counts come from the database and the sentence from the model, in that
+        order: a model that counted for itself would sometimes count wrong, and a
+        plan that says four tasks where there are three is worse than no plan.
+        With no model configured the counts stand on their own, which is what you
+        needed to know at seven in the morning anyway.
+
+        Nothing due and nothing overdue sends nothing. A morning with nothing to
+        do is a good morning, and a notification saying "there is nothing" teaches
+        people to stop opening notifications.
+      responses:
+        "200":
+          description: The plan, and whether it was sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan: { type: string }
+                  sent: { type: boolean }
+
+  /api/v1/ai/ask:
+    post:
+      tags: [integrations]
+      summary: Ask a question of your own notes and tasks.
+      description: |
+        Search finds what contains the words. This answers the question — "what
+        did I promise Anders in August?" — which is not the same: the answer is
+        spread over three notes and a task, and none of them contains the word
+        "promise".
+
+        Two halves, and the order is the whole of the safety in it. The database
+        finds the candidates with the search that already exists and that already
+        only sees what this person may see. The model is given those and nothing
+        else — it does not look anything up and cannot ask for more.
+
+        The answer carries what it rests on. A model that says "you did, on the
+        14th" is only useful if you can open the note it read that in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: { type: string }
+      responses:
+        "200":
+          description: |
+            The answer, and the passages it rests on — only those, not everything
+            that was looked at. An empty answer means nothing matched.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  answer: { type: string }
+                  sources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string, enum: [note, task] }
+                        id: { type: string }
+                        title: { type: string }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Validation" }
+        "502": { $ref: "#/components/responses/Upstream" }
+
   /api/v1/mcp:
     post:
       tags: [integrations]
@@ -4432,6 +4541,20 @@ components:
       properties:
         note_id: { type: string }
         title: { type: string }
+
+    DailyPlanSettings:
+      type: object
+      description: >
+        One person's morning plan. Off by default — a notification at seven in the
+        morning that nobody asked for is not a help.
+      properties:
+        enabled: { type: boolean }
+        hour:
+          type: integer
+          description: Local to the person, because seven o'clock is seven different places.
+        last_sent:
+          type: string
+          description: The date it last went out, in that person's own timezone.
 
     AISuggestion:
       type: object

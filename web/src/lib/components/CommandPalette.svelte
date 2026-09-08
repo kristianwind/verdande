@@ -3,6 +3,8 @@
 	import { api } from '$lib/api.js';
 	import { t } from '$lib/i18n.svelte.js';
 	import { goto } from '$app/navigation';
+	import { app } from '$lib/stores.svelte.js';
+	import { humanMessage } from '$lib/api.js';
 
 	let { open = $bindable(false) } = $props();
 
@@ -11,6 +13,11 @@
 	let projects = $state([]);
 	let notes = $state([]);
 	let selected = $state(0);
+	// Svaret på et spørgsmål, når nogen har stillet et. Søgningen finder det, der
+	// indeholder ordene; det her svarer på spørgsmålet — og de to bor i det samme
+	// felt, fordi man ikke skal vide på forhånd, hvilken slags spørgsmål man har.
+	let answer = $state(null);
+	let asking = $state(false);
 	let input;
 	let controller = null;
 	let timer = null;
@@ -20,6 +27,7 @@
 			query = '';
 			tasks = [];
 			projects = [];
+			answer = null;
 			selected = 0;
 			queueMicrotask(() => input?.focus());
 		}
@@ -34,8 +42,12 @@
 			tasks = [];
 			projects = [];
 			notes = [];
+			answer = null;
 			return;
 		}
+		// Et nyt bogstav gør det forrige svar forældet. Et svar, der bliver
+		// stående, mens spørgsmålet ændrer sig, er et svar på noget andet.
+		answer = null;
 		timer = setTimeout(async () => {
 			try {
 				// Noter er sit eget endepunkt, så de hentes ved siden af. Uden dem
@@ -68,6 +80,32 @@
 		}))
 	]);
 
+	/**
+	 * Spørg om sine egne noter og opgaver.
+	 *
+	 * Bag en tast frem for automatisk: det koster et kald til en model, og de
+	 * fleste ⌘K er nogen, der leder efter en note, de kender navnet på.
+	 */
+	async function ask() {
+		const question = query.trim();
+		if (!question || asking) return;
+		asking = true;
+		answer = null;
+		try {
+			answer = await api.aiAsk(question);
+		} catch (e) {
+			answer = { answer: '', error: humanMessage(e), sources: [] };
+		} finally {
+			asking = false;
+		}
+	}
+
+	function openSource(source) {
+		open = false;
+		if (source.kind === 'note') return goto(`/noter?note=${source.id}`);
+		app.openDetail(source.id);
+	}
+
 	function choose(item) {
 		open = false;
 		if (item.kind === 'note') return goto(`/noter?note=${item.id}`);
@@ -89,6 +127,12 @@
 				break;
 			case 'Enter':
 				event.preventDefault();
+				// ⌘⏎ spørger, ⏎ åbner det valgte. Den, der leder efter en note, skal
+				// ikke vente på en model for at komme hen til den.
+				if (event.metaKey || event.ctrlKey) {
+					ask();
+					break;
+				}
 				if (results[selected]) choose(results[selected]);
 				break;
 		}
@@ -109,6 +153,39 @@
 				autocomplete="off"
 				spellcheck="false"
 			/>
+
+			{#if query.trim()}
+				<div class="askrow">
+					<button class="ask" onclick={ask} disabled={asking}>
+						{asking ? t('ai.thinking') : t('ai.askThis')}
+					</button>
+					<kbd>⌘⏎</kbd>
+				</div>
+			{/if}
+
+			{#if answer}
+				<div class="answer">
+					{#if answer.error}
+						<p class="bad">{answer.error}</p>
+					{:else if answer.answer}
+						<p>{answer.answer}</p>
+						{#if answer.sources?.length}
+							<!-- Hvad svaret står på. En model, der siger "det gjorde du
+							     den 14.", er kun brugbar, hvis man kan slå op i det, den
+							     læste det i. -->
+							<p class="sources">
+								{t('ai.askSources')}
+								{#each answer.sources as source, i (source.kind + source.id)}<button
+										class="source"
+										onclick={() => openSource(source)}>{source.title}</button
+									>{i < answer.sources.length - 1 ? ', ' : ''}{/each}
+							</p>
+						{/if}
+					{:else}
+						<p class="bad">{t('ai.askNothing')}</p>
+					{/if}
+				</div>
+			{/if}
 
 			{#if results.length}
 				<ul>
@@ -140,6 +217,62 @@
 		background: rgb(0 0 0 / 0.45);
 		display: flex;
 		justify-content: center;
+	/* Spørgsmålsknappen står under feltet og fylder ikke: de fleste ⌘K er nogen,
+	   der leder efter en note, de kender navnet på, og skal ikke forbi en model
+	   for at komme derhen. */
+	.askrow {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		padding: var(--s1) var(--s2);
+		border-top: 1px solid var(--line);
+	}
+
+	.ask {
+		border: none;
+		background: none;
+		padding: 0;
+		font: inherit;
+		font-size: var(--text-xs);
+		color: var(--accent);
+		cursor: pointer;
+	}
+
+	.ask:disabled {
+		color: var(--ink-faint);
+		cursor: default;
+	}
+
+	.answer {
+		padding: var(--s2);
+		border-top: 1px solid var(--line);
+		font-size: var(--text-sm);
+		line-height: 1.5;
+	}
+
+	.answer p {
+		margin: 0 0 var(--s1);
+	}
+
+	.answer .bad {
+		color: var(--ink-muted);
+	}
+
+	.answer .sources {
+		margin: 0;
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+	}
+
+	.source {
+		border: none;
+		background: none;
+		padding: 0;
+		font: inherit;
+		color: var(--accent);
+		cursor: pointer;
+	}
+
 		/* Not centred: a palette pinned near the top does not jump as results
 		   appear, and lands where the eye already is after ⌘K. */
 		align-items: flex-start;
