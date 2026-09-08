@@ -56,6 +56,13 @@ type Payload struct {
 	Body  string `json:"body,omitempty"`
 	URL   string `json:"url,omitempty"`
 	Tag   string `json:"tag,omitempty"`
+	// Unread er tallet, mærket på appens ikon skal stå på, når beskeden lander.
+	//
+	// Sendt med frem for talt i service-workeren. Den har ingen hukommelse mellem
+	// to opvågninger, så den kan kun lægge én til noget, den ikke ved hvad er — og
+	// et mærke, der tæller sig selv op, kommer aldrig ned igen af sig selv. Tallet
+	// er serverens, og serveren ved det i forvejen.
+	Unread int `json:"unread,omitempty"`
 }
 
 var b64 = base64.RawURLEncoding

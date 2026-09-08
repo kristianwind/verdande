@@ -237,7 +237,16 @@ func (s *Server) pushToUser(userID, title, body, projectID string) pushOutcome {
 	if projectID == "" {
 		target = "/"
 	}
-	payload := push.Payload{Title: title, Body: body, URL: target}
+	// Mærket på ikonet følger med beskeden. Talt her frem for i service-workeren,
+	// som ikke har nogen hukommelse mellem to opvågninger og derfor kun kunne lægge
+	// én til noget, den ikke kender — et mærke, der tæller sig selv op og aldrig
+	// ned. Fejler tællingen, sendes beskeden alligevel: en besked uden et tal er
+	// stadig en besked.
+	unread, err := s.db.UnreadNotificationCount(ctx, userID)
+	if err != nil {
+		s.log.Warn("unread count for push", "err", err)
+	}
+	payload := push.Payload{Title: title, Body: body, URL: target, Unread: unread}
 	subject := s.vapidSubject()
 	for _, sub := range subs {
 		err := push.Send(ctx, push.Subscription{

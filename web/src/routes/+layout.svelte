@@ -10,6 +10,7 @@
 	import SignIn from '$lib/components/SignIn.svelte';
 	import TaskDetail from '$lib/components/TaskDetail.svelte';
 	import { t } from '$lib/i18n.svelte.js';
+	import { setBadge } from '$lib/badge.js';
 
 	let { children } = $props();
 
@@ -51,6 +52,13 @@
 
 	$effect(() => {
 		app.load();
+	});
+
+	// Tallet på appens ikon følger klokken. Ét sted, fordi der er ét tal: hentet,
+	// skubbet over websocket'en eller læst væk — mærket er det samme svar på alle
+	// tre, og en optælling pr. vej ville være tre, der kan blive uenige.
+	$effect(() => {
+		setBadge(app.unread);
 	});
 
 	/**
