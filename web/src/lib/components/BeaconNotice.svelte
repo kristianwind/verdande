@@ -88,15 +88,13 @@
 {/if}
 
 <style>
-	/* Nederst i hjørnet, ikke hen over skærmen. Beskeden skal ses og besvares —
-	   den skal ikke tages som en fejl eller som noget, der spærrer for arbejdet,
-	   for så bliver den klikket væk uden at blive læst. */
+	/* Øverst i indholdet, i flowet — ikke svævende over det. En rude, der ligger
+	   oven på arbejdet, dækker knapper, og en besked, der er i vejen, bliver
+	   klikket væk uden at blive læst. Den her skubber i stedet, står til den
+	   bliver besvaret, og forsvinder så for altid. */
 	.notice {
-		position: fixed;
-		right: var(--s3);
-		bottom: var(--s3);
-		z-index: 60;
-		width: min(24rem, calc(100vw - 2 * var(--s3)));
+		margin: 0 0 var(--s3);
+		max-width: 44rem;
 		padding: var(--s3);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-lg, var(--radius));

@@ -193,6 +193,13 @@
 			</header>
 
 			<div class="content">
+				<!-- Sagt uopfordret, første gang en administrator er logget ind: hvad
+				     denne installation melder ind, og hvordan man siger nej.
+				     Øverst i indholdet og ikke svævende over det — en rude, der
+				     ligger oven på arbejdet, dækker knapper, og en besked, der er i
+				     vejen, bliver klikket væk uden at blive læst. Komponenten tegner
+				     ingenting, når der ikke er noget at fortælle. -->
+				<BeaconNotice />
 				{@render children()}
 			</div>
 		</main>
@@ -208,11 +215,6 @@
 	</div>
 
 	<CommandPalette bind:open={paletteOpen} />
-
-	<!-- Sagt uopfordret, første gang en administrator er logget ind: hvad denne
-	     installation melder ind, og hvordan man siger nej. Komponenten tegner
-	     ingenting, når der ikke er noget at fortælle. -->
-	<BeaconNotice />
 
 	<!-- Mounted here rather than in each view, so a task opens the same way from
 	     Today, a project, a label or a saved filter. -->
