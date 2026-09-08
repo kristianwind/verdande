@@ -33,6 +33,7 @@ export const da = {
 	'notif.noteShared': '{name} delte en note med dig',
 	'notif.mention': '{name} nævnte dig i en note',
 	'notif.dailyPlan': 'Dagens plan',
+	'notif.update': 'Der er kommet en ny version',
 	'notif.comment': '{name} kommenterede',
 	'notif.justNow': 'lige nu',
 	'notif.minutes': '{n} min. siden',

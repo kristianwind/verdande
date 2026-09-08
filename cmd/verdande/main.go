@@ -105,6 +105,7 @@ func run() error {
 	runner.Push = api.PushToUser
 	runner.SendBeacon = api.SendBeacon
 	runner.DailyPlans = api.DailyPlans
+	runner.NotifyOfUpdates = api.NotifyOfUpdates
 	runner.Start(jobCtx)
 
 	srv := &http.Server{

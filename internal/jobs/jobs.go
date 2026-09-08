@@ -54,6 +54,9 @@ type Runner struct {
 	// AI-nøglen ligger derovre, og jobbet skal ikke kende nogen af delene.
 	DailyPlans func(ctx context.Context) error
 
+	// NotifyOfUpdates tells the administrators when a newer version is out.
+	NotifyOfUpdates func(ctx context.Context) error
+
 	// SendBeacon reports this installation to the collector, if it is switched on
 	// and a day has passed. Supplied by the HTTP layer for the same reason as the
 	// syncs: that is where the instance settings and the version live.
@@ -98,6 +101,9 @@ func (r *Runner) Start(ctx context.Context) {
 	// form som ovenstående, og af samme grund. Timen er personens egen: klokken
 	// syv er syv forskellige steder.
 	r.every(ctx, "dailyplan", time.Hour, r.dailyPlans)
+	// Nye versioner. Hver time er rigeligt: selve tjekket mellemlagrer sit svar i
+	// seks timer, og beskeden sendes én gang pr. version.
+	r.every(ctx, "updates", time.Hour, r.updateNotices)
 }
 
 func (r *Runner) Wait() { r.wg.Wait() }
@@ -130,6 +136,13 @@ func (r *Runner) every(ctx context.Context, name string, interval time.Duration,
 			}
 		}
 	}()
+}
+
+func (r *Runner) updateNotices(ctx context.Context) error {
+	if r.NotifyOfUpdates == nil {
+		return nil
+	}
+	return r.NotifyOfUpdates(ctx)
 }
 
 func (r *Runner) dailyPlans(ctx context.Context) error {
