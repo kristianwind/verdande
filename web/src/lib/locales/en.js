@@ -748,6 +748,17 @@ export const en = {
 		'No mail server is configured on this server, so the address below cannot receive anything yet. Set VERDANDE_SMTP_HOST and the other SMTP settings, and have the mail server deliver post for todo+* to /inbound/mail.',
 	'int.yourAddress': 'Your address',
 	'int.newAddress': 'New address',
+	// The hook into the inbox: a URL another program can push a task to.
+	'int.hookToTask': 'Push from other programs',
+	'int.hookHint':
+		'An address other programs can send a task to — a shortcut on your phone, a script, any service that can call a URL. The line is read the way the box at the top of the app reads it, so “tomorrow”, “p1” and “#Project” mean the same here.',
+	'int.yourHook': 'Your address',
+	'int.hookHow':
+		'Send a POST with the text as the body — plain text, JSON with a {text} field, or a form field. The first line becomes the task and the rest sits underneath it. The address is a key: whoever has it can put tasks in your inbox, and nothing else.',
+	'int.hookExample': 'What it looks like',
+	'int.newHook': 'New address',
+	'int.newHookQuestion':
+		'Do you want a new address? The old one stops working immediately, and anything using it has to be changed.',
 	'int.caldav': 'CalDAV',
 	'int.caldavHint':
 		'Two-way, unlike the feed above: Apple Reminders and Thunderbird can write back as well.',

@@ -751,6 +751,17 @@ export const da = {
 		'Der er ingen mailserver sat op på denne server, så adressen herunder kan ikke modtage noget endnu. Sæt VERDANDE_SMTP_HOST og de øvrige SMTP-indstillinger, og få mailserveren til at aflevere post til todo+* videre til /inbound/mail.',
 	'int.yourAddress': 'Din adresse',
 	'int.newAddress': 'Ny adresse',
+	// Krogen ind i indbakken: en URL, et andet program kan skubbe en opgave til.
+	'int.hookToTask': 'Skub fra andre programmer',
+	'int.hookHint':
+		'En adresse, andre programmer kan sende en opgave til — en genvej på telefonen, et script, en tjeneste, der kan kalde en URL. Linjen læses som i feltet øverst i fladen, så “i morgen”, “p1” og “#Projekt” betyder det samme her.',
+	'int.yourHook': 'Din adresse',
+	'int.hookHow':
+		'Send en POST med teksten som krop — ren tekst, JSON med et {text}-felt, eller et formularfelt. Første linje bliver opgaven, resten står under den. Adressen er en nøgle: den, der har den, kan lægge opgaver i din indbakke og ikke andet.',
+	'int.hookExample': 'Sådan ser det ud',
+	'int.newHook': 'Ny adresse',
+	'int.newHookQuestion':
+		'Vil du have en ny adresse? Den gamle holder op med at virke med det samme, og alt, der bruger den, skal rettes.',
 	'int.caldav': 'CalDAV',
 	'int.caldavHint':
 		'Tovejs, i modsætning til feedet ovenfor: Apple Påmindelser og Thunderbird kan også skrive tilbage.',

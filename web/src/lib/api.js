@@ -418,6 +418,11 @@ export const api = {
 	getMailAddress: () => get('/mail-address'),
 	rotateMailAddress: () => post('/mail-address/rotate'),
 
+	// Krogen ind i indbakken. Selve skubbet sker ikke herfra — det er et andet
+	// program, der gør det — så der er kun adressen at hente og at skifte.
+	getHookURL: () => get('/hook-url'),
+	rotateHookURL: () => post('/hook-url/rotate'),
+
 	getGmail: () => get('/gmail'),
 	setGmail: (data) => put('/gmail', data),
 	disconnectGmail: () => del('/gmail'),

@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -153,6 +155,191 @@ func (s *Server) handleInboundMail(w http.ResponseWriter, r *http.Request) {
 	s.publish(projectID, "task.created", toTaskJSON(*task))
 	s.log.Info("task created from mail", "user", user.ID, "from", req.From)
 	writeJSON(w, http.StatusCreated, map[string]string{"task_id": task.ID})
+}
+
+// --- en krog ind i indbakken --------------------------------------------------------
+
+type hookURLResponse struct {
+	URL string `json:"url"`
+}
+
+// handleGetHookURL returns the personal address another program can push a task
+// to, minting the token on first ask.
+//
+// Der var to veje ind i forvejen, og ingen af dem passer til "gem den her, mens
+// jeg står med telefonen i hånden". API-tokenet giver adgang til alt og skal have
+// en JSON-krop skrevet rigtigt; mailadressen virker først, når nogen har sat en
+// mailserver op. Det, der manglede, var en URL, man kan smide en linje tekst efter
+// — fra en genvej på telefonen, et script, en anden tjeneste.
+func (s *Server) handleGetHookURL(w http.ResponseWriter, r *http.Request) {
+	token, err := s.db.EnsureHookToken(r.Context(), userFrom(r.Context()).ID)
+	if err != nil {
+		s.internal(w, r, "hook token", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, hookURLResponse{URL: s.hookURL(token)})
+}
+
+// handleRotateHookURL mints a new one and retires the old.
+//
+// Den eneste vej tilbage, når en URL er sluppet ud: den står i en genvej på en
+// telefon eller i et script på en anden maskine, og der er ikke andet at trække
+// tilbage end tokenet selv.
+func (s *Server) handleRotateHookURL(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.NewToken()
+	if err != nil {
+		s.internal(w, r, "generate hook token", err)
+		return
+	}
+	if err := s.db.SetHookToken(r.Context(), userFrom(r.Context()).ID, token); err != nil {
+		s.internal(w, r, "set hook token", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, hookURLResponse{URL: s.hookURL(token)})
+}
+
+func (s *Server) hookURL(token string) string {
+	return strings.TrimSuffix(s.cfg.BaseURL, "/") + "/inbound/hook/" + token
+}
+
+type hookRequest struct {
+	// Text er linjen, der bliver til opgaven. `title` og `content` tages med som
+	// de samme, fordi det er dem, andre tjenester i forvejen kalder feltet — og en
+	// integration, der fejler på et feltnavn, fejler tavst hos den, der satte den
+	// op.
+	Text    string `json:"text"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+	// Note er det, der står under opgaven. `body` og `description` ligeså.
+	Note        string `json:"note"`
+	Body        string `json:"body"`
+	Description string `json:"description"`
+}
+
+func (h hookRequest) line() string {
+	for _, v := range []string{h.Text, h.Title, h.Content} {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func (h hookRequest) note() string {
+	for _, v := range []string{h.Note, h.Body, h.Description} {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// handleInboundHook turns a POST from somewhere else into a task in the inbox.
+//
+// Tokenet i stien er hele legitimationen, som i kalenderfeedet og den indgående
+// post: den, der kalder, er et script eller en genvej på en telefon, og hverken
+// kan logge ind. Derfor kan et token herfra også kun én ting — lave en opgave i
+// den ene persons indbakke — hvor et API-token kan alt.
+//
+// Kroppen læses på tre måder, fordi de tre er dem, man møder: JSON fra en
+// tjeneste, et formularfelt fra en webhook-formular, og ren tekst fra en genvej,
+// der bare sender det, man har markeret. Første linje bliver til opgaven, resten
+// til noten under den — det er sådan, en tekst, man har delt, ser ud.
+//
+// Linjen læses med quick-add-parseren, så "Ring til Anders i morgen p1 #Firma"
+// betyder det samme her som i feltet øverst i fladen. Det er hele pointen med at
+// have én parser: den vej, teksten kom ind ad, ændrer ikke, hvad den betyder.
+func (s *Server) handleInboundHook(w http.ResponseWriter, r *http.Request) {
+	user, err := s.db.UserByHookToken(r.Context(), chi.URLParam(r, "token"))
+	if err != nil {
+		// Samme svar som en adresse, der aldrig har eksisteret: et endpoint, der
+		// kender forskel, er en maskine til at gætte tokens med.
+		writeError(w, http.StatusNotFound, CodeNotFound, "no such address")
+		return
+	}
+
+	line, note := s.readHookBody(r)
+	if strings.TrimSpace(line) == "" {
+		writeFieldErrors(w, map[string]string{"text": "required"})
+		return
+	}
+
+	parsed := quickadd.Parse(line, time.Now().In(userLocation(user.Timezone)), user.Locale)
+	content := parsed.Content
+	if strings.TrimSpace(content) == "" {
+		content = line
+	}
+
+	projectID := ""
+	if parsed.Project != "" {
+		if id, err := s.db.ProjectByName(r.Context(), user.ID, parsed.Project); err == nil {
+			projectID = id
+		}
+	}
+	if projectID == "" {
+		if projectID, err = s.db.InboxID(r.Context(), user.ID); err != nil {
+			s.internal(w, r, "inbox", err)
+			return
+		}
+	}
+
+	task := &store.Task{
+		ProjectID: projectID, Content: content, Priority: parsed.Priority,
+		Description: strings.TrimSpace(note), DueDate: parsed.DueDate,
+		RecurrenceRule: parsed.Recurrence, CreatedBy: user.ID,
+	}
+	if err := s.db.CreateTask(r.Context(), task, parsed.Labels); err != nil {
+		s.internal(w, r, "create task from hook", err)
+		return
+	}
+
+	s.publish(projectID, "task.created", toTaskJSON(*task))
+	s.log.Info("task created from hook", "user", user.ID)
+	writeJSON(w, http.StatusCreated, map[string]string{"task_id": task.ID, "content": task.Content})
+}
+
+// readHookBody er de tre måder, en linje tekst kommer ind ad.
+//
+// Rækkefølgen er efter, hvor sikkert man ved, hvad man har: en erklæret
+// Content-Type tros, og ellers falder det tilbage på ren tekst — som er det, en
+// genvej på en telefon sender, når den ikke er blevet bedt om andet.
+//
+// En krop, der siger JSON, men ikke er det, læses ikke som tekst bagefter. Den,
+// der satte integrationen op, har skrevet noget forkert, og en opgave, der hedder
+// `{"txt": "køb mælk"}`, er en dårligere måde at finde ud af det på end et 422.
+func (s *Server) readHookBody(r *http.Request) (line, note string) {
+	const maxBody = 64 << 10
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBody))
+	if err != nil {
+		return "", ""
+	}
+	kind := r.Header.Get("Content-Type")
+
+	switch {
+	case strings.Contains(kind, "application/json"):
+		var req hookRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return "", ""
+		}
+		return req.line(), req.note()
+
+	case strings.Contains(kind, "application/x-www-form-urlencoded"):
+		values, err := url.ParseQuery(string(body))
+		if err != nil {
+			return "", ""
+		}
+		req := hookRequest{
+			Text: values.Get("text"), Title: values.Get("title"), Content: values.Get("content"),
+			Note: values.Get("note"), Body: values.Get("body"), Description: values.Get("description"),
+		}
+		return req.line(), req.note()
+	}
+
+	// Ren tekst: første linje er opgaven, resten står under den. Sådan ser en tekst,
+	// man har delt fra en anden app, ud — en overskrift og noget under.
+	text := strings.TrimSpace(string(body))
+	first, rest, _ := strings.Cut(text, "\n")
+	return first, strings.TrimSpace(rest)
 }
 
 // mailToken reads the token out of "Name <todo+TOKEN@domain>".

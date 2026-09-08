@@ -66,6 +66,7 @@ type Server struct {
 	// Sat kun af prøver; se icsClient().
 	icsFetch     *http.Client
 	mailLimiter  *limiter
+	hookLimiter  *limiter
 	resetLimiter *limiter
 	// Second factors are counted against the *account*, not the address. An
 	// address bucket is defeated by anybody with more than one address, which is
@@ -93,6 +94,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 		// day. Sixty a minute never touches real delivery and still puts a ceiling
 		// on the one public write path that has none.
 		mailLimiter:  newLimiter(60, time.Minute),
+		hookLimiter:  newLimiter(60, time.Minute),
 		resetLimiter: newLimiter(5, time.Hour),
 		// Tighter than the password bucket, and for a whole hour. Somebody typing
 		// their own code gets it right on the first or second try; ten in an hour is
@@ -142,6 +144,20 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	// ceiling at all on what could be made with it.
 	r.Method(http.MethodPost, "/inbound/mail",
 		s.rateLimit(s.mailLimiter, http.HandlerFunc(s.handleInboundMail)))
+
+	// En krog ind i indbakken: en URL, et andet program kan skubbe en linje tekst
+	// til. Uden for /api/v1 og uden for sessionen af samme grund som feedet og
+	// posten ovenfor — den, der kalder, er en genvej på en telefon eller et script,
+	// og kan ikke logge ind, så tokenet i stien er hele legitimationen.
+	//
+	// Kun POST. En GET ville være nemmere at kalde, og det er præcis problemet:
+	// forudindlæsning i en browser, en linkkontrol i en chat og en historik, der
+	// bliver besøgt igen, ville alle lave opgaver, ingen har bedt om.
+	//
+	// Sin egen kvote frem for postens: en travl integration skal ikke kunne lukke
+	// for den indgående post, og omvendt.
+	r.Method(http.MethodPost, "/inbound/hook/{token}",
+		s.rateLimit(s.hookLimiter, http.HandlerFunc(s.handleInboundHook)))
 
 	// MCP with the token in the query string, for clients that cannot send a
 	// header. Claude's custom-connector dialog takes a URL and nothing else, so
@@ -318,6 +334,9 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 
 			r.Get("/mail-address", s.handleGetMailAddress)
 			r.Post("/mail-address/rotate", s.handleRotateMailAddress)
+
+			r.Get("/hook-url", s.handleGetHookURL)
+			r.Post("/hook-url/rotate", s.handleRotateHookURL)
 
 			// Personal API tokens. Behind requireSession rather than the ambient
 			// auth: a token must not be able to mint or revoke another.
