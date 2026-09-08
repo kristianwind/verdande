@@ -482,6 +482,14 @@ export const api = {
 	setAISettings: (data) => put('/ai/settings', data),
 	aiSummary: () => post('/ai/summary'),
 	aiSplit: (taskId) => post(`/ai/tasks/${taskId}/split`),
+	// Forslag frem for skrivninger: de to første spørger, de to sidste er svaret
+	// på et ja. Linjen sendes med, som den står i feltet — den kan være rettet i
+	// hånden, inden den blev accepteret, og skal læses på samme måde som en, der
+	// ikke blev rørt.
+	aiTidyInbox: () => post('/ai/inbox/tidy'),
+	aiApplyToTask: (taskId, line) => post('/ai/inbox/tidy/apply', { task_id: taskId, line }),
+	aiNoteActions: (noteId) => post(`/ai/notes/${noteId}/actions`),
+	aiCreateFromNote: (noteId, line) => post(`/ai/notes/${noteId}/actions/apply`, { line }),
 
 	version: () => get('/version'),
 

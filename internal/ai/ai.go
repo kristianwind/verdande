@@ -395,6 +395,132 @@ back, do not congratulate, and do not offer productivity advice.`, language)
 	return c.Complete(ctx, system, []Message{{Role: "user", Content: prompt}})
 }
 
+// Suggestion er én foreslået opgave, skrevet som en linje, man selv kunne have
+// tastet.
+//
+// `line` er quick-add-syntaks — "Ring til Anders i morgen p1 #Firma" — og ikke et
+// felt pr. egenskab. To grunde, og den anden er den vigtige. Parseren findes
+// allerede og er den samme, uanset hvor teksten kom fra, så der er ingen anden
+// fortolkning at holde i takt med den. Og et forslag, der er skrevet i det sprog,
+// man selv skriver i, kan læses og rettes af den, det bliver stillet til — hvor
+// et sæt felter, en model har udfyldt, er noget, man skal tage eller lade være.
+//
+// `why` er én sætning om, hvorfor den ser sådan ud. Den står ved siden af
+// forslaget, så et forkert gæt kan gennemskues frem for bare at være forkert.
+type Suggestion struct {
+	Line string `json:"line"`
+	Why  string `json:"why,omitempty"`
+}
+
+// TidyInbox foreslår, hvordan løse opgaver i indbakken kunne skrives færdig.
+//
+// Modellen får de projekter, der findes, og må kun bruge dem: et `#Nyt Projekt`,
+// den fandt på, ville lave et projekt ved et uheld, første gang nogen sagde ja.
+func (c *Client) TidyInbox(ctx context.Context, tasks, projects []string, today, locale string) ([]Suggestion, error) {
+	language := languageOf(locale)
+
+	known := "none"
+	if len(projects) > 0 {
+		known = "#" + strings.Join(projects, ", #")
+	}
+
+	system := fmt.Sprintf(`You tidy up a task inbox.
+
+For each task you are given, write the line the person would have typed if they
+had filed it properly. Keep their own words for what the task is — you are filing
+it, not rewriting it.
+
+The line may carry, in this syntax and no other:
+  #Project   one of these existing projects, and never one that is not: %s
+  p1..p4     priority, where p1 is most urgent
+  a date in plain %s, such as "i morgen", "on friday", "15/3"
+
+Leave out anything the task does not tell you. A guessed deadline is worse than
+none: the person can add one, but they cannot see a wrong one you invented.
+Today is %s.
+
+Reply with a JSON array and nothing else — no prose, no code fence. Each element
+is {"line": "...", "why": "..."} where why is at most one short sentence in %s
+saying what you read out of the task. Give one element per task, in the order you
+were given them, and leave a task out entirely if it is already filed well.`,
+		known, language, today, language)
+
+	prompt := "Tasks:\n" + strings.Join(tasks, "\n")
+	return c.suggestions(ctx, system, prompt)
+}
+
+// ActionsInNote trækker det, nogen har lovet, ud af en note.
+//
+// Beskrivelsen er stram med vilje. En model, der får lov at "finde opgaver" i en
+// tekst, finder også emner, overskrifter og gode idéer — og så er resultatet en
+// liste, man skal luge i, hvilket er dyrere end at skrive de tre punkter selv.
+func (c *Client) ActionsInNote(ctx context.Context, note string, projects []string, today, locale string) ([]Suggestion, error) {
+	language := languageOf(locale)
+
+	known := "none"
+	if len(projects) > 0 {
+		known = "#" + strings.Join(projects, ", #")
+	}
+
+	system := fmt.Sprintf(`You read a note and pull out what somebody has to do.
+
+Only things somebody committed to or was asked to do. A heading is not a task, a
+topic that was discussed is not a task, and an idea nobody agreed to is not a
+task. If the note contains none, reply with an empty array — that is a useful
+answer and a made-up list is not.
+
+Write each one as the line the person would have typed, in %s, in this syntax and
+no other:
+  #Project   one of these existing projects, and never one that is not: %s
+  p1..p4     priority, where p1 is most urgent
+  a date in plain %s, only when the note actually gives one
+
+Today is %s.
+
+Reply with a JSON array and nothing else — no prose, no code fence. Each element
+is {"line": "...", "why": "..."} where why quotes the few words in the note that
+the task came from, so it can be checked.`, language, known, language, today)
+
+	return c.suggestions(ctx, system, "Note:\n"+note)
+}
+
+// suggestions er den fælles halvdel: spørg, læs svaret som JSON, og smid det væk,
+// der ikke er en linje.
+//
+// Et tomt svar er ikke en fejl. "Der er ikke noget at foreslå" er et rigtigt svar
+// på begge spørgsmål, og en fejlmeddelelse ville lære folk, at funktionen er i
+// stykker, når den i virkeligheden var enig med dem.
+func (c *Client) suggestions(ctx context.Context, system, prompt string) ([]Suggestion, error) {
+	reply, err := c.Complete(ctx, system, []Message{{Role: "user", Content: prompt}})
+	if err != nil {
+		return nil, err
+	}
+
+	var out []Suggestion
+	if err := json.Unmarshal([]byte(extractJSON(reply)), &out); err != nil {
+		return nil, fmt.Errorf("ai: the model did not return a list: %s", truncate(reply, 200))
+	}
+
+	clean := make([]Suggestion, 0, len(out))
+	for _, s := range out {
+		s.Line = strings.TrimSpace(s.Line)
+		s.Why = strings.TrimSpace(s.Why)
+		if s.Line != "" {
+			clean = append(clean, s)
+		}
+	}
+	return clean, nil
+}
+
+// languageOf er det sprog, svaret skal skrives i. Ét sted, fordi det ellers er
+// den slags, der bliver rettet ét sted ud af fire.
+func languageOf(locale string) string {
+	if strings.HasPrefix(strings.ToLower(locale), "en") {
+		return "English"
+	}
+	return "Danish"
+}
+
 // extractJSON pulls an array out of a reply that may have been wrapped in a code
 // fence or preceded by a sentence, which models do however firmly they are asked
 // not to.
