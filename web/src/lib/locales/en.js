@@ -102,6 +102,23 @@ export const en = {
 	'ai.skip': 'No thanks',
 	'ai.applied': 'Done.',
 	'ai.allDone': 'Nothing left to decide on.',
+	// Which browser links open in. See linkopen.js for why this is an attempt and
+	// not a promise: a web page cannot see which browsers exist.
+	'link.title': 'Links',
+	'link.hint':
+		'Which browser a link opens in. There is no way to ask the system which browsers are installed, so the choice is an attempt: if it does not work on this machine, the link opens the usual way. In practice it works on a phone and rarely on a Mac or PC.',
+	'link.opener': 'Open links in',
+	'link.openerDefault': 'The system default',
+	'link.openerSafari': 'Safari',
+	'link.openerChrome': 'Chrome',
+	'link.openerFirefox': 'Firefox',
+	'link.openerEdge': 'Edge',
+	'link.openerCustom': 'My own address …',
+	'link.template': 'Scheme',
+	'link.templateHint':
+		'{url} becomes the address as it is, {encoded} the address as a parameter value, and {stripped} the address without the http in front.',
+	'link.try': 'Try it',
+	'link.tryHint': 'Opens example.dk, so you can see whether it works here.',
 	'beacon.title': 'Counting installations',
 	'beacon.hint': 'Once a day this installation reports that it exists, so the project can see how many people run it. It sends only the two values below — a random id and the version — and nothing else: no IP is stored, no names, no addresses, nothing about what you use it for. On by default, and you can turn it off here.',
 	'beacon.send': 'Send an anonymous daily report',
