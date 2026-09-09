@@ -77,11 +77,21 @@ never edited — the task carries `[[the note's title]]` in its description inst
 
 **Today's plan, in the morning.** **Settings → Beskeder → Dagens plan**, off by
 default; pick the hour yourself. One notification about what is due today and what
-has been missed, and what to start with. The counts are done in the database and
-handed to the model as facts it may not recompute — a plan that says four tasks
-where there are three is worse than no plan. With no model configured the counts
-stand on their own, which is what you needed to know at seven in the morning anyway.
-Nothing due and nothing overdue sends nothing.
+has been missed, and what to start with — and the same text as a card at the top of
+**I dag**, where you are looking anyway when you start the day. The notification is
+the reminder; the card is where it stays.
+
+The card shows the plan *as it was sent*, with the time it was made, rather than a
+new one each time you look: a plan that says something different when you look at it
+than it said when it arrived is worse than either. **Forny planen** makes a new one
+when the day has moved, and it does not send a notification about something you are
+already looking at. With the morning notification off, the card offers to make one
+on the spot.
+
+The counts are done in the database and handed to the model as facts it may not
+recompute — a plan that says four tasks where there are three is worse than no plan.
+With no model configured the counts stand on their own, which is what you needed to
+know at seven in the morning anyway. Nothing due and nothing overdue sends nothing.
 
 **Mail that becomes a task you can act on.** Where a
 [mailbox](mailboxes.md) used to produce *"Anders Jensen: SV: SV: Vedr. levering uge

@@ -496,7 +496,9 @@ export const api = {
 	// Dagens plan om morgenen.
 	planSettings: () => get('/ai/plan'),
 	setPlanSettings: (body) => put('/ai/plan', body),
-	planNow: () => post('/ai/plan/now'),
+	// `silent` er kortet på I dag, der beder om en plan, mens man kigger på den:
+	// en besked om noget, man står og ser på, lærer folk at ignorere klokken.
+	planNow: (options) => post('/ai/plan/now', options ?? {}),
 
 	version: () => get('/version'),
 

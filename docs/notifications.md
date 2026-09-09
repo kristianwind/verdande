@@ -14,7 +14,7 @@ the app's icon.
 | Somebody named you in a note with `@` | Instead of "edited a note" — one act, one message |
 | Somebody gave you a task | Only on the change, and only to the person who got it |
 | Somebody commented | |
-| [Today's plan](ai.md), if you turned it on | In the morning, at the hour you chose |
+| [Today's plan](ai.md), if you turned it on | In the morning, at the hour you chose — it opens the card on **I dag** |
 | A new version is out | Administrators only, once per version |
 
 Not your own actions: the server does not tell anybody what they just did

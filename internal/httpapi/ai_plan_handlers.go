@@ -39,6 +39,19 @@ type planSettings struct {
 	// tidszone. En dato og ikke et tidsstempel, fordi spørgsmålet er "har de fået
 	// dagens plan i dag" — og det er et spørgsmål om dagen dér, hvor de er.
 	LastSent string `json:"last_sent,omitempty"`
+	// Plan er teksten, som den blev sendt, og PlanDate den dag den gælder.
+	//
+	// Gemt frem for regnet forfra, hver gang nogen kigger. To grunde, og den anden
+	// er den vigtige: en model pr. sidevisning er dyr, og en plan, der siger noget
+	// andet end den besked, man fik i morges, er værre end begge dele hver for
+	// sig. Det er den samme tekst — ellers er det ikke *dagens plan*, men et nyt
+	// gæt hver gang man kigger.
+	//
+	// PlanAt er klokkeslættet, den blev lavet, så kortet kan sige det: en plan fra
+	// klokken syv er en anden slags oplysning klokken fire end klokken otte.
+	Plan     string `json:"plan,omitempty"`
+	PlanDate string `json:"plan_date,omitempty"`
+	PlanAt   int64  `json:"plan_at,omitempty"`
 }
 
 func (s *Server) planSettings(ctx context.Context, userID string) (planSettings, error) {
@@ -56,20 +69,43 @@ func (s *Server) planSettings(ctx context.Context, userID string) (planSettings,
 	if v, ok := stored["last_sent"].(string); ok {
 		out.LastSent = v
 	}
+	if v, ok := stored["plan"].(string); ok {
+		out.Plan = v
+	}
+	if v, ok := stored["plan_date"].(string); ok {
+		out.PlanDate = v
+	}
+	if v, ok := stored["plan_at"].(float64); ok {
+		out.PlanAt = int64(v)
+	}
 	return out, nil
 }
 
 func (s *Server) savePlanSettings(ctx context.Context, userID string, p planSettings) error {
 	return s.db.SetUserSettings(ctx, userID, planScope, map[string]any{
 		"enabled": p.Enabled, "hour": p.Hour, "last_sent": p.LastSent,
+		"plan": p.Plan, "plan_date": p.PlanDate, "plan_at": p.PlanAt,
 	})
 }
 
+// handleGetPlanSettings er både indstillingen og dagens plan.
+//
+// Ét endepunkt, fordi det er én ting: planen *er* ressourcen, og indstillingen er,
+// hvornår den bliver lavet. To ville betyde to kald fra siden, der viser den, og
+// to steder at huske at rydde en plan fra i går.
+//
+// En plan fra i går sendes ikke med. Den er ikke forkert, den er bare ikke dagens
+// — og et kort, der viser gårsdagens plan under overskriften "i dag", er værre end
+// et tomt kort.
 func (s *Server) handleGetPlanSettings(w http.ResponseWriter, r *http.Request) {
-	p, err := s.planSettings(r.Context(), userFrom(r.Context()).ID)
+	user := userFrom(r.Context())
+	p, err := s.planSettings(r.Context(), user.ID)
 	if err != nil {
 		s.internal(w, r, "plan settings", err)
 		return
+	}
+	if p.PlanDate != time.Now().In(userLocation(user.Timezone)).Format("2006-01-02") {
+		p.Plan, p.PlanDate, p.PlanAt = "", "", 0
 	}
 	writeJSON(w, http.StatusOK, p)
 }
@@ -111,12 +147,29 @@ func (s *Server) handleSetPlanSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, p)
 }
 
-// handlePlanNow sender dagens plan med det samme, til den der beder om det.
+type planNowRequest struct {
+	// Silent er kortet på I dag, der beder om en plan, mens man kigger på den.
+	//
+	// En besked om noget, man står og ser på, er en besked, der lærer folk at
+	// ignorere klokken. Indstillingssidens knap sender derimod rigtigt — det er
+	// hele dens formål: at vise, at push virker på det her apparat.
+	Silent bool `json:"silent"`
+}
+
+// handlePlanNow laver dagens plan med det samme, til den der beder om det.
 //
 // Findes, fordi en indstilling, man skal vente til i morgen for at se virkningen
-// af, er en indstilling, ingen tør slå til.
+// af, er en indstilling, ingen tør slå til — og fordi kortet på I dag skal kunne
+// lave en plan for den, der har beskeden slået fra.
 func (s *Server) handlePlanNow(w http.ResponseWriter, r *http.Request) {
+	var req planNowRequest
+	if r.ContentLength > 0 {
+		if err := decodeJSON(w, r, &req); err != nil {
+			return
+		}
+	}
 	user := userFrom(r.Context())
+
 	plan, err := s.buildPlan(r.Context(), user)
 	if err != nil {
 		s.internal(w, r, "build plan", err)
@@ -126,11 +179,36 @@ func (s *Server) handlePlanNow(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"plan": "", "sent": false})
 		return
 	}
-	s.notify(r, &store.Notification{
-		UserID: user.ID, Kind: "daily.plan",
-		Title: planTitle(user.Locale), Body: plan,
+	if err := s.rememberPlan(r.Context(), user, plan); err != nil {
+		s.internal(w, r, "save plan", err)
+		return
+	}
+
+	sent := false
+	if !req.Silent {
+		s.notify(r, &store.Notification{
+			UserID: user.ID, Kind: "daily.plan",
+			Title: planTitle(user.Locale), Body: plan,
+		})
+		sent = true
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"plan": plan, "sent": sent,
+		"plan_at": time.Now().Unix(),
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"plan": plan, "sent": true})
+}
+
+// rememberPlan gemmer dagens plan, så den kan ses igen uden at blive lavet igen.
+func (s *Server) rememberPlan(ctx context.Context, user *store.User, plan string) error {
+	p, err := s.planSettings(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	p.Plan = plan
+	p.PlanDate = now.In(userLocation(user.Timezone)).Format("2006-01-02")
+	p.PlanAt = now.Unix()
+	return s.savePlanSettings(ctx, user.ID, p)
 }
 
 // DailyPlans er timeslaget: hvem er der morgen hos, og hvem har ikke fået planen
@@ -182,6 +260,10 @@ func (s *Server) DailyPlans(ctx context.Context) error {
 				UserID: user.ID, Kind: "daily.plan",
 				Title: planTitle(user.Locale), Body: plan,
 			})
+			// Gemt, og gemt her frem for i rememberPlan: rækken er allerede
+			// læst ind i `p`, og to gemninger oven i hinanden ville lade den
+			// ene overskrive den andens `last_sent`.
+			p.Plan, p.PlanDate, p.PlanAt = plan, today, time.Now().Unix()
 		}
 		p.LastSent = today
 		if err := s.savePlanSettings(ctx, user.ID, p); err != nil {

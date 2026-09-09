@@ -96,6 +96,10 @@ export const da = {
 	'ai.planHint':
 		'En besked om morgenen om det, der forfalder i dag, og det, der er sprunget over. Tallene tælles her; er der en model sat op, skriver den sætningen.',
 	'ai.planHour': 'Klokken',
+	'ai.planMade': 'lavet {time}',
+	'ai.planAgain': 'Forny planen',
+	'ai.planMake': 'Lav dagens plan',
+	'ai.planDismiss': 'Skjul planen i dag',
 	'ai.planNow': 'Send den nu',
 	'ai.planSent': 'Sendt — kig i klokken.',
 	'ai.planNothing': 'Der er ikke noget at planlægge i dag.',
