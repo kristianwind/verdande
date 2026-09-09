@@ -4325,3 +4325,38 @@ test('links kan åbnes i en anden browser, og åbner alligevel når skemaet ikke
 
 	expect(trouble).toEqual([]);
 });
+
+test('dagens plan står på I dag, og ikke kun som en besked', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+
+	await page.goto('/');
+	const box = page.getByLabel('Ny opgave');
+	await box.fill('ring til planlæggeren i dag');
+	await box.press('Enter');
+	await page.waitForTimeout(400);
+
+	// Uden en model er planen to tal — og det er stadig det, man havde brug for at
+	// vide om morgenen. Knappen er der, fordi morgenbeskeden er slået fra som
+	// udgangspunkt: den, der ikke vil vækkes, skal stadig kunne få planen.
+	await page.getByRole('button', { name: 'Lav dagens plan' }).click();
+
+	const card = page.locator('.plan');
+	await expect(card).toBeVisible();
+	await expect(card).toContainText('forfalder i dag');
+	// Klokkeslættet står på kortet: en plan fra klokken syv er en anden slags
+	// oplysning klokken fire end klokken otte.
+	await expect(card.locator('.made')).toBeVisible();
+
+	// Og den bliver stående — det er hele forskellen på et kort og en besked.
+	await page.reload();
+	await expect(page.locator('.plan')).toContainText('forfalder i dag');
+
+	// Skjult for i dag, ikke slettet: kortet er en påmindelse, og den der har læst
+	// den skal kunne få den af vejen.
+	await page.locator('.plan .close').click();
+	await expect(page.locator('.plan')).toBeHidden();
+	await page.reload();
+	await expect(page.locator('.plan')).toBeHidden();
+
+	expect(trouble).toEqual([]);
+});

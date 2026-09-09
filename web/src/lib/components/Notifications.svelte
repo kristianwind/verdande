@@ -56,6 +56,9 @@
 		// En ny version hører ingen steder hen i data — den fører hen, hvor knappen
 		// til at gøre noget ved den sidder.
 		if (n.kind === 'update.available') return goto('/indstillinger/notifikationer');
+		// Dagens plan står på I dag, hvor den bliver ved med at stå — beskeden er
+		// påmindelsen, kortet er stedet.
+		if (n.kind === 'daily.plan') return goto('/');
 		if (n.note_id) goto(`/noter?note=${n.note_id}`);
 		else if (n.task_id) app.openDetail(n.task_id);
 		else if (n.project_id) goto(`/projekt/${n.project_id}`);
@@ -111,7 +114,10 @@
 						<li>
 							<button class="row" class:unread={!n.read} onclick={() => follow(n)}>
 								<span class="what">{headline(n)}</span>
-								{#if n.body}<span class="about">{n.body}</span>{/if}
+								<!-- Dagens plan er tre linjer og ikke en overskrift. Klippet af
+								     efter én linje sagde den "2 forfalder i dag, 1 er sprun…",
+								     hvilket er den halve oplysning og hele støjen. -->
+								{#if n.body}<span class="about" class:full={n.kind === 'daily.plan'}>{n.body}</span>{/if}
 								<span class="ago">{when(n.created_at)}</span>
 							</button>
 						</li>
@@ -258,6 +264,12 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.about.full {
+		white-space: pre-line;
+		text-overflow: clip;
+		line-height: 1.5;
 	}
 
 	.ago {

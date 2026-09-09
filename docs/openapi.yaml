@@ -3688,7 +3688,21 @@ paths:
   /api/v1/ai/plan/now:
     post:
       tags: [integrations]
-      summary: Send today's plan now, to whoever asks.
+      summary: Make today's plan now, to whoever asks.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                silent:
+                  type: boolean
+                  description: >
+                    Make and store it without sending a notification — the card on
+                    Today asking for a plan while somebody is looking at it. A
+                    notification about something in front of you is the kind that
+                    teaches people to ignore the bell.
       description: |
         The counts come from the database and the sentence from the model, in that
         order: a model that counted for itself would sometimes count wrong, and a
@@ -4545,8 +4559,9 @@ components:
     DailyPlanSettings:
       type: object
       description: >
-        One person's morning plan. Off by default — a notification at seven in the
-        morning that nobody asked for is not a help.
+        One person's morning plan, and today's plan itself. One resource, because
+        it is one thing: the plan is the resource and the setting is when it gets
+        made.
       properties:
         enabled: { type: boolean }
         hour:
@@ -4555,6 +4570,17 @@ components:
         last_sent:
           type: string
           description: The date it last went out, in that person's own timezone.
+        plan:
+          type: string
+          description: >
+            Today's plan as it was sent — kept rather than recomputed on every
+            look. A plan that says something different when you look at it than it
+            said when it arrived is worse than either. Absent when the stored plan
+            is from another day.
+        plan_date: { type: string }
+        plan_at:
+          type: integer
+          description: Unix seconds. Shown on the card, because a plan made at seven reads differently at four.
 
     AISuggestion:
       type: object

@@ -93,6 +93,10 @@ export const en = {
 	'ai.planHint':
 		'A notification in the morning about what is due today and what has been missed. The numbers are counted here; if a model is set up, it writes the sentence.',
 	'ai.planHour': 'At',
+	'ai.planMade': 'made at {time}',
+	'ai.planAgain': 'Make it again',
+	'ai.planMake': "Make today's plan",
+	'ai.planDismiss': 'Hide the plan for today',
 	'ai.planNow': 'Send it now',
 	'ai.planSent': 'Sent — look in the bell.',
 	'ai.planNothing': 'There is nothing to plan for today.',
