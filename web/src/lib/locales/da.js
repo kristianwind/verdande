@@ -105,6 +105,23 @@ export const da = {
 	'ai.skip': 'Nej tak',
 	'ai.applied': 'Gjort.',
 	'ai.allDone': 'Ikke mere at tage stilling til.',
+	// Hvilken browser links åbner i. Se linkopen.js for, hvorfor det er et forsøg
+	// og ikke et løfte: en webside kan ikke se, hvilke browsere der findes.
+	'link.title': 'Links',
+	'link.hint':
+		'Hvilken browser et link åbner i. Der findes ingen måde at spørge systemet, hvilke browsere der er installeret, så valget er et forsøg: virker det ikke på denne maskine, åbner linket helt normalt. I praksis virker det på telefonen og sjældent på en Mac eller pc.',
+	'link.opener': 'Åbn links i',
+	'link.openerDefault': 'Systemets standard',
+	'link.openerSafari': 'Safari',
+	'link.openerChrome': 'Chrome',
+	'link.openerFirefox': 'Firefox',
+	'link.openerEdge': 'Edge',
+	'link.openerCustom': 'Min egen adresse …',
+	'link.template': 'Skema',
+	'link.templateHint':
+		'{url} bliver til adressen som den er, {encoded} til den som parameterværdi, og {stripped} til den uden http foran.',
+	'link.try': 'Prøv det',
+	'link.tryHint': 'Åbner example.dk, så du kan se, om det virker her.',
 	'beacon.title': 'Tælling af installationer',
 	'beacon.hint': 'Én gang i døgnet melder denne installation, at den findes, så projektet kan se hvor mange der bruger det. Der sendes kun de to værdier herunder — et tilfældigt id og versionen — og intet andet: ingen IP bliver gemt, ingen navne, ingen adresser, intet om hvad du bruger det til. Slået til som udgangspunkt, og du kan slå den fra her.',
 	'beacon.send': 'Send en anonym daglig melding',

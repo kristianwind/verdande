@@ -11,6 +11,7 @@
 	import TaskDetail from '$lib/components/TaskDetail.svelte';
 	import { t } from '$lib/i18n.svelte.js';
 	import { setBadge } from '$lib/badge.js';
+	import { open as openInChosenBrowser, stored as storedOpener } from '$lib/linkopen.js';
 	import BeaconNotice from '$lib/components/BeaconNotice.svelte';
 
 	let { children } = $props();
@@ -54,6 +55,37 @@
 	$effect(() => {
 		app.load();
 	});
+
+	/**
+	 * Links ud af programmet, åbnet i den browser, maskinen er sat op til.
+	 *
+	 * Ét sted frem for ét pr. komponent. Links står i opgavetitler, i
+	 * beskrivelser, i noter og i indstillingerne, og en regel, der skulle
+	 * gentages hvert af de steder, ville mangle det ene sted, ingen tænkte på.
+	 *
+	 * Kun udadgående. Programmets egne ruter går gennem SvelteKit og skal blive
+	 * ved med at gøre det: en fane mere til ens egen notesside er ikke noget,
+	 * nogen har bedt om.
+	 *
+	 * Er der ikke valgt nogen browser — hvilket er udgangspunktet — bliver
+	 * klikket ikke rørt, og systemet gør, som det plejer.
+	 */
+	function onLinkClick(event) {
+		if (event.defaultPrevented || event.button !== 0) return;
+		if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+		if (!storedOpener().id) return;
+
+		const link = event.target?.closest?.('a[href]');
+		if (!link || link.target === '_self') return;
+		const href = link.getAttribute('href') ?? '';
+		if (!/^https?:\/\//i.test(href)) return;
+		// Vores egen adresse er ikke et link ud af programmet, uanset hvor den
+		// står — en fane mere til den side, man allerede er på, er ingen hjælp.
+		if (new URL(href, location.href).origin === location.origin) return;
+
+		event.preventDefault();
+		openInChosenBrowser(href);
+	}
 
 	// Tallet på appens ikon følger klokken. Ét sted, fordi der er ét tal: hentet,
 	// skubbet over websocket'en eller læst væk — mærket er det samme svar på alle
@@ -125,7 +157,8 @@
 	}
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window
+	onclick={onLinkClick} {onkeydown} />
 
 {#if app.loading}
 	<!-- Deliberately blank. A spinner for a request that resolves in 30ms is a

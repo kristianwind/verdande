@@ -4272,3 +4272,56 @@ test('en gentagelse, serveren kun kan på dansk, siges alligevel i fladen', asyn
 
 	expect(trouble).toEqual([]);
 });
+
+test('links kan åbnes i en anden browser, og åbner alligevel når skemaet ikke findes', async ({
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+
+	await page.goto('/indstillinger');
+	await expect(page.getByRole('heading', { name: 'Links' })).toBeVisible();
+
+	// Som udgangspunkt gør indstillingen ingenting, og der er intet skemafelt at
+	// skrive i: et felt til en adresse, der ikke bliver brugt, er en invitation
+	// til at udfylde den og undre sig.
+	await expect(page.getByLabel('Skema')).toBeHidden();
+
+	// Et skema, der med sikkerhed ikke findes på nogen maskine. Pointen er ikke,
+	// at det virker — pointen er, hvad der sker, når det ikke gør.
+	await page.getByLabel('Åbn links i').selectOption('custom');
+	await page.getByLabel('Skema').fill('verdande-findes-ikke://{url}');
+	await page.getByLabel('Skema').blur();
+
+	// Valget hører til maskinen, ikke kontoen, så det står i localStorage.
+	const stored = await page.evaluate(() => localStorage.getItem('verdande:link-opener'));
+	expect(stored, 'valget blev ikke gemt på apparatet').toContain('verdande-findes-ikke');
+
+	// Om browseren rent faktisk tegner en fane, er browserens sag og ikke appens —
+	// en headless Chromium åbner den uden at fortælle nogen om det. Det, der er
+	// vores, er beslutningen: prøv skemaet, og åbn linket alligevel, når det ikke
+	// findes. Så det er dét, der bliver målt.
+	await page.evaluate(() => {
+		window.__opened = [];
+		window.open = (url) => {
+			window.__opened.push(url);
+			return { closed: false, close() {} };
+		};
+	});
+
+	await page.getByRole('button', { name: 'Prøv det' }).click();
+	await expect
+		.poll(() => page.evaluate(() => window.__opened), { timeout: 5000 })
+		.toEqual(['https://example.dk']);
+
+	// Og appen blev, hvor den var. Faldbacket må ikke kapre den fane, man står i:
+	// et link, der smider en ud af programmet, er værre end et, der åbner et sted,
+	// man ikke havde valgt.
+	await expect(page).toHaveURL(/\/indstillinger$/);
+
+	// Tilbage til systemets standard, så resten af prøverne klikker på links som
+	// alle andre.
+	await page.getByLabel('Åbn links i').selectOption('');
+	await expect(page.getByLabel('Skema')).toBeHidden();
+
+	expect(trouble).toEqual([]);
+});

@@ -1,12 +1,32 @@
 <script>
 	/** Konto: who you are, your password, and the second factor. */
 	import { api, humanMessage } from '$lib/api.js';
+	import {
+		OPENERS,
+		stored as storedOpener,
+		save as saveOpenerChoice,
+		open as openLink
+	} from '$lib/linkopen.js';
 	import { app, theme, THEMES, look, LOOKS, menuSize, textSize, SIZES } from '$lib/stores.svelte.js';
 	import { t, plural, i18n } from '$lib/i18n.svelte.js';
 	import { supported, register } from '$lib/passkey.js';
 	import { ago } from '$lib/when.js';
 
 	// --- profile ---------------------------------------------------------------
+
+	// Hvilken browser links åbner i. På apparatet, ikke på kontoen: `firefox://`
+	// virker på telefonen og gør ingenting på Mac'en, så et valg, der fulgte
+	// kontoen, ville være forkert det ene af de to steder hver gang.
+	let opener = $state(storedOpener());
+
+	function saveOpener(choice) {
+		opener = choice;
+		saveOpenerChoice(choice);
+	}
+
+	function chooseOpener(id) {
+		saveOpener({ id, template: id === 'custom' ? opener.template : '' });
+	}
 
 	let name = $state('');
 	let timezone = $state('');
@@ -399,6 +419,49 @@
 			</div>
 		</div>
 	</div>
+</section>
+
+<section class="panel">
+	<header>
+		<h2>{t('link.title')}</h2>
+		<p class="hint">{t('link.hint')}</p>
+	</header>
+
+	<div class="field">
+		<label for="opener">{t('link.opener')}</label>
+		<select id="opener" value={opener.id} onchange={(e) => chooseOpener(e.currentTarget.value)}>
+			{#each OPENERS as option (option.id)}
+				<option value={option.id}>{t(option.label)}</option>
+			{/each}
+			<option value="custom">{t('link.openerCustom')}</option>
+		</select>
+	</div>
+
+	{#if opener.id === 'custom'}
+		<div class="field">
+			<label for="openertpl">{t('link.template')}</label>
+			<input
+				id="openertpl"
+				class="mono"
+				value={opener.template}
+				placeholder="firefox://open-url?url={'{encoded}'}"
+				onchange={(e) => saveOpener({ id: 'custom', template: e.currentTarget.value })}
+			/>
+			<p class="hint">{t('link.templateHint')}</p>
+		</div>
+	{/if}
+
+	{#if opener.id}
+		<!-- Et forsøg frem for et løfte. Der er ingen måde at spørge, om et skema
+		     findes — man kan kun prøve, og så er det bedre at prøve på en adresse,
+		     man selv har valgt, end at opdage det på et rigtigt link. -->
+		<div class="row">
+			<button class="secondary" onclick={() => openLink('https://example.dk')}>
+				{t('link.try')}
+			</button>
+			<span class="hint">{t('link.tryHint')}</span>
+		</div>
+	{/if}
 </section>
 
 <section class="panel">
