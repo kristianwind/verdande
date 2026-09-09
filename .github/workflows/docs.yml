@@ -3,9 +3,19 @@ name: Documentation
 # The docs are built on every push so a broken build is caught immediately, but
 # only published once GitHub Pages has been enabled for the repository. Until the
 # owner decides to publish, this job builds and stops.
+#
+# And on pull requests, where the build is the only check there is: `mkdocs build
+# --strict` fails on a link to a page that does not exist, and building only after
+# the merge means finding that out on `main`. Nothing is published from a pull
+# request — the `deploy` job below runs on a manual dispatch and nothing else.
 on:
   push:
     branches: [main]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
+  pull_request:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'

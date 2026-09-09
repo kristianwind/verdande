@@ -51,6 +51,8 @@ nav:
       - Signing in: signing-in.md
       - Quick add: quick-add.md
       - Notes: notes.md
+      - Notifications: notifications.md
+      - Opening links: links.md
       - Filters: filters.md
       - Importing from Todoist: import.md
   - Connecting things:
@@ -60,6 +62,8 @@ nav:
       - Mailboxes: mailboxes.md
       - Claude (MCP): mcp.md
       - AI features: ai.md
+  - Privacy:
+      - The install count: beacon.md
   # openapi.yaml is deliberately not in the nav: MkDocs copies it to the site as a
   # file, and api.md links to it. A nav entry expects a page to render.
   - Reference:

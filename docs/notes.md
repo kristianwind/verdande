@@ -79,6 +79,37 @@ There is no folder tree. Projects, groups and labels already exist, are already
 shared and already have roles — a second hierarchy to file things in is one too
 many, and a note in a project inherits every one of those answers.
 
+### Sharing one note with one person
+
+Filing a note in a project is the right tool when the note belongs with a body of
+work, and the wrong one when it is just *let Sofie see this*. **Del med personer**
+at the foot of the note does the second: this note, this person, as reader or
+editor. Only the note's owner can share it.
+
+Type an **email address** rather than picking a name, and one of two things
+happens. An address that already has an account is shared with straight away. One
+that does not gets an invitation — a link that creates the account and the share
+together, so the note is theirs the moment they sign up. Invitations wait in the
+panel under the note, where they can be withdrawn; that is the only way back, since
+only the token's hash is stored and a link sent to the wrong address cannot be
+looked up.
+
+### Naming somebody in a note
+
+Writing `@Sofie` in a note shares it with her and tells her. Naming somebody in a
+note *is* wanting them to read it, and doing it as two acts — write the name, then
+open the panel and find the person — meant the second was forgotten, and the note
+sat there addressing somebody who could not see it. The editor suggests names after
+`@`, the same way `#` suggests projects.
+
+- **Only the owner's mentions share.** An editor may write the name; giving
+  somebody else's note away is the owner's alone.
+- **As a reader**, which is the least that satisfies "look at this". A role you
+  have raised in the panel is never lowered by a mention.
+- **Only a name that has just appeared** counts. A note is saved on every typing
+  pause, so without that every save would be another share and another notification
+  about the same name.
+
 ## Finding
 
 The list groups itself: favourites first, then **Today**, **Yesterday**, **This

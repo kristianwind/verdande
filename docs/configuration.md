@@ -127,10 +127,16 @@ next time each value is written, so turning this on costs nobody a reconnection.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `VERDANDE_UPDATE_CHECK` | `false` | Ask GitHub whether a newer release exists. |
+| `VERDANDE_UPDATE_CHECK` | `false` | Ask GitHub whether a newer release exists, and tell the administrators when one does. |
 | `VERDANDE_PANEL_URL` | — | The Yggdrasil panel this instance runs under. |
 | `VERDANDE_PANEL_TOKEN` | — | An API token from that panel, belonging to somebody with control of this server. |
 | `VERDANDE_PANEL_SERVER_ID` | — | Which server to restart — the id in the panel's URL. |
+
+With the check on, administrators are told **once per version** — in the bell, in
+push and on the app's badge — rather than having to open the settings page and
+look. The notification leads to the page where the restart button is. With the
+check off nothing is fetched and nothing is said; see
+[Notifications](notifications.md).
 
 All three together let **Settings → Notifications** restart this instance,
 which is also how it picks up a new version: a container cannot replace its own

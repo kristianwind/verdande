@@ -27,8 +27,9 @@ forward mail to, and an MCP endpoint so Claude can work your task list directly.
   The calendar draws each task to its length — drag the foot to resize, the body
   to move it.
 - **Notes, beside the work.** Rich text to write in, Markdown on disk. Share a
-  single note with a person, or file it in a project; `#project` and
-  `[[another note]]` are links, and a task shows what has been written about it.
+  single note with a person — by name, by email address, or by writing `@Sofie` in
+  the text — or file it in a project; `#project` and `[[another note]]` are links,
+  and a task shows what has been written about it.
 - **Delegate, and snooze.** Hand a task to somebody and it is marked with an
   arrow to them, gathered on a *Waiting on others* page. Snooze one to park it,
   greyed, at the foot of the list until a moment you pick — without touching when
@@ -38,8 +39,18 @@ forward mail to, and an MCP endpoint so Claude can work your task list directly.
 - **Sharing** with owner, editor and viewer roles. Anyone outside your instance
   joins through an invite link.
 - **Live sync** — a change made by somebody else appears without a refresh.
+- **[Told when it matters](notifications.md).** A bell for what other people did to
+  what you share, pushed to your devices and counted on the app's icon in the Dock.
+- **[AI that suggests and never writes](ai.md).** Optional, your own key. It tidies
+  the inbox, pulls the tasks out of a meeting note, writes a morning plan, turns
+  *"SV: SV: Vedr. levering uge 12"* into what the mail actually asks for, and
+  answers questions about your own notes with links to what the answer rests on —
+  every one of them as a line you accept, edit or refuse.
 - **Repeating tasks** as RRULE, comments and attachments, and reminders that go
   out as Web Push to an iPhone or a Mac.
+- **[Anything can put a task in your inbox](mail.md)** — a mail to your own
+  address, or a POST from a shortcut on your phone, a script, or any service that
+  can call a URL.
 - **[Your mail as an inbox](mailboxes.md).** Star a mail in Gmail, or flag one
   over IMAP in iCloud or Fastmail, and it becomes a task — and the star or flag
   comes off once it has, so a starred inbox empties as the tasks are made instead
