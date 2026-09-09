@@ -37,17 +37,32 @@ and an MCP endpoint so Claude can work your task list directly.
 - **Projects, sections, sub-tasks, labels, saved filters.** List, board and calendar
   views, and foldable groups over the projects in the sidebar.
 - **Notes, beside the work.** Rich text that is Markdown underneath — headings,
-  lists, quotes, fenced code. A note is shared by filing it in a project;
-  `#project` and `[[another note]]` are links, and a task shows the notes that
-  mention it. A zip of Markdown goes in — Obsidian, Bear, or Apple Notes through
+  lists, quotes, fenced code. A note is shared by filing it in a project, by
+  handing it to one person — including somebody who has no account yet, who gets an
+  invitation that becomes the share when they sign up — or by writing `@Sofie` in
+  the text, which shares it with her and tells her. `#project` and
+  `[[another note]]` are links, and a task shows the notes that mention it. A zip of Markdown goes in — Obsidian, Bear, or Apple Notes through
   the exporter in [`tools/`](tools/) — and comes back out the same shape.
 - **Drag where it means something.** Reorder a list or a board, file a project under
   a group, drop a task on another project, or drop it on another day.
 - **Sharing.** Owner, editor and viewer roles. There is no open registration:
-  everybody arrives through an invite link, either to a project or — from
-  **Settings → Brugere** — to the instance itself. Nobody's password is ever chosen
-  by somebody else.
+  everybody arrives through an invite link — to a project, to a single note, or
+  from **Settings → Brugere** to the instance itself. Nobody's password is ever
+  chosen by somebody else.
 - **Live sync.** A change made by somebody else appears without a refresh.
+- **Notifications that are worth reading.** A bell for what other people did to what
+  you share — folded, so one person typing for five minutes is one line — pushed to
+  your devices and counted on the app's icon in the Dock.
+- **AI that suggests and never writes.** Optional, off by default, your own key and
+  your own model if you want. It tidies the inbox, pulls the tasks out of a meeting
+  note, writes a morning plan, turns *"SV: SV: Vedr. levering uge 12"* into the
+  action the mail asks for, and answers questions about your own notes with links to
+  what the answer rests on. Every one of them arrives as a line you accept, edit or
+  refuse — a model that edits your tasks directly has to be right every time to be
+  worth having.
+- **Anything can put a task in the inbox.** A mail to your own forwarding address,
+  or a POST of one line of text from a shortcut on your phone, a script or any
+  service that can call a URL.
 - **Recurring tasks** as RRULE (RFC 5545), reminders, comments and attachments.
 - **Standards, not homegrown formats.** iCalendar and CalDAV, ICS feeds, OAuth2 with
   PKCE, OpenAPI 3.1, MCP, Web Push, Argon2id.

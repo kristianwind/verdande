@@ -17,6 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Taggen selv, ikke kun den commit den peger på: udgivelsesteksten
+          # nedenfor står i tagbeskeden, og en overfladisk checkout henter
+          # commit'en uden den.
+          fetch-depth: 0
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -60,7 +65,28 @@ jobs:
       #
       # Created after the image, so a release never announces a version that
       # failed to build.
+      # Tagbeskeden ER annonceringen. Den skrives, når der tagges, på produktets
+      # eget sprog og til dem, der bruger det — og indtil nu nåede den aldrig
+      # frem: udgivelsen på GitHub blev fyldt med en autogenereret liste over
+      # commit-overskrifter, som er skrevet til dem, der læser koden.
+      #
+      # Den sidste linje er et link til udgivelsen selv, og den tages af: en
+      # side, der linker til sig selv, hjælper ingen.
+      - id: notes
+        run: |
+          {
+            echo 'body<<VERDANDE_EOF'
+            git tag -l --format='%(contents)' "${GITHUB_REF_NAME}" \
+              | sed '\#^https://github.com/.*/releases/tag/#d' \
+              | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
+            echo VERDANDE_EOF
+          } >> "$GITHUB_OUTPUT"
+
       - uses: softprops/action-gh-release@v2
         with:
+          body: ${{ steps.notes.outputs.body }}
+          # Stadig sat: den autogenererede liste lægges *under* teksten ovenfor,
+          # så både den, der vil vide hvad der er nyt, og den, der vil se hvilke
+          # ændringer det var, kan læse det samme sted.
           generate_release_notes: true
           make_latest: true

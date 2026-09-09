@@ -67,3 +67,36 @@ immediately.
 
 !!! tip "Keep the address to yourself"
     Treat it like a secret. If you publish it somewhere, rotate it.
+
+## Pushing from another program
+
+The address above needs a mail server. When what you want is a shortcut on your
+phone, a script, or any service that can call a URL, there is a second way in:
+**Settings → Integrationer → Skub fra andre programmer** gives you an address to
+POST a line of text to.
+
+```bash
+curl -X POST https://todo.example.dk/inbound/hook/<token> \
+  -H "Content-Type: text/plain" \
+  -d "Ring til Anders i morgen p1 #Firma"
+```
+
+The body is read three ways, because those are the three you meet: plain text from
+a shortcut that just sends what was selected, JSON with a `text` field from a
+service, or a form field from a webhook form. The first line becomes the task and
+the rest sits underneath it, and the line goes through the [quick add](quick-add.md)
+parser — so "i morgen", "p1" and "#Firma" mean here what they mean in the box at the
+top of the app.
+
+**The address is a key.** It has its own token rather than sharing the mail one:
+the two are the same kind of secret but they leak separately, and a URL that has
+been sitting in a shortcut on a lost phone has to be replaceable without changing
+the address other people have in their address books. A token here can do one
+thing — put a task in your inbox — which is why it is not an
+[API token](api.md), which can do everything. Change it under the same setting; the
+old one stops working at once.
+
+**POST only.** A GET would be easier to call, and that is exactly the problem: a
+browser prefetch, a link check in a chat, and a revisited history entry would all
+create tasks nobody asked for.
+
