@@ -5,6 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { app } from '$lib/stores.svelte.js';
 	import { humanMessage } from '$lib/api.js';
+	import { findSettings } from '$lib/settingsindex.js';
 
 	let { open = $bindable(false) } = $props();
 
@@ -68,7 +69,20 @@
 		}, 140);
 	});
 
+	/**
+	 * Indstillingerne, og hvorfor de ligger øverst.
+	 *
+	 * De kommer fra et indeks i browseren og ikke fra serveren, så de står der,
+	 * mens søgningen efter noter og opgaver stadig er undervejs. Øverst, fordi de
+	 * er et svar på "hvor er den indstilling" — et spørgsmål med ét rigtigt svar,
+	 * modsat en søgning i noget, man selv har skrevet.
+	 */
+	let settings = $derived(
+		findSettings(query, { t, isAdmin: app.user?.is_admin ?? false, limit: 5 })
+	);
+
 	let results = $derived([
+		...settings.map((s) => ({ kind: 'setting', id: s.href, label: `${s.tab} · ${s.title}` })),
 		...projects.map((p) => ({ kind: 'project', id: p.id, label: p.name })),
 		...notes.map((n) => ({ kind: 'note', id: n.id, label: n.title || n.body.slice(0, 60) })),
 		...tasks.map((t) => ({
@@ -108,6 +122,9 @@
 
 	function choose(item) {
 		open = false;
+		// En indstilling bærer sin egen adresse i sit id — der er ingen række at slå
+		// op, den ER stedet.
+		if (item.kind === 'setting') return goto(item.id);
 		if (item.kind === 'note') return goto(`/noter?note=${item.id}`);
 		goto(item.kind === 'project' ? `/projekt/${item.id}` : `/projekt/${item.project}`);
 	}

@@ -210,6 +210,7 @@ export const da = {
 	'palette.project': 'Projekt',
 	'palette.task': 'Opgave',
 	'palette.note': 'Note',
+	'palette.setting': 'Indstilling',
 	'nav.today': 'I dag',
 	'nav.upcoming': 'Kommende',
 	'nav.delegated': 'Venter på andre',
@@ -220,7 +221,7 @@ export const da = {
 	'nav.signOutConfirm': 'Tryk igen for at logge ud',
 	'nav.main': 'Hovedmenu',
 	'nav.search': 'Søg',
-	'nav.searchLong': 'Søg i opgaver og projekter',
+	'nav.searchLong': 'Søg i opgaver, noter, projekter og indstillinger',
 	'nav.noResults': 'Ingen resultater.',
 	'nav.showSidebar': 'Vis sidebjælken',
 	'nav.hideSidebar': 'Skjul sidebjælken',
@@ -301,6 +302,8 @@ export const da = {
 
 	// --- settings: the frame -------------------------------------------------------
 	'settings.title': 'Indstillinger',
+	'settings.search': 'Søg i indstillinger',
+	'settings.searchNone': 'Ingen indstilling hedder det.',
 	'settings.tab.account': 'Konto',
 	'settings.tab.notifications': 'Notifikationer',
 	'settings.tab.integrations': 'Integrationer',

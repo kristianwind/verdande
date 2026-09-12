@@ -4454,3 +4454,64 @@ test('adresserne på integrationssiden kan ses helt på en telefon', async ({ pa
 
 	expect(trouble).toEqual([]);
 });
+
+/**
+ * En indstilling kan findes ved at søge efter den.
+ *
+ * Indstillingerne er ti faner med en snes afsnit, og den eneste vej til et
+ * bestemt af dem var at huske, hvilken fane det lå under. Prøven går begge veje
+ * ind: feltet øverst i indstillingerne, og ⌘K, som ikke kunne andet end det, man
+ * selv har skrevet.
+ *
+ * "beacon" er valgt med vilje. Afsnittet hedder "Tælling af installationer" på
+ * dansk, så en søgning, der kun læste overskrifterne, ville ikke finde det — og
+ * "beacon" er præcis det ord, man kender det ved. Det er derfor indekset har et
+ * felt med søgeord, ingen får at se.
+ */
+test('en indstilling kan findes ved at søge efter den', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/indstillinger');
+
+	const find = page.getByPlaceholder('Søg i indstillinger');
+	await find.fill('beacon');
+
+	const hit = page.locator('.hits button', { hasText: 'Tælling af installationer' });
+	await expect(hit).toBeVisible();
+	// Hvor det ligger, står ved siden af hvad det hedder: halvdelen af det, man
+	// søgte efter, er svaret på hvilken fane.
+	await expect(hit).toContainText('Data');
+	await hit.click();
+
+	await expect(page).toHaveURL(/\/indstillinger\/data#beacon$/);
+	const section = page.locator('#beacon');
+	await expect(section.getByRole('heading', { name: 'Tælling af installationer' })).toBeVisible();
+	// Rullet derhen, ikke bare tegnet: afsnittet er det syvende på siden, så en
+	// side, der bare blev åbnet, ville vise toppen af den.
+	await expect(section).toBeInViewport();
+
+	// Feltet tømmer sig selv, når man er landet. En søgning, der bliver stående
+	// over det, man fandt, dækker det.
+	await expect(find).toHaveValue('');
+
+	// Og det, der ikke findes, siger det frem for at vise en tom liste.
+	await find.fill('hestevogn');
+	await expect(page.getByText('Ingen indstilling hedder det.')).toBeVisible();
+
+	// ⌘K spørger det samme indeks. Her er det den anden vej ind, og "webhook" er
+	// igen et ord, der ikke står i overskriften.
+	await page.goto('/');
+	// Knappen og ikke tastetrykket: ⌘K lyttes der efter i en effekt, så et tryk
+	// sendt lige efter goto kan nå frem, før siden er hydreret. Knappen venter
+	// Playwright på af sig selv — og den er også den, man har på en telefon.
+	await page.getByRole('button', { name: /Søg/ }).click();
+	await page.getByRole('dialog').getByRole('textbox').fill('webhook');
+	const row = page.getByRole('dialog').locator('li button', { hasText: 'Skub fra andre programmer' });
+	await expect(row).toBeVisible();
+	await expect(row).toContainText('Indstilling');
+	await row.click();
+
+	await expect(page).toHaveURL(/\/indstillinger\/integrationer#krog$/);
+	await expect(page.locator('#krog')).toBeInViewport();
+
+	expect(trouble).toEqual([]);
+});

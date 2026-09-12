@@ -207,6 +207,7 @@ export const en = {
 	'palette.project': 'Project',
 	'palette.task': 'Task',
 	'palette.note': 'Note',
+	'palette.setting': 'Setting',
 	'nav.today': 'Today',
 	'nav.upcoming': 'Upcoming',
 	'nav.delegated': 'Waiting on others',
@@ -217,7 +218,7 @@ export const en = {
 	'nav.signOutConfirm': 'Click again to sign out',
 	'nav.main': 'Main menu',
 	'nav.search': 'Search',
-	'nav.searchLong': 'Search tasks and projects',
+	'nav.searchLong': 'Search tasks, notes, projects and settings',
 	'nav.noResults': 'Nothing found.',
 	'nav.showSidebar': 'Show the sidebar',
 	'nav.hideSidebar': 'Hide the sidebar',
@@ -298,6 +299,8 @@ export const en = {
 
 	// --- settings: the frame -------------------------------------------------------
 	'settings.title': 'Settings',
+	'settings.search': 'Search settings',
+	'settings.searchNone': 'No setting goes by that name.',
 	'settings.tab.account': 'Account',
 	'settings.tab.notifications': 'Notifications',
 	'settings.tab.integrations': 'Integrations',

@@ -234,7 +234,7 @@
 	}
 </script>
 
-<section class="panel">
+<section class="panel" id="import">
 	<header>
 		<h2>{t('data.import')}</h2>
 		<p class="hint">
@@ -279,7 +279,7 @@
 <!-- Færdige used to be a permanent entry in the sidebar. It is a rare errand next
      to the four that are read every day, and it belongs with the other "where did
      that go" questions rather than above them. -->
-<section class="panel">
+<section class="panel" id="faerdige">
 	<header>
 		<h2>{t('done.title')}</h2>
 		<p class="hint">{t('data.doneHint')}</p>
@@ -289,7 +289,7 @@
 	</div>
 </section>
 
-<section class="panel">
+<section class="panel" id="papirkurv">
 	<header>
 		<h2>{t('data.trash')}</h2>
 		<p class="hint">
@@ -322,7 +322,7 @@
 <!-- Administrators only, like the error log and for a sharper reason: a backup file
      is a complete copy of the database, so this panel hands out everybody's data. -->
 {#if app.user?.is_admin}
-	<section class="panel">
+	<section class="panel" id="sikkerhedskopier">
 		<header>
 			<h2>{t('data.backups')}</h2>
 			<p class="hint">
@@ -380,7 +380,7 @@
 	</section>
 {/if}
 
-<section class="panel">
+<section class="panel" id="eksport">
 	<header>
 		<h2>{t('data.export')}</h2>
 		<p class="hint">
@@ -428,7 +428,7 @@
 	{/if}
 </section>
 
-<section class="panel">
+<section class="panel" id="skabeloner">
 	<header>
 		<h2>{t('data.templates')}</h2>
 		<p class="hint">
@@ -512,7 +512,7 @@
      Under Data, fordi det er her alt om "hvad forlader denne instans" står — en
      sikkerhedskopi, en eksport, en import. Telemetri hører til i samme rude som
      dem, ikke gemt væk under en fane, ingen åbner. -->
-<section class="panel">
+<section class="panel" id="beacon">
 	<header>
 		<h2>{t('beacon.title')}</h2>
 		<p class="hint">{t('beacon.hint')}</p>

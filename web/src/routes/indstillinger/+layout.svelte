@@ -11,8 +11,10 @@
 	 * is six places for them to drift apart.
 	 */
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { app } from '$lib/stores.svelte.js';
 	import { t } from '$lib/i18n.svelte.js';
+	import { findSettings } from '$lib/settingsindex.js';
 
 	let { children } = $props();
 
@@ -37,12 +39,103 @@
 	]);
 
 	let current = $derived($page.url.pathname.replace(/\/$/, '') || '/indstillinger');
+
+	/**
+	 * Søgningen efter en indstilling.
+	 *
+	 * Ti faner med en snes afsnit i alt, og den eneste vej til et bestemt af dem
+	 * var at huske, hvilken fane det lå under. Feltet her og ⌘K spørger det samme
+	 * indeks — se settingsindex.js — så et nyt afsnit kun skal skrives ét sted for
+	 * at kunne findes to.
+	 */
+	let query = $state('');
+	let hits = $derived(findSettings(query, { t, isAdmin: app.user?.is_admin ?? false }));
+
+	function go(hit) {
+		query = '';
+		goto(hit.href);
+	}
+
+	function onkeydown(event) {
+		if (event.key === 'Escape') {
+			query = '';
+			return;
+		}
+		if (event.key === 'Enter' && hits.length) {
+			event.preventDefault();
+			go(hits[0]);
+		}
+	}
+
+	/**
+	 * Ruller hen til afsnittet, når adressen nævner det, og blinker det.
+	 *
+	 * Browserens egen springen til et anker kan ikke bruges her: siden hentes af
+	 * ruteren, og afsnittet findes først, når dens data er hjemme — så et spring,
+	 * der sker med det samme, lander på en side, der endnu er tom. Derfor prøves
+	 * det, indtil elementet er der, og gives op efter to sekunder frem for at
+	 * prøve for evigt.
+	 *
+	 * Og blinket er ikke pynt. Man er landet et sted, man ikke selv rullede hen
+	 * til, midt i en side med otte afsnit, der ligner hinanden; uden det skal man
+	 * læse sig frem til, hvor man er.
+	 */
+	$effect(() => {
+		const anchor = $page.url.hash.slice(1);
+		if (!anchor) return;
+
+		let tries = 0;
+		let timer;
+		const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+		const look = () => {
+			const el = document.getElementById(anchor);
+			if (!el) {
+				if (tries++ < 40) timer = setTimeout(look, 50);
+				return;
+			}
+			el.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+			el.classList.add('landed');
+			timer = setTimeout(() => el.classList.remove('landed'), 1600);
+		};
+		look();
+
+		return () => clearTimeout(timer);
+	});
 </script>
 
 <div class="settings">
 	<header>
 		<h1>{t('settings.title')}</h1>
 	</header>
+
+	<div class="find">
+		<input
+			type="search"
+			bind:value={query}
+			{onkeydown}
+			placeholder={t('settings.search')}
+			aria-label={t('settings.search')}
+			autocomplete="off"
+			spellcheck="false"
+		/>
+		{#if query.trim()}
+			{#if hits.length}
+				<ul class="hits">
+					{#each hits as hit (hit.href)}
+						<li>
+							<button onclick={() => go(hit)}>
+								<span class="where">{hit.tab}</span>
+								<span class="what">{hit.title}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="nohits">{t('settings.searchNone')}</p>
+			{/if}
+		{/if}
+	</div>
 
 	<nav aria-label={t('settings.title')}>
 		{#each sections as section (section.href)}
@@ -109,9 +202,108 @@
 		gap: var(--s5);
 	}
 
+	.find {
+		position: relative;
+		margin-bottom: var(--s3);
+	}
+
+	.find input {
+		width: 100%;
+		padding: var(--s2) var(--s3);
+		background: var(--surface-sunken);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		font-size: var(--text-sm);
+		outline: none;
+		transition: border-color var(--fast) var(--ease);
+	}
+
+	.find input:focus {
+		border-color: var(--accent);
+	}
+
+	/* Over indholdet frem for at skubbe det ned: listen kommer og går for hvert
+	   bogstav, og en side, der hopper under det, man læser, er svær at sigte i. */
+	.hits {
+		position: absolute;
+		z-index: 20;
+		left: 0;
+		right: 0;
+		margin: var(--s1) 0 0;
+		padding: var(--s1);
+		list-style: none;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		box-shadow: var(--shadow);
+	}
+
+	.hits button {
+		display: flex;
+		align-items: baseline;
+		gap: var(--s2);
+		width: 100%;
+		padding: var(--s2);
+		border-radius: var(--radius-sm);
+		text-align: left;
+		color: var(--ink);
+	}
+
+	.hits button:hover {
+		background: var(--surface-sunken);
+	}
+
+	/* Fanen står før navnet, fordi svaret på "hvor ligger det?" er halvdelen af
+	   det, man søgte efter. */
+	.where {
+		flex: none;
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+	}
+
+	.what {
+		font-size: var(--text-sm);
+	}
+
+	.nohits {
+		margin: var(--s2) 0 0;
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+	}
+
+	.settings :global(h3[id]) {
+		scroll-margin-top: var(--s5);
+	}
+
+	/* Blinket, når man er landet et sted, man ikke selv rullede hen til. Kanten og
+	   ikke baggrunden: en baggrund, der skifter, gør teksten svær at læse i netop
+	   det øjeblik, man er kommet for at læse den. */
+	.settings :global(.landed) {
+		animation: landed 1.6s var(--ease);
+	}
+
+	@keyframes landed {
+		0%,
+		60% {
+			box-shadow: 0 0 0 2px var(--accent);
+		}
+		100% {
+			box-shadow: 0 0 0 2px transparent;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.settings :global(.landed) {
+			animation: none;
+		}
+	}
+
 	/* --- shared form chrome, for the child routes ------------------------------- */
 
 	.settings :global(section.panel) {
+		/* Der er en fast linje øverst på skærmen. Uden den her lander afsnittets
+		   overskrift bag den, når man springer hertil fra en søgning. */
+		scroll-margin-top: var(--s5);
 		background: var(--surface);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-lg);

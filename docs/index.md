@@ -26,6 +26,10 @@ forward mail to, and an MCP endpoint so Claude can work your task list directly.
   board and calendar views, and foldable groups over the projects in the sidebar.
   The calendar draws each task to its length — drag the foot to resize, the body
   to move it.
+- **Find it by searching for it.** ⌘K searches tasks, notes and projects — and the
+  settings themselves, by what they *do* rather than only by what they are called,
+  so `webhook` finds *Push from other programs* and `2fa` finds *Two-factor*. The
+  settings pages carry the same field at the top of their own list.
 - **Notes, beside the work.** Rich text to write in, Markdown on disk. Share a
   single note with a person — by name, by email address, or by writing `@Sofie` in
   the text — or file it in a project; `#project` and `[[another note]]` are links,

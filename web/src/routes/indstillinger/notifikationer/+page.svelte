@@ -213,7 +213,7 @@
 	});
 </script>
 
-<section class="panel">
+<section class="panel" id="dagens-plan">
 	<header>
 		<h2>{t('ai.plan')}</h2>
 		<p class="hint">{t('ai.planHint')}</p>
@@ -252,7 +252,7 @@
 	{/if}
 </section>
 
-<section class="panel">
+<section class="panel" id="push">
 	<header>
 		<h2>{t('push.title')}</h2>
 		<p class="hint">
@@ -296,7 +296,7 @@
 	{/if}
 </section>
 
-<section class="panel">
+<section class="panel" id="seneste">
 	<header>
 		<h2>{t('push.recent')}</h2>
 		{#if unread > 0}
@@ -335,7 +335,7 @@
 </section>
 
 {#if version}
-	<section class="panel">
+	<section class="panel" id="version">
 		<header>
 			<h2>{t('push.version')}</h2>
 		</header>
