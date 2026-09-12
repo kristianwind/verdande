@@ -884,4 +884,38 @@
 	a {
 		color: var(--accent);
 	}
+
+	/* The bullet list this was is why the page scrolled sideways on a phone. A
+	   subscription address is one word with nothing to break at, so it cannot wrap
+	   on its own — and the widest element on a page sets the width of the page, not
+	   of its own line. Hence `anywhere`, which breaks mid-word when there is no
+	   other opportunity, plus `min-width: 0` so the flex item is allowed to be
+	   narrower than its content in the first place. */
+	.subs-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: var(--s3);
+	}
+
+	.subs-list li {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--s1);
+		min-width: 0;
+	}
+
+	.subs-list .url {
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		overflow-wrap: anywhere;
+		max-width: 100%;
+	}
+
+	.subs-list button {
+		margin-top: var(--s1);
+	}
 </style>
