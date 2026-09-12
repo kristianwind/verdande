@@ -128,7 +128,7 @@
 	const expires = shortDate;
 </script>
 
-<section class="panel">
+<section class="panel" id="invitation">
 	<header>
 		<h2>{t('users.invite')}</h2>
 		<p class="hint">
@@ -163,7 +163,7 @@
 </section>
 
 {#if invites.length}
-	<section class="panel">
+	<section class="panel" id="afventende">
 		<header>
 			<h2>{t('users.pending')}</h2>
 			<p class="hint">
@@ -191,7 +191,7 @@
 	</section>
 {/if}
 
-<section class="panel">
+<section class="panel" id="konti">
 	<header>
 		<h2>{t('users.accounts')}</h2>
 		<p class="hint">{t('users.accountsHint')}</p>

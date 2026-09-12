@@ -276,7 +276,7 @@
 	 */
 </script>
 
-<section class="panel">
+<section class="panel" id="profil">
 	<header>
 		<h2>{t('account.profile')}</h2>
 		<p class="hint">
@@ -332,7 +332,7 @@
 	</form>
 </section>
 
-<section class="panel">
+<section class="panel" id="udseende">
 	<header>
 		<h2>{t('account.appearance')}</h2>
 		<p class="hint">
@@ -366,7 +366,7 @@
 	<!-- The second axis. A theme says how bright, a look says how it reads — and
 	     they are separate settings because they are separate questions. -->
 	<div class="looks">
-		<h3>{t('account.look')}</h3>
+		<h3 id="look">{t('account.look')}</h3>
 		<p class="hint">{t('account.lookHint')}</p>
 		<div class="look-row">
 			{#each LOOKS as option (option.id)}
@@ -390,7 +390,7 @@
 	     Separate on purpose — one is a glance down a list of names, the other is a
 	     paragraph you sit and read. -->
 	<div class="sizes">
-		<h3>{t('account.sizes')}</h3>
+		<h3 id="stoerrelser">{t('account.sizes')}</h3>
 		<p class="hint">{t('account.sizesHint')}</p>
 		<div class="size-row">
 			<div class="size-field">
@@ -421,7 +421,7 @@
 	</div>
 </section>
 
-<section class="panel">
+<section class="panel" id="links">
 	<header>
 		<h2>{t('link.title')}</h2>
 		<p class="hint">{t('link.hint')}</p>
@@ -464,7 +464,7 @@
 	{/if}
 </section>
 
-<section class="panel">
+<section class="panel" id="adgangskode">
 	<header>
 		<h2>{t('account.password')}</h2>
 		<p class="hint">
@@ -506,7 +506,7 @@
 	</form>
 </section>
 
-<section class="panel">
+<section class="panel" id="to-faktor">
 	<header>
 		<h2>{t('account.totp')}</h2>
 		<p class="hint">{t('account.totpHint')}</p>
@@ -616,7 +616,7 @@
 
 <!-- Between two-factor and the device list, because it belongs to both: a passkey
      is a way in, and it is a thing on a device you might later want to revoke. -->
-<section class="panel">
+<section class="panel" id="passkey">
 	<header>
 		<h2>{t('passkey.title')}</h2>
 		<p class="hint">{t('passkey.hint')}</p>
@@ -655,7 +655,7 @@
 	{/if}
 </section>
 
-<section class="panel">
+<section class="panel" id="enheder">
 	<header>
 		<h2>{t('account.devices')}</h2>
 		<p class="hint">
@@ -687,7 +687,7 @@
      work. A plain anchor with an inline SVG — no third-party script, no webfont,
      no tracking — so it works offline and cannot phone home. See the coffee-cup
      snippet for why not their generated button. -->
-<section class="panel">
+<section class="panel" id="stoette">
 	<header>
 		<h2>{t('account.support')}</h2>
 		<p class="hint">{t('account.supportHint')}</p>

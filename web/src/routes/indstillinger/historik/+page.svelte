@@ -106,7 +106,7 @@
 	}
 </script>
 
-<section class="panel">
+<section class="panel" id="historik">
 	<header>
 		<h2>{t('history.title')}</h2>
 		<p class="hint">

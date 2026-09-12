@@ -93,7 +93,7 @@
 	const expired = (iso) => iso && new Date(iso) < new Date();
 </script>
 
-<section class="panel">
+<section class="panel" id="tokens">
 	<header>
 		<h2>{t('tokens.title')}</h2>
 		<p class="hint">

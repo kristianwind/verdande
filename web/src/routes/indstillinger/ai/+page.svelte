@@ -83,7 +83,7 @@
 	}
 </script>
 
-<section class="panel">
+<section class="panel" id="ai">
 	<header>
 		<h2>{t('ai.title')}</h2>
 		<p class="hint">
@@ -157,7 +157,7 @@
 </section>
 
 {#if settings?.provider && settings?.has_key}
-	<section class="panel">
+	<section class="panel" id="ugentlig">
 		<header>
 			<h2>{t('ai.weekly')}</h2>
 			<p class="hint">{t('ai.weeklyHint')}</p>

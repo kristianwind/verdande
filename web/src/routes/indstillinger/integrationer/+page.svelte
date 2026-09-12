@@ -416,7 +416,7 @@
 	}
 </script>
 
-<section class="panel">
+<section class="panel" id="gmail">
 	<header>
 		<h2>{t('int.gmail')}</h2>
 		<p class="hint">
@@ -520,7 +520,7 @@
 	{/if}
 </section>
 
-<section class="panel">
+<section class="panel" id="kalender">
 	<header>
 		<h2>{t('int.calendar')}</h2>
 		<p class="hint">{t('int.calendarHint')}</p>
@@ -605,7 +605,7 @@
 	     Gmail mod en Internal-registrering — kan stadig abonnere på en adresse. -->
 	{#if calendar !== null}
 		<div class="subs">
-			<h3>{t('int.subscriptions')}</h3>
+			<h3 id="abonnementer">{t('int.subscriptions')}</h3>
 			<p class="hint">{t('int.subscriptionsHint')}</p>
 
 			{#if calendar.subscriptions?.length}
@@ -643,7 +643,7 @@
 	{/if}
 </section>
 
-<section class="panel">
+<section class="panel" id="kalenderfeed">
 	<header>
 		<h2>{t('int.feed')}</h2>
 		<p class="hint">
@@ -665,7 +665,7 @@
 	</p>
 </section>
 
-<section class="panel">
+<section class="panel" id="mail-til-opgave">
 	<header>
 		<h2>{t('int.mailToTask')}</h2>
 		<p class="hint">
@@ -690,7 +690,7 @@
 	</div>
 </section>
 
-<section class="panel">
+<section class="panel" id="krog">
 	<header>
 		<h2>{t('int.hookToTask')}</h2>
 		<p class="hint">
@@ -722,7 +722,7 @@
 	</div>
 </section>
 
-<section class="panel">
+<section class="panel" id="caldav-server">
 	<header>
 		<h2>{t('int.caldav')}</h2>
 		<p class="hint">
@@ -743,7 +743,7 @@
      rather than a second mode inside the Gmail one, because they are not the same
      thing wearing different clothes — one is an app you sign in through, the other
      is a password you hold. -->
-<section class="panel">
+<section class="panel" id="postkasser">
 	<header>
 		<h2>{t('int.mailboxes')}</h2>
 		<p class="hint">{t('int.mailboxesHint')}</p>

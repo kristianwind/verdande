@@ -28,7 +28,7 @@
 
 </script>
 
-<section class="panel">
+<section class="panel" id="fejl">
 	<header>
 		<h2>{t('errors.title')}</h2>
 		<p class="hint">
