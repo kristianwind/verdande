@@ -460,7 +460,7 @@
 						     it has to match Google's copy exactly, and the error Google gives
 						     when it does not names neither value. Google afviser desuden
 						     private IP-adresser over http — det skal være https. -->
-						<input id="redirect" readonly value={client.redirect_uri} />
+						<output id="redirect">{client.redirect_uri}</output>
 					</div>
 
 					<form onsubmit={saveClient}>
@@ -546,7 +546,7 @@
 		{#if app.user?.is_admin}
 			<div class="field">
 				<label for="calendar-redirect">{t('int.redirectURI')}</label>
-				<input id="calendar-redirect" class="mono" readonly value={calendar.redirect_uri} />
+				<output id="calendar-redirect" class="mono">{calendar.redirect_uri}</output>
 				<p class="hint">{t('int.calendarSameClient')}</p>
 			</div>
 		{:else if !calendar.has_client}
@@ -653,7 +653,7 @@
 
 	<div class="field">
 		<label for="feed">{t('int.address')}</label>
-		<input id="feed" class="mono" value={feedURL} readonly />
+		<output id="feed" class="mono">{feedURL}</output>
 	</div>
 
 	<div class="row">
@@ -681,7 +681,7 @@
 
 	<div class="field">
 		<label for="mail">{t('int.yourAddress')}</label>
-		<input id="mail" class="mono" value={mailAddress} readonly />
+		<output id="mail" class="mono">{mailAddress}</output>
 	</div>
 
 	<div class="row">
@@ -700,7 +700,7 @@
 
 	<div class="field">
 		<label for="hook">{t('int.yourHook')}</label>
-		<input id="hook" class="mono" value={hookURL} readonly />
+		<output id="hook" class="mono">{hookURL}</output>
 		<p class="hint">
 			{t('int.hookHow')}
 		</p>
@@ -711,8 +711,8 @@
 	     kroppen bare er den linje, opgaven skal hedde. -->
 	<div class="field">
 		<label for="hookcurl">{t('int.hookExample')}</label>
-		<textarea id="hookcurl" class="mono" rows="3" readonly
-			>{`curl -X POST ${hookURL} \\\n  -H "Content-Type: text/plain" \\\n  -d "Ring til Anders i morgen p1 #Firma"`}</textarea
+		<output id="hookcurl" class="mono"
+			>{`curl -X POST ${hookURL} \\\n  -H "Content-Type: text/plain" \\\n  -d "Ring til Anders i morgen p1 #Firma"`}</output
 		>
 	</div>
 
@@ -732,7 +732,7 @@
 
 	<div class="field">
 		<label for="caldav">{t('int.server')}</label>
-		<input id="caldav" class="mono" value={`${location.origin}/caldav/`} readonly />
+		<output id="caldav" class="mono">{`${location.origin}/caldav/`}</output>
 		<p class="hint">
 			{t('int.caldavAuth')}
 		</p>
@@ -817,7 +817,7 @@
 		color: var(--ink-muted);
 	}
 
-	.setup input[readonly] {
+	.setup output {
 		font-family: var(--font-mono);
 		font-size: var(--text-xs);
 		color: var(--ink-muted);
@@ -883,5 +883,39 @@
 
 	a {
 		color: var(--accent);
+	}
+
+	/* The bullet list this was is why the page scrolled sideways on a phone. A
+	   subscription address is one word with nothing to break at, so it cannot wrap
+	   on its own — and the widest element on a page sets the width of the page, not
+	   of its own line. Hence `anywhere`, which breaks mid-word when there is no
+	   other opportunity, plus `min-width: 0` so the flex item is allowed to be
+	   narrower than its content in the first place. */
+	.subs-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: var(--s3);
+	}
+
+	.subs-list li {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--s1);
+		min-width: 0;
+	}
+
+	.subs-list .url {
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		overflow-wrap: anywhere;
+		max-width: 100%;
+	}
+
+	.subs-list button {
+		margin-top: var(--s1);
 	}
 </style>

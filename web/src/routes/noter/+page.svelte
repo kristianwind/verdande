@@ -1279,7 +1279,7 @@
 											     lovet i en besked, der ikke kom af sted. -->
 											<p class="invitelink">
 												{t('notes.inviteNoMail')}
-												<input readonly value={shareInviteLink} onclick={(e) => e.target.select()} />
+												<output>{shareInviteLink}</output>
 											</p>
 										{/if}
 									</section>
@@ -2216,11 +2216,23 @@
 		line-height: 1.5;
 	}
 
-	.invitelink input {
+	/* <output> og ikke et skrivebeskyttet <input>: et input kan ikke ombryde, så et
+	   invitationslink stod halvt uden for kassen på en telefon, og resten kunne kun
+	   nås ved at rulle inde i feltet. `user-select: all` beholder det, inputtet var
+	   god til — ét tryk tager hele linket. */
+	.invitelink output {
+		display: block;
 		width: 100%;
 		margin-top: 2px;
-		font-size: var(--text-xs);
 		padding: 2px var(--s1);
+		background: var(--surface-sunken);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		color: var(--ink);
+		overflow-wrap: anywhere;
+		user-select: all;
 	}
 
 	.addshare {

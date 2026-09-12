@@ -4360,3 +4360,97 @@ test('dagens plan står på I dag, og ikke kun som en besked', async ({ page }) 
 
 	expect(trouble).toEqual([]);
 });
+
+/**
+ * Adresserne på integrationssiden kan ses helt på en telefon.
+ *
+ * En URL er ét ord på et par hundrede tegn uden et mellemrum i, og den kan derfor
+ * ikke ombryde af sig selv. Det gav to forskellige fejl på den samme side, og
+ * prøven her holder øje med dem begge:
+ *
+ * Abonnementets adresse lå i en liste uden noget, der lod den bryde, og det
+ * bredeste element på en side bestemmer sidens bredde — så hele indholdsspalten fik
+ * et vandret rullepanel, ikke bare den ene linje.
+ *
+ * Feed'et, krogen og CalDAV-serveren lå i skrivebeskyttede <input>, som ruller
+ * indeni i stedet for at ombryde. Der var ikke noget rullepanel at se: adressen
+ * stoppede bare midt i kassen, og resten fandtes kun ved at trække inde i feltet.
+ *
+ * Abonnementet kommer fra et svar, prøven selv skriver. Serveren ville skulle hente
+ * kalenderen for at have et at vise, og en prøve, der går på nettet, er en prøve,
+ * der fejler en dag af en anden grund end sin egen.
+ */
+test('adresserne på integrationssiden kan ses helt på en telefon', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+
+	await page.route('**/api/v1/calendar', (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify({
+				connected: false,
+				calendars: [],
+				has_client: false,
+				read_only: true,
+				redirect_uri: 'http://localhost:8097/api/v1/calendar/callback',
+				subscriptions: [
+					{
+						id: '0198f000-0000-7000-8000-000000000001',
+						provider: 'ics',
+						account: 'kw@netic.dk',
+						url:
+							'https://calendar.google.com/calendar/ical/kw%40netic.dk/private-3f9a1c7e5b2d4a6f8c0e1d2b3a4f5e6d/basic.ics',
+						created_at: '2026-09-01T09:00:00+02:00'
+					}
+				]
+			})
+		})
+	);
+
+	// En iPhone i stående format. Bredden er det eneste, der betyder noget her.
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto('/indstillinger/integrationer');
+	await expect(page.getByText('kw@netic.dk')).toBeVisible();
+
+	// `.content` og ikke dokumentet. Skallen holder selv siden på skærmens bredde,
+	// så documentElement måler 390 uanset hvad — det er indholdsspalten indeni, der
+	// ruller, og det er den, man skubber med tommelfingeren. En prøve på dokumentet
+	// består med fejlen i behold; den er prøvet.
+	const spill = await page.evaluate(() => {
+		const el = document.querySelector('.content');
+		const url = document.querySelector('.subs-list .url');
+		return {
+			content: el.scrollWidth - el.clientWidth,
+			past: Math.round(url.getBoundingClientRect().right) - document.documentElement.clientWidth
+		};
+	});
+	expect(spill.content).toBe(0);
+	expect(spill.past).toBeLessThanOrEqual(0);
+
+	// Og adresserne på siden står der helt. De lå i skrivebeskyttede <input>, som
+	// ikke kan ombryde: kassen var 306 px og indholdet 595, så resten af adressen
+	// fandtes kun ved at rulle inde i feltet — hvilket ingen opdager. Et felt, der
+	// er klippet, er et felt, hvor scrollWidth er større end clientWidth, og det er
+	// præcis det, der måles her.
+	//
+	// Felterne står ved navn og ikke som en forespørgsel på en klasse: en prøve, der
+	// måler `.field output` og finder nul, består — også den dag felterne er lavet om
+	// til noget andet klippet. Den skal fejle, hvis et af dem forsvinder.
+	const clipped = await page.evaluate(() =>
+		['feed', 'mail', 'hook', 'hookcurl', 'caldav']
+			.map((id) => {
+				const el = document.getElementById(id);
+				if (!el) return `${id}: findes ikke`;
+				if (el.scrollWidth - el.clientWidth > 1) return `${id}: ${el.scrollWidth} > ${el.clientWidth}`;
+				return null;
+			})
+			.filter(Boolean)
+	);
+	expect(clipped).toEqual([]);
+
+	// Selve teksten, ikke kun kassens mål: krogens adresse er den, der skal kunne
+	// læses af, hvis man taster den ind i en genvej på telefonen.
+	await expect(page.locator('#hook')).toHaveText(/^https?:\/\/.+\/inbound\/hook\/.+/);
+
+	expect(trouble).toEqual([]);
+});
