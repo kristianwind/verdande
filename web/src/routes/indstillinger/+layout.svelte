@@ -151,7 +151,8 @@
 
 	.settings :global(.field input),
 	.settings :global(.field select),
-	.settings :global(.field textarea) {
+	.settings :global(.field textarea),
+	.settings :global(.field output) {
 		width: 100%;
 		padding: var(--s2) var(--s3);
 		background: var(--surface-sunken);
@@ -166,6 +167,22 @@
 	.settings :global(.field select:focus),
 	.settings :global(.field textarea:focus) {
 		border-color: var(--accent);
+	}
+
+	/* Adresserne — feed'et, krogen, CalDAV-serveren — vises i et <output> og ikke i
+	   et skrivebeskyttet <input>. Et input kan ikke ombryde: det ruller indeni, så
+	   på en telefon står halvdelen af adressen uden for kassen, og der er ingen måde
+	   at se resten på. <output> er stadig et felt, en <label for> kan pege på, og det
+	   er tekst, der ombryder.
+
+	   `user-select: all` er der, fordi det var det eneste, inputtet gjorde bedre: ét
+	   tryk tog hele adressen. Uden den skulle man trække hen over fire linjer. */
+	.settings :global(.field output) {
+		display: block;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		user-select: all;
+		line-height: 1.5;
 	}
 
 	/* The field error sits under its own input rather than in a summary at the top:

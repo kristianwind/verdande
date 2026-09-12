@@ -4362,19 +4362,25 @@ test('dagens plan står på I dag, og ikke kun som en besked', async ({ page }) 
 });
 
 /**
- * En kalenderadresse gør ikke siden bredere end telefonen.
+ * Adresserne på integrationssiden kan ses helt på en telefon.
  *
- * Adressen på et abonnement er ét ord på et par hundrede tegn uden et mellemrum i,
- * og den stod i en liste uden noget, der lod den ombryde. Det, man så, var ikke en
- * linje, der løb ud over kanten — det var hele siden, der fik et vandret
- * rullepanel, fordi det bredeste element på en side bestemmer sidens bredde. Derfor
- * måler prøven dokumentet og ikke elementet: det er dokumentet, der var galt.
+ * En URL er ét ord på et par hundrede tegn uden et mellemrum i, og den kan derfor
+ * ikke ombryde af sig selv. Det gav to forskellige fejl på den samme side, og
+ * prøven her holder øje med dem begge:
+ *
+ * Abonnementets adresse lå i en liste uden noget, der lod den bryde, og det
+ * bredeste element på en side bestemmer sidens bredde — så hele indholdsspalten fik
+ * et vandret rullepanel, ikke bare den ene linje.
+ *
+ * Feed'et, krogen og CalDAV-serveren lå i skrivebeskyttede <input>, som ruller
+ * indeni i stedet for at ombryde. Der var ikke noget rullepanel at se: adressen
+ * stoppede bare midt i kassen, og resten fandtes kun ved at trække inde i feltet.
  *
  * Abonnementet kommer fra et svar, prøven selv skriver. Serveren ville skulle hente
  * kalenderen for at have et at vise, og en prøve, der går på nettet, er en prøve,
  * der fejler en dag af en anden grund end sin egen.
  */
-test('en lang kalenderadresse giver ikke vandret rulning', async ({ page }) => {
+test('adresserne på integrationssiden kan ses helt på en telefon', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 
 	await page.route('**/api/v1/calendar', (route) =>
@@ -4420,6 +4426,31 @@ test('en lang kalenderadresse giver ikke vandret rulning', async ({ page }) => {
 	});
 	expect(spill.content).toBe(0);
 	expect(spill.past).toBeLessThanOrEqual(0);
+
+	// Og adresserne på siden står der helt. De lå i skrivebeskyttede <input>, som
+	// ikke kan ombryde: kassen var 306 px og indholdet 595, så resten af adressen
+	// fandtes kun ved at rulle inde i feltet — hvilket ingen opdager. Et felt, der
+	// er klippet, er et felt, hvor scrollWidth er større end clientWidth, og det er
+	// præcis det, der måles her.
+	//
+	// Felterne står ved navn og ikke som en forespørgsel på en klasse: en prøve, der
+	// måler `.field output` og finder nul, består — også den dag felterne er lavet om
+	// til noget andet klippet. Den skal fejle, hvis et af dem forsvinder.
+	const clipped = await page.evaluate(() =>
+		['feed', 'mail', 'hook', 'hookcurl', 'caldav']
+			.map((id) => {
+				const el = document.getElementById(id);
+				if (!el) return `${id}: findes ikke`;
+				if (el.scrollWidth - el.clientWidth > 1) return `${id}: ${el.scrollWidth} > ${el.clientWidth}`;
+				return null;
+			})
+			.filter(Boolean)
+	);
+	expect(clipped).toEqual([]);
+
+	// Selve teksten, ikke kun kassens mål: krogens adresse er den, der skal kunne
+	// læses af, hvis man taster den ind i en genvej på telefonen.
+	await expect(page.locator('#hook')).toHaveText(/^https?:\/\/.+\/inbound\/hook\/.+/);
 
 	expect(trouble).toEqual([]);
 });
