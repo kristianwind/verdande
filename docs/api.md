@@ -96,9 +96,10 @@ curl -X POST https://todo.example.dk/api/v1/tasks/quick-add \
 | `GET` `PATCH` `DELETE` | `/projects/{id}` | Read, change, trash. Owner only for the last two. |
 | `GET` `POST` | `/projects/{id}/sections` | |
 | `PATCH` `DELETE` | `/sections/{id}` | |
-| `GET` | `/projects/{id}/members` | |
-| `POST` | `/projects/{id}/invites` | Share it. `{"email": …, "role": "editor"\|"viewer"}` |
-| `DELETE` | `/projects/{id}/members/{userID}` | |
+| `GET` | `/projects/{id}/members` | Who is on it, who can be added (`candidates`), and who has been invited and not arrived (`pending`). |
+| `POST` | `/projects/{id}/invites` | Share it. `{"user_id": …}` for somebody who already has an account here, `{"email": …}` for anybody else — plus `"role": "editor"\|"viewer"`. An address that turns out to belong to an account is that account. |
+| `DELETE` | `/projects/{id}/invites/{inviteID}` | Withdraw an invitation before it is used. |
+| `PATCH` `DELETE` | `/projects/{id}/members/{userID}` | Change somebody's role, or take them off. |
 | `GET` | `/projects/{id}/activity` | |
 | `GET` | `/trash/projects` | What you have deleted and can still bring back, with how long is left. |
 | `POST` | `/trash/projects/{id}/restore` | Brings it back with the tasks that went with it. |

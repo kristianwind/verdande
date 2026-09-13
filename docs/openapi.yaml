@@ -2307,7 +2307,15 @@ paths:
       - { name: projectID, in: path, required: true, schema: { type: string } }
     get:
       tags: [projects]
-      summary: Who the project is shared with.
+      summary: Who the project is shared with, who can be added, and who has been invited.
+      description: >
+        Three lists in one answer, so the share panel opens complete in a single
+        round-trip. `candidates` is everybody with an account here who is not
+        already on the project — the instance's accounts are a closed, invited set,
+        so listing them to each other is the address book the feature needs, not a
+        disclosure. `pending` is the invitations sent to people who have no account
+        yet: without them an invitation sent yesterday is in neither of the other
+        two lists, and gets sent a second time.
       responses:
         "200":
           description: OK
@@ -2319,6 +2327,17 @@ paths:
                   members:
                     type: array
                     items: { $ref: "#/components/schemas/Member" }
+                  candidates:
+                    type: array
+                    items: { $ref: "#/components/schemas/Person" }
+                  pending:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        email: { type: string, format: email }
+                        role: { type: string, enum: [editor, viewer] }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /api/v1/projects/{projectID}/members/{userID}:
@@ -2384,13 +2403,32 @@ paths:
           application/json:
             schema:
               type: object
-              required: [email, role]
               properties:
-                email: { type: string, format: email }
+                user_id:
+                  type: string
+                  description: >
+                    Somebody who already has an account here, picked from the
+                    candidates in GET /members. One of user_id or email.
+                email:
+                  type: string
+                  format: email
+                  description: >
+                    An address. If it belongs to an account they are added at
+                    once; otherwise an invitation is sent.
                 role: { type: string, enum: [editor, viewer] }
       responses:
+        "200":
+          description: Added straight away — the person already had an account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  added: { type: boolean }
+                  user: { $ref: "#/components/schemas/Person" }
+                  role: { type: string, enum: [editor, viewer] }
         "201":
-          description: Created
+          description: Invited. No account yet, so a link was made.
           content:
             application/json:
               schema:
@@ -2399,7 +2437,29 @@ paths:
                   link: { type: string }
                   emailed: { type: boolean }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Validation" }
+
+  /api/v1/projects/{projectID}/invites/{inviteID}:
+    delete:
+      tags: [projects]
+      summary: Withdraw an invitation to a project before it is used. Its owner only.
+      description: >
+        The only way back. Only the token's hash is stored, so a link sent to the
+        wrong address cannot be looked up and invalidated — only the row it belongs
+        to can.
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema: { type: string }
+        - name: inviteID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Withdrawn }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /api/v1/projects/{projectID}/activity:
     parameters:
