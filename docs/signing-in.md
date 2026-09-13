@@ -8,6 +8,28 @@ What the first account is created with. Nothing is emailed, nothing is registere
 anywhere: the first person to open a fresh instance creates the administrator
 account, and after that people arrive by invite link.
 
+## Being let into a project
+
+Two different situations, one panel — **the project's ⋯ menu → Share**.
+
+Somebody who **already has an account here** you pick from a list by name. You do
+not need to know their email address to share a project with a colleague whose
+name you know. The accounts on an instance are a closed set — there is no open
+signup, every one of them was invited — so listing them to each other is the
+address book the feature needs, not a disclosure.
+
+Somebody who is **not here yet** you invite by email. If the address turns out to
+belong to an account it becomes an ordinary share straight away; otherwise it
+becomes a link that creates their account and their membership at once. With no
+mail server configured the link is shown in the panel instead of being sent, which
+is the correct behaviour on a one-person instance rather than an error.
+
+An invitation that has not been taken up stays listed under the members, greyed,
+with a × to withdraw it. Without that it is invisible — the person has no account,
+so they are neither a member nor somebody you can pick — and the usual next move
+is to send it a second time. The second link works exactly as well as the first,
+and then there are two to keep track of.
+
 ## A code on top of it
 
 **Settings → Account → Two-factor.** An ordinary TOTP secret — any authenticator

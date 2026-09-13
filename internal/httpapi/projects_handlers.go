@@ -452,22 +452,100 @@ type memberJSON struct {
 	Role        string `json:"role"`
 }
 
+// projectInviteJSON er en invitation, der venter på en konto. Der er intet navn og
+// ingen farve at vise: adressen er alt, hvad der findes om personen, indtil de
+// dukker op.
+type projectInviteJSON struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
+// handleListMembers is everything the share panel needs, in one answer: who is on
+// the project, who can be added, and who has been invited and not arrived.
+//
+// Kandidaterne kommer med her frem for fra et endepunkt for sig, så panelet åbner
+// færdigt i ét kald — samme form som notens delingspanel. Og de er nødvendige:
+// indtil nu kunne et projekt kun deles ved at skrive en e-mailadresse, hvilket
+// betyder, at man skal kende adressen på en kollega, man kender navnet på.
+//
+// De inviterede står ved siden af medlemmerne, fordi de ellers hverken er i den
+// ene liste eller den anden — de har ingen konto at være medlem med, og de er
+// derfor også fraværende fra kandidaterne. Uden dem ser en invitation sendt i går
+// ud som om den aldrig blev sendt, og så bliver den sendt igen.
 func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
-	members, err := s.db.ListMembers(r.Context(), chi.URLParam(r, "projectID"))
+	projectID := chi.URLParam(r, "projectID")
+
+	members, err := s.db.ListMembers(r.Context(), projectID)
 	if err != nil {
 		s.internal(w, r, "list members", err)
 		return
 	}
 	out := make([]memberJSON, 0, len(members))
+	already := map[string]bool{}
 	for _, m := range members {
 		out = append(out, memberJSON{m.UserID, m.Email, m.Name, m.AvatarColor, string(m.Role)})
+		already[m.UserID] = true
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"members": out})
+
+	project, err := s.db.GetProject(r.Context(), projectID, userFrom(r.Context()).ID)
+	if err != nil {
+		s.storeError(w, r, "get project", err)
+		return
+	}
+	already[project.OwnerID] = true
+
+	people, err := s.db.UsersForSharing(r.Context(), userFrom(r.Context()).ID)
+	if err != nil {
+		s.internal(w, r, "share candidates", err)
+		return
+	}
+	candidates := make([]personJSON, 0, len(people))
+	for _, p := range people {
+		if already[p.ID] {
+			continue
+		}
+		candidates = append(candidates, personJSON{ID: p.ID, Name: p.Name, AvatarColor: p.AvatarColor})
+	}
+
+	invites, err := s.db.ListProjectInvites(r.Context(), projectID)
+	if err != nil {
+		s.internal(w, r, "list project invites", err)
+		return
+	}
+	pending := make([]projectInviteJSON, 0, len(invites))
+	for _, i := range invites {
+		pending = append(pending, projectInviteJSON{ID: i.ID, Email: i.Email, Role: string(i.Role)})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"members":    out,
+		"candidates": candidates,
+		"pending":    pending,
+	})
+}
+
+// handleDeleteProjectInvite withdraws an invitation that has not been taken up.
+//
+// Uden den er den ventende liste kun til at se på, og en invitation sendt til en
+// forkert adresse kan ikke tages tilbage — den bliver bare liggende, til den
+// udløber, med et link, der virker hele tiden.
+func (s *Server) handleDeleteProjectInvite(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
+	err := s.db.DeleteProjectInvite(r.Context(), projectID, chi.URLParam(r, "inviteID"))
+	if err != nil {
+		s.storeError(w, r, "delete project invite", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type inviteRequest struct {
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	// UserID er den, man har peget på i listen. Email er den, man kender adressen
+	// på — og den er også den, der virker, når der ingen konto er endnu.
+	UserID string `json:"user_id"`
+	Email  string `json:"email"`
+	Role   string `json:"role"`
 }
 
 type inviteResponse struct {
@@ -478,8 +556,14 @@ type inviteResponse struct {
 	Emailed bool   `json:"emailed"`
 }
 
-// handleInvite shares a project with somebody. An existing user is added directly;
-// anybody else gets a link that creates their account and their membership at once.
+// handleInvite shares a project with somebody.
+//
+// Der er to måder at sige, hvem det er — samme to som en note deles med. `user_id`
+// er den, man har peget på i listen, og den er grunden til at det her blev skrevet
+// om: indtil nu kunne et projekt kun deles ved at stave en e-mailadresse, altså
+// ved at kende adressen på en kollega, man kender navnet på. `email` er stadig
+// vejen til dem, der ikke er her endnu, og den bliver til et link, der opretter
+// kontoen og medlemskabet på én gang.
 func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request) {
 	var req inviteRequest
 	if err := decodeJSON(w, r, &req); err != nil {
@@ -496,8 +580,13 @@ func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request) {
 		writeFieldErrors(w, map[string]string{"role": "must be editor or viewer"})
 		return
 	}
+
 	email := store.NormalizeEmail(req.Email)
-	if email == "" || !strings.Contains(email, "@") {
+	if req.UserID == "" && email == "" {
+		writeFieldErrors(w, map[string]string{"user_id": "required"})
+		return
+	}
+	if req.UserID == "" && !strings.Contains(email, "@") {
 		writeFieldErrors(w, map[string]string{"email": "must be an email address"})
 		return
 	}
@@ -508,19 +597,47 @@ func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Somebody who already has an account is added straight away: sending them
-	// through a signup form they cannot complete would be a dead end.
-	if existing, err := s.db.UserByEmail(r.Context(), email); err == nil {
-		if existing.ID == project.OwnerID {
+	// En adresse, der viser sig at høre til en konto, ER den konto: at sende dem
+	// gennem en oprettelsesside, de ikke kan komme igennem, ville være en
+	// blindgyde. Derfor slås adressen op først, og de to veje mødes her.
+	if req.UserID == "" {
+		if existing, err := s.db.UserByEmail(r.Context(), email); err == nil {
+			req.UserID = existing.ID
+		}
+	}
+
+	if req.UserID != "" {
+		if req.UserID == project.OwnerID {
 			writeError(w, http.StatusConflict, CodeConflict, "that person already owns this project")
 			return
 		}
-		if err := s.db.AddMember(r.Context(), projectID, existing.ID, role); err != nil {
+		// Slået op frem for taget på ordet: et id, der ikke findes, ville ellers
+		// blive til en medlemsrække, der peger på ingen — og panelet ville vise en
+		// tom plads, ingen kan fjerne.
+		person, err := s.db.PersonByID(r.Context(), req.UserID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, CodeNotFound, "no such person")
+			return
+		}
+		if err := s.db.AddMember(r.Context(), projectID, person.ID, role); err != nil {
 			s.internal(w, r, "add member", err)
 			return
 		}
-		s.activity(r, projectID, "", "member.added", map[string]any{"email": email, "role": string(role)})
-		writeJSON(w, http.StatusOK, map[string]any{"added": true})
+		s.activity(r, projectID, "", "member.added", map[string]any{"name": person.Name, "role": string(role)})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"added": true,
+			// Personen sendes med retur, fordi fladen kan have delt med en adresse
+			// og derfor ikke selv ved, hvem den ramte.
+			"user": personJSON{ID: person.ID, Name: person.Name, AvatarColor: person.AvatarColor},
+			"role": string(role),
+		})
+		return
+	}
+
+	// Et andet link til den samme indbakke hjælper ingen: det første virker
+	// stadig, og nu er der to at holde styr på og to at trække tilbage.
+	if pending, err := s.db.PendingProjectInvite(r.Context(), projectID, email); err == nil && pending {
+		writeError(w, http.StatusConflict, CodeConflict, "that address has already been invited")
 		return
 	}
 

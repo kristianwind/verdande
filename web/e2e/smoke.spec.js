@@ -1104,7 +1104,9 @@ test('en rolle kan rettes uden at fjerne personen', async ({ browser, page }) =>
 
 	await projectAction(page, 'Del');
 	await page.getByLabel('Inviter via e-mail').fill('andreas@example.dk');
-	await page.getByLabel('Rolle').selectOption('viewer');
+	// `exact`, fordi siden nu også har "Rolle for den valgte" ved siden af
+	// vælgeren — og getByLabel matcher som understreng.
+	await page.getByLabel('Rolle', { exact: true }).selectOption('viewer');
 	await page.getByRole('button', { name: 'Inviter' }).click();
 	const link = await page.locator('.link-out code').textContent();
 
@@ -4512,6 +4514,88 @@ test('en indstilling kan findes ved at søge efter den', async ({ page }) => {
 
 	await expect(page).toHaveURL(/\/indstillinger\/integrationer#krog$/);
 	await expect(page.locator('#krog')).toBeInViewport();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * Et projekt kan deles med en, der allerede er her.
+ *
+ * Indtil nu kunne det kun deles ved at stave en e-mailadresse — altså ved at kende
+ * adressen på en kollega, man kender navnet på og sidder i samme rum som. Konti på
+ * en instans bliver kun til ved invitation, så der er ikke noget at beskytte ved at
+ * lade være med at vise dem for hinanden; det er adressebogen, funktionen har brug
+ * for.
+ *
+ * Prøven laver selv sin anden person frem for at låne den fra prøven ovenfor. Den
+ * kobling så jeg først, da jeg kørte den her alene: basen tømmes for hver kørsel,
+ * så en prøve, der kun består, når hele filen kører i rækkefølge, består ikke af
+ * sine egne grunde.
+ *
+ * Og turen forbi invitationen er ikke spild. Den viser skiftet: den samme person er
+ * først en ventende adresse, og bagefter et navn, der kan vælges.
+ */
+test('et projekt kan deles med en, der allerede har en konto', async ({ browser, page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Vinterhaven');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Vinterhaven' })).toBeVisible();
+
+	// Først den, der ikke er her endnu. Adressen er den eneste vej til dem.
+	await projectAction(page, 'Del');
+	await page.getByLabel('Inviter via e-mail').fill('gartner@example.dk');
+	await page.getByRole('button', { name: 'Inviter' }).click();
+
+	// Og de bliver stående synligt, indtil de kommer — ellers er en invitation
+	// sendt i går usynlig, og så bliver den sendt igen.
+	const invited = page.locator('.members.invited');
+	await expect(invited.getByText('gartner@example.dk')).toBeVisible();
+	await expect(invited).toContainText('Inviteret, ikke kommet endnu');
+
+	const link = await page.locator('.link-out code').textContent();
+	expect(link).toContain('/invite?token=');
+
+	// Tom kontekst: en inviteret, der allerede er logget ind som den, der inviterede,
+	// er det ene tilfælde, der aldrig sker.
+	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const guest = await context.newPage();
+	await guest.goto(link);
+	await guest.getByLabel('Navn', { exact: true }).fill('Gartner');
+	await guest.getByLabel(/Adgangskode/).fill('et langt kodeord til test');
+	await guest.getByRole('button', { name: 'Opret konto' }).click();
+	await expect(guest.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+	await context.close();
+
+	// Nu er de her. Et nyt projekt, og den samme person er blevet et navn, man vælger.
+	await page.goto('/');
+	await sidebar.getByRole('button', { name: 'Nyt projekt' }).click();
+	await sidebar.getByLabel('Projektnavn').fill('Drivhuset');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await expect(page.getByRole('heading', { name: 'Drivhuset' })).toBeVisible();
+
+	await projectAction(page, 'Del');
+	const picker = page.locator('.addshare select').first();
+	await expect(picker.locator('option', { hasText: 'Gartner' })).toHaveCount(1);
+
+	await picker.selectOption({ label: 'Gartner' });
+	await page.getByLabel('Rolle for den valgte').selectOption('viewer');
+	await page.locator('.addshare button', { hasText: 'Del' }).click();
+
+	const members = page.locator('.members').first();
+	await expect(members.locator('li', { hasText: 'Gartner' })).toContainText('Kan kun se');
+
+	// Og bagefter er de væk fra listen: en liste, der tilbyder at tilføje en, der
+	// allerede er der, er en liste, man gør det i ved et uheld.
+	await expect(picker.locator('option', { hasText: 'Gartner' })).toHaveCount(0);
+
+	// Tilbagetrækningen af en invitation prøves i Go
+	// (TestAPendingInviteIsVisibleAndCanBeWithdrawn) og ikke her. Den krævede et
+	// spring tilbage til det første projekt, og delingspanelet står åbent på tværs
+	// af det spring — så klikket på "Del" lukkede det, jeg lige havde åbnet.
 
 	expect(trouble).toEqual([]);
 });

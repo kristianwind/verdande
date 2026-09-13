@@ -354,6 +354,89 @@ func (db *DB) DeleteNoteInvite(ctx context.Context, noteID, inviteID string) err
 	return nil
 }
 
+// --- invitationer til ét projekt --------------------------------------------------
+
+// ProjectInvite is somebody invited to a project who has not arrived yet.
+//
+// The same shape as NoteInvite and deliberately not the same type: the two rows
+// differ in which column carries the target, and one struct covering both would
+// need a field that is empty half the time — which is how a caller ends up
+// reading the wrong one.
+type ProjectInvite struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Role      Role      `json:"role"`
+	CreatedAt time.Time `json:"-"`
+	ExpiresAt time.Time `json:"-"`
+}
+
+// ListProjectInvites is who has been invited to a project and not yet taken it up.
+//
+// The panel needs them beside the members for the same reason the note panel does:
+// an invitation sent yesterday is otherwise invisible, so it gets sent again — a
+// second link to the same inbox, and no way to take either back. That mattered
+// less while inviting meant typing an address; it matters more now that the panel
+// offers a list to pick from, because the people who are *missing* from that list
+// are exactly the ones already invited.
+//
+// Expired ones are left out, the same rule the administrator's list follows.
+func (db *DB) ListProjectInvites(ctx context.Context, projectID string) ([]ProjectInvite, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, email, role, created_at, expires_at
+		FROM invites
+		WHERE project_id = ? AND note_id IS NULL AND accepted_at IS NULL AND expires_at > ?
+		ORDER BY created_at`, projectID, time.Now().Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []ProjectInvite{}
+	for rows.Next() {
+		var i ProjectInvite
+		var created, expires int64
+		if err := rows.Scan(&i.ID, &i.Email, &i.Role, &created, &expires); err != nil {
+			return nil, err
+		}
+		i.CreatedAt = time.Unix(created, 0).UTC()
+		i.ExpiresAt = time.Unix(expires, 0).UTC()
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+// DeleteProjectInvite withdraws an invitation to a project, and refuses to
+// withdraw anything else.
+//
+// The project id is in the WHERE rather than checked beforehand, for the same
+// reason DeleteNoteInvite puts the note id there: the caller's ownership has been
+// established for *this* project, and a statement that can only touch this
+// project's rows cannot be talked into deleting somebody else's invite by id.
+func (db *DB) DeleteProjectInvite(ctx context.Context, projectID, inviteID string) error {
+	res, err := db.ExecContext(ctx,
+		`DELETE FROM invites WHERE id = ? AND project_id = ? AND note_id IS NULL`,
+		inviteID, projectID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// PendingProjectInvite reports whether this address already has a live invitation
+// to this project, so a second attempt can say so instead of sending another link.
+func (db *DB) PendingProjectInvite(ctx context.Context, projectID, email string) (bool, error) {
+	var n int
+	err := db.QueryRowContext(ctx, `
+		SELECT count(*) FROM invites
+		WHERE project_id = ? AND note_id IS NULL AND lower(email) = lower(?)
+		  AND accepted_at IS NULL AND expires_at > ?`,
+		projectID, email, time.Now().Unix()).Scan(&n)
+	return n > 0, err
+}
+
 // PendingNoteInvite reports whether this address already has a live invitation to
 // this note, so a second attempt can say so instead of sending a second link.
 func (db *DB) PendingNoteInvite(ctx context.Context, noteID, email string) (bool, error) {

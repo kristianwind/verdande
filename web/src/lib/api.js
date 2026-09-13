@@ -338,7 +338,11 @@ export const api = {
 	reorderSections: (projectId, ids) => post(`/projects/${projectId}/sections/reorder`, { ids }),
 
 	listMembers: (projectId) => get(`/projects/${projectId}/members`),
-	invite: (projectId, email, role) => post(`/projects/${projectId}/invites`, { email, role }),
+	// Én vej ind, to måder at sige hvem: et id, man har peget på, eller en adresse,
+	// man har skrevet. Serveren slår adressen op og ender det samme sted, hvis den
+	// hører til en konto her.
+	invite: (projectId, who, role) => post(`/projects/${projectId}/invites`, { ...who, role }),
+	withdrawInvite: (projectId, inviteId) => del(`/projects/${projectId}/invites/${inviteId}`),
 	setMemberRole: (projectId, userId, role) =>
 		patch(`/projects/${projectId}/members/${userId}`, { role }),
 	removeMember: (projectId, userId) => del(`/projects/${projectId}/members/${userId}`),

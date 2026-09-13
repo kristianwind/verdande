@@ -41,6 +41,13 @@
 	let inviteRole = $state('editor');
 	let inviteLink = $state('');
 	let inviteError = $state('');
+	// De to andre halvdele af delingspanelet: hvem der kan tilføjes, og hvem der er
+	// inviteret og ikke kommet endnu. Begge kommer fra det samme svar som
+	// medlemmerne, så panelet åbner færdigt i ét kald.
+	let candidates = $state([]);
+	let pending = $state([]);
+	let sharePick = $state('');
+	let pickRole = $state('editor');
 
 	let id = $derived($page.params.id);
 
@@ -101,7 +108,7 @@
 
 	$effect(() => {
 		if (showShare && project) {
-			api.listMembers(project.id).then((r) => (members = r.members));
+			api.listMembers(project.id).then(readMembers);
 		}
 	});
 
@@ -512,21 +519,44 @@
 		}
 	}
 
-	async function invite(event) {
-		event.preventDefault();
+	// Ét sted at læse svaret, fordi der nu er tre lister i det og fire steder, der
+	// henter det. Tre tildelinger skrevet fire gange er tre, der kan blive glemt.
+	function readMembers(r) {
+		members = r.members;
+		candidates = r.candidates ?? [];
+		pending = r.pending ?? [];
+	}
+
+	async function share(who, role) {
 		inviteError = '';
 		inviteLink = '';
 		try {
-			const result = await api.invite(project.id, inviteEmail, inviteRole);
-			inviteEmail = '';
+			const result = await api.invite(project.id, who, role);
 			if (result.link && !result.emailed) {
 				// No mail server, or delivery failed. The link is the only way this
 				// invite reaches anybody, so it is shown rather than swallowed.
 				inviteLink = result.link;
 			}
-			members = (await api.listMembers(project.id)).members;
+			readMembers(await api.listMembers(project.id));
 		} catch (e) {
 			inviteError = humanMessage(e);
+		}
+	}
+
+	async function invite(event) {
+		event.preventDefault();
+		const email = inviteEmail.trim();
+		if (!email) return;
+		await share({ email }, inviteRole);
+		if (!inviteError) inviteEmail = '';
+	}
+
+	async function withdraw(invite) {
+		try {
+			await api.withdrawInvite(project.id, invite.id);
+			readMembers(await api.listMembers(project.id));
+		} catch (e) {
+			app.toast(humanMessage(e));
 		}
 	}
 </script>
@@ -765,7 +795,7 @@
 									class="remove"
 									onclick={async () => {
 										await api.removeMember(project.id, member.user_id);
-										members = (await api.listMembers(project.id)).members;
+										readMembers(await api.listMembers(project.id));
 									}}
 									aria-label={t('project.removeMember', { name: member.name })}>×</button
 								>
@@ -774,7 +804,60 @@
 					{/each}
 				</ul>
 
+				<!-- De inviterede står ved siden af medlemmerne. Uden dem er en invitation
+				     sendt i går usynlig: personen har ingen konto, så de er hverken
+				     medlem eller nogen, man kan vælge — og så bliver den sendt igen. -->
+				{#if pending.length}
+					<ul class="members invited">
+						{#each pending as invite (invite.id)}
+							<li>
+								<span class="avatar waiting">@</span>
+								<span class="member-name">{invite.email}</span>
+								<span class="role">{t('project.invited')}</span>
+								{#if isOwner}
+									<button
+										class="remove"
+										onclick={() => withdraw(invite)}
+										aria-label={t('project.withdrawInvite', { email: invite.email })}>×</button
+									>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				{/if}
+
 				{#if isOwner}
+					<!-- Den, der allerede er her, vælges. Indtil nu kunne et projekt kun
+					     deles ved at stave en e-mailadresse, altså ved at kende adressen på
+					     en kollega, man kender navnet på — og konti her bliver kun til ved
+					     invitation, så listen er en adressebog og ikke en udlevering. -->
+					{#if candidates.length}
+						<div class="addshare">
+							<select bind:value={sharePick} aria-label={t('project.pickPerson')}>
+								<option value="">{t('project.pickPerson')}</option>
+								{#each candidates as person (person.id)}
+									<option value={person.id}>{person.name}</option>
+								{/each}
+							</select>
+							<select bind:value={pickRole} aria-label={t('project.roleForPicked')}>
+								<option value="editor">{t('project.canEdit')}</option>
+								<option value="viewer">{t('project.canView')}</option>
+							</select>
+							<button
+								disabled={!sharePick}
+								onclick={async () => {
+									const id = sharePick;
+									sharePick = '';
+									await share({ user_id: id }, pickRole);
+								}}>{t('project.shareWith')}</button
+							>
+						</div>
+					{/if}
+
+					<!-- Og den, der ikke er her endnu. Samme felt til begge udfald: har
+					     adressen en konto, bliver det en deling med det samme, og ellers en
+					     invitation. Hvem der har en konto, skal man ikke vide for at dele. -->
+					<p class="byemail-hint">{t('project.orByEmail')}</p>
 					<form onsubmit={invite}>
 						<input
 							bind:value={inviteEmail}
@@ -1394,6 +1477,34 @@
 		align-items: center;
 		gap: var(--s3);
 		font-size: var(--text-sm);
+	}
+
+	/* De inviterede står under medlemmerne med en tynd streg imellem: de er på vej
+	   ind, ikke inde, og en liste uden skel læses som om de allerede var det. */
+	.invited {
+		border-top: 1px solid var(--line);
+		padding-top: var(--s2);
+	}
+
+	/* Ingen farve at give dem: en invitation har en adresse og ellers ingenting,
+	   og en tilfældig farve ville love et menneske, der ikke findes endnu. */
+	.avatar.waiting {
+		background: var(--surface-sunken);
+		border: 1px dashed var(--line);
+		color: var(--ink-muted);
+	}
+
+	.addshare {
+		display: flex;
+		gap: var(--s2);
+		align-items: center;
+		flex-wrap: wrap;
+	}
+
+	.byemail-hint {
+		margin: 0;
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
 
 	.avatar {

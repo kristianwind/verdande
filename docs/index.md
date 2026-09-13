@@ -40,8 +40,11 @@ forward mail to, and an MCP endpoint so Claude can work your task list directly.
   it is due.
 - **Drag where it means something** — reorder a list or a board, file a project
   under a group, drop a task on another project, or drop it on another day.
-- **Sharing** with owner, editor and viewer roles. Anyone outside your instance
-  joins through an invite link.
+- **Sharing** with owner, editor and viewer roles. Somebody who already has an
+  account here you pick by name — the accounts on an instance are a closed,
+  invited set, so they are an address book rather than a directory to protect.
+  Anyone outside your instance joins through an invite link, and the invitation
+  stays visible until they arrive, so it does not get sent twice.
 - **Live sync** — a change made by somebody else appears without a refresh.
 - **[Told when it matters](notifications.md).** A bell for what other people did to
   what you share, pushed to your devices and counted on the app's icon in the Dock.

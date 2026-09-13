@@ -486,3 +486,144 @@ func TestASectionHoldsMoreThanOneTask(t *testing.T) {
 		}
 	}
 }
+
+// Et projekt kunne kun deles ved at stave en e-mailadresse. Det er den forkerte
+// vej at spørge om en kollega, man kender navnet på og sidder i samme rum som — og
+// på en instans, hvor konti kun bliver til ved invitation, er der ikke noget at
+// beskytte ved at lade være med at vise dem.
+func TestAProjectCanBeSharedWithSomebodyWhoIsAlreadyHere(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ts.newUser(t, "anden@example.dk", "Anden")
+
+	anden, err := ts.db.UserByEmail(t.Context(), "anden@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Firma"})
+	projectID := project["id"].(string)
+
+	// Først står de i listen over dem, der kan tilføjes.
+	_, before := ts.do(t, "GET", "/api/v1/projects/"+projectID+"/members", nil)
+	if !hasPerson(before["candidates"], anden.ID) {
+		t.Fatalf("Anden er ikke blandt kandidaterne: %v", before["candidates"])
+	}
+
+	// Delt ved at pege, ikke ved at stave.
+	resp, added := ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites",
+		map[string]any{"user_id": anden.ID, "role": "editor"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, body %v", resp.StatusCode, added)
+	}
+	// Personen kommer med retur, så fladen kan tegne rækken uden at spørge igen.
+	if user, _ := added["user"].(map[string]any); user["name"] != "Anden" {
+		t.Errorf("user = %v, want Anden", added["user"])
+	}
+
+	// Og bagefter er de et medlem og ikke længere en kandidat: en liste, der
+	// tilbyder at tilføje en, der allerede er der, er en liste, man gør det i.
+	_, after := ts.do(t, "GET", "/api/v1/projects/"+projectID+"/members", nil)
+	if hasPerson(after["candidates"], anden.ID) {
+		t.Errorf("Anden står stadig som kandidat efter at være tilføjet")
+	}
+	found := false
+	for _, raw := range after["members"].([]any) {
+		if m := raw.(map[string]any); m["user_id"] == anden.ID {
+			found = true
+			if m["role"] != "editor" {
+				t.Errorf("role = %v, want editor", m["role"])
+			}
+		}
+	}
+	if !found {
+		t.Errorf("Anden blev ikke medlem: %v", after["members"])
+	}
+}
+
+// Ejeren skal ikke kunne tilbydes som en, projektet kan deles med — de har det.
+func TestTheOwnerIsNotOfferedAsSomebodyToShareWith(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	me, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Mit"})
+
+	_, body := ts.do(t, "GET", "/api/v1/projects/"+project["id"].(string)+"/members", nil)
+	if hasPerson(body["candidates"], me.ID) {
+		t.Errorf("ejeren står som kandidat til sit eget projekt")
+	}
+}
+
+// En invitation, der venter, står ved siden af medlemmerne — og kan tages tilbage.
+//
+// Uden den er den usynlig: personen har ingen konto, så de er hverken medlem eller
+// kandidat, og så bliver invitationen sendt igen. Det andet link virker lige så
+// godt som det første, og så er der to at trække tilbage i stedet for et.
+func TestAPendingInviteIsVisibleAndCanBeWithdrawn(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Firma"})
+	projectID := project["id"].(string)
+
+	resp, _ := ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites",
+		map[string]any{"email": "fremmed@example.dk", "role": "viewer"})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("invitation: status %d", resp.StatusCode)
+	}
+
+	_, body := ts.do(t, "GET", "/api/v1/projects/"+projectID+"/members", nil)
+	pending, _ := body["pending"].([]any)
+	if len(pending) != 1 {
+		t.Fatalf("%d ventende invitationer, want 1: %v", len(pending), body["pending"])
+	}
+	first := pending[0].(map[string]any)
+	if first["email"] != "fremmed@example.dk" {
+		t.Errorf("email = %v", first["email"])
+	}
+
+	// Et andet link til den samme indbakke hjælper ingen.
+	if resp, _ := ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites",
+		map[string]any{"email": "fremmed@example.dk", "role": "viewer"}); resp.StatusCode != http.StatusConflict {
+		t.Errorf("en gentaget invitation gav %d, want 409", resp.StatusCode)
+	}
+
+	resp, _ = ts.do(t, "DELETE",
+		"/api/v1/projects/"+projectID+"/invites/"+first["id"].(string), nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("tilbagetrækning: status %d", resp.StatusCode)
+	}
+
+	_, after := ts.do(t, "GET", "/api/v1/projects/"+projectID+"/members", nil)
+	if p, _ := after["pending"].([]any); len(p) != 0 {
+		t.Errorf("invitationen står der stadig: %v", after["pending"])
+	}
+}
+
+// Et id, der ikke findes, må ikke blive til en medlemsrække, der peger på ingen.
+func TestSharingWithSomebodyWhoDoesNotExistIsRefused(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Firma"})
+	resp, _ := ts.do(t, "POST", "/api/v1/projects/"+project["id"].(string)+"/invites",
+		map[string]any{"user_id": "0198f000-0000-7000-8000-00000000dead", "role": "editor"})
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status %d, want 404", resp.StatusCode)
+	}
+}
+
+// hasPerson siger, om en liste af personer indeholder et bestemt id.
+func hasPerson(raw any, id string) bool {
+	list, _ := raw.([]any)
+	for _, item := range list {
+		if p, ok := item.(map[string]any); ok && p["id"] == id {
+			return true
+		}
+	}
+	return false
+}
