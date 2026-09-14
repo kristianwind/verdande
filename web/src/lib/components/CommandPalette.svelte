@@ -125,7 +125,13 @@
 		// En indstilling bærer sin egen adresse i sit id — der er ingen række at slå
 		// op, den ER stedet.
 		if (item.kind === 'setting') return goto(item.id);
-		if (item.kind === 'note') return goto(`/noter?note=${item.id}`);
+		// Søgningen følger med noten. Uden den åbner man én træffer på en side, hvis
+		// liste står uændret — og de andre træffere var kun at se i den popup, man
+		// lige lukkede.
+		if (item.kind === 'note') {
+			const q = query.trim();
+			return goto(`/noter?note=${item.id}` + (q ? `&q=${encodeURIComponent(q)}` : ''));
+		}
 		goto(item.kind === 'project' ? `/projekt/${item.id}` : `/projekt/${item.project}`);
 	}
 
