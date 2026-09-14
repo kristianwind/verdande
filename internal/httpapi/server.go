@@ -493,6 +493,9 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 					r.Get("/", s.handleGetProject)
 					r.Get("/sections", s.handleListSections)
 					r.Get("/members", s.handleListMembers)
+					// Uden for ejer-gruppen, fordi den nu dækker to ting: ejeren, der
+					// fjerner nogen, og den, der selv går. Handleren skiller dem ad.
+					r.Delete("/members/{userID}", s.handleRemoveMember)
 					r.Get("/activity", s.handleActivity)
 
 					r.Group(func(r chi.Router) {
@@ -508,7 +511,6 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 						r.Post("/invites", s.handleInvite)
 						r.Delete("/invites/{inviteID}", s.handleDeleteProjectInvite)
 						r.Patch("/members/{userID}", s.handleSetMemberRole)
-						r.Delete("/members/{userID}", s.handleRemoveMember)
 					})
 				})
 			})

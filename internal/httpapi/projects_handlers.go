@@ -624,6 +624,9 @@ func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.activity(r, projectID, "", "member.added", map[string]any{"name": person.Name, "role": string(role)})
+		// Og de får det at vide. Før stod projektet bare i sidebjælken næste gang,
+		// de kiggede — uden at noget sagde hvornår eller fra hvem.
+		s.notifyProjectShared(r, project, person.ID)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"added": true,
 			// Personen sendes med retur, fordi fladen kan have delt med en adresse
@@ -707,13 +710,31 @@ func (s *Server) handleSetMemberRole(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleRemoveMember takes somebody off a project — the owner removing anybody, or
+// anybody removing themselves.
+//
+// Den anden halvdel er ny, og den er grunden til at ruten er flyttet ud af
+// ejer-gruppen. Man blev lukket ind i et projekt uden at blive spurgt, og kunne så
+// ikke komme ud igen: kun ejeren kunne fjerne en, også en selv. To af de tre ting
+// kan man leve med; alle tre er det, der gør en deling til noget, der sker for en.
+//
+// Ejeren kan stadig ikke gå fra sit eget projekt. Det er ikke en udgang, det er en
+// overdragelse, og den findes ikke endnu.
 func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
 	userID := chi.URLParam(r, "userID")
+	me := userFrom(r.Context())
 
 	owner, err := s.db.ProjectOwner(r.Context(), projectID)
 	if err != nil {
 		s.storeError(w, r, "project owner", err)
+		return
+	}
+
+	// 404 og ikke 403: at sige "det må du ikke" til en, der peger på en anden
+	// persons medlemskab, bekræfter at medlemskabet findes.
+	if me.ID != owner && userID != me.ID {
+		writeError(w, http.StatusNotFound, CodeNotFound, "no such member")
 		return
 	}
 	if userID == owner {

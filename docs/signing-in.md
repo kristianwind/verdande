@@ -24,6 +24,16 @@ becomes a link that creates their account and their membership at once. With no
 mail server configured the link is shown in the panel instead of being sent, which
 is the correct behaviour on a one-person instance rather than an error.
 
+**You are told, and you can leave.** Being added to a project is not something
+that happens to you quietly: the bell says who shared what, and the entry takes
+you to the project. In the share panel, anybody who is not the owner has a *Leave
+the project* button. That is deliberate rather than an approval step — an
+invitation waiting on a yes means the person who shared thinks it is done while
+the work sits still. What was wrong was the other three-quarters of it: you were
+added without being asked, without being told, and with no way out except asking
+the owner. The owner cannot leave their own project; that is a transfer of
+ownership, and there is no transfer yet.
+
 An invitation that has not been taken up stays listed under the members, greyed,
 with a × to withdraw it. Without that it is invisible — the person has no account,
 so they are neither a member nor somebody you can pick — and the usual next move
