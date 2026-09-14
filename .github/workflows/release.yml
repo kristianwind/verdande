@@ -72,13 +72,44 @@ jobs:
       #
       # Den sidste linje er et link til udgivelsen selv, og den tages af: en
       # side, der linker til sig selv, hjælper ingen.
+      #
+      # Og `fetch-depth: 0` er ikke nok, hvilket kostede to udgivelser at opdage.
+      # actions/checkout henter først alle tags korrekt — og overskriver derefter
+      # netop den ene, der udløste kørslen:
+      #
+      #   git rev-parse refs/tags/v0.46.0
+      #   git fetch --no-tags origin +0dc4c2f9b8…:refs/tags/v0.46.0
+      #
+      # Den henter commit-SHA'en ind i tag-refen, så den annoterede tag bliver til
+      # en letvægtstag, der peger direkte på commit'en. `%(contents)` giver så
+      # commitbeskeden, og det var flettecommittens overskrift, der stod som
+      # udgivelsestekst på v0.45.0 og v0.46.0 — uden at noget fejlede.
+      #
+      # Derfor hentes tagget som *ref* igen her, før det læses.
       - id: notes
         run: |
+          git fetch --force origin \
+            "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+
+          body=$(git tag -l --format='%(contents)' "${GITHUB_REF_NAME}" \
+            | sed '\#^https://github.com/.*/releases/tag/#d' \
+            | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+
+          # Hver tagbesked begynder med sin egen version. Holder det ikke, læser vi
+          # noget andet end tagget — og en forkert udgivelsestekst skal fejle her
+          # frem for at blive opdaget på siden bagefter.
+          case "$body" in
+            "${GITHUB_REF_NAME}"*) ;;
+            *)
+              echo "::error::Tagbeskeden begynder ikke med ${GITHUB_REF_NAME}." \
+                   "Læste vi en letvægtstag? Første linje: $(printf '%s' "$body" | head -1)"
+              exit 1
+              ;;
+          esac
+
           {
             echo 'body<<VERDANDE_EOF'
-            git tag -l --format='%(contents)' "${GITHUB_REF_NAME}" \
-              | sed '\#^https://github.com/.*/releases/tag/#d' \
-              | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
+            printf '%s\n' "$body"
             echo VERDANDE_EOF
           } >> "$GITHUB_OUTPUT"
 
