@@ -4635,3 +4635,57 @@ test('et projekt kan deles med en, der allerede har en konto', async ({ browser,
 
 	expect(trouble).toEqual([]);
 });
+
+/**
+ * En søgning i ⌘K efterlader resultaterne, den fandt.
+ *
+ * Paletten viste de noter, der passede, i sin egen liste — og når man valgte en,
+ * åbnede den noten på en side, hvis liste stod helt uændret. De andre træffere var
+ * væk, og det eneste sted, de nogensinde havde været, var en popup, der lige var
+ * lukket. Rapporteret sådan her: "jeg får kun præsenteret en popup liste med
+ * resultater, men hvis jeg trykker retur, kommer jeg tilbage til den normale liste
+ * — ikke resultater."
+ *
+ * Prøven laver sine egne noter med et ord, ingen anden note i basen har. Et ord
+ * lånt fra en tidligere prøve ville gøre den her afhængig af rækkefølgen, og den
+ * kobling har allerede narret mig én gang i den her fil.
+ */
+test('en søgning i ⌘K efterlader de træffere, den fandt', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	// Gemt ved at forlade feltet, som resten af fladen gør det — der er ingen
+	// Gem-knap at huske.
+	for (const title of ['Fyrreskov nord', 'Fyrreskov syd', 'Egeskov']) {
+		await page.getByRole('button', { name: 'Ny note' }).click();
+		const body = page.getByLabel('Notens tekst');
+		await body.fill(`${title}\n\nnoget om den`);
+		await body.blur();
+		await expect(page.locator('.list').getByText(title, { exact: true })).toBeVisible();
+	}
+
+	await page.goto('/');
+	await page.getByRole('button', { name: /Søg/ }).click();
+	const palette = page.getByRole('dialog');
+	await palette.getByRole('textbox').fill('Fyrreskov');
+	await expect(palette.locator('li button', { hasText: 'Fyrreskov nord' })).toBeVisible();
+	await palette.locator('li button', { hasText: 'Fyrreskov nord' }).click();
+
+	// Noten er åben …
+	await expect(page).toHaveURL(/\/noter\?note=[^&]+&q=Fyrreskov/);
+	await expect(page.getByLabel('Notens tekst')).toContainText('Fyrreskov nord');
+
+	// … og listen ved siden af den er de andre træffere, ikke den normale liste.
+	await expect(page.getByPlaceholder('Søg i noter')).toHaveValue('Fyrreskov');
+	const list = page.locator(".list");
+	await expect(list.getByText('Fyrreskov syd')).toBeVisible();
+	await expect(list.getByText('Egeskov')).toHaveCount(0);
+
+	// Og adressen lyver ikke, når feltet tømmes: uden det ville et genbesøg hente
+	// en søgning tilbage, man selv havde ryddet væk.
+	await page.getByPlaceholder('Søg i noter').fill('');
+	await expect(page).not.toHaveURL(/[?&]q=/);
+	await expect(list.getByText('Egeskov')).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});

@@ -14,7 +14,8 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
+	import { untrack } from 'svelte';
+	import { goto, replaceState } from '$app/navigation';
 	import { t, tag } from '$lib/i18n.svelte.js';
 	import { NOTE, startDrag } from '$lib/dnd.js';
 	import { colorVar } from '$lib/colors.js';
@@ -481,6 +482,49 @@
 	$effect(() => {
 		showArchive;
 		load(query);
+	});
+
+	/**
+	 * En søgning, man kommer med, og en søgning, man kan gå videre med.
+	 *
+	 * ⌘K viste noter, der passede, i sin egen liste — og når man valgte en, åbnede
+	 * den noten på en side, hvis liste stod uændret. Så var de andre træffere væk,
+	 * og det eneste sted, de havde været, var en popup, der lige var lukket. "Jeg
+	 * får kun præsenteret en popup med resultater, og trykker jeg retur, kommer jeg
+	 * tilbage til den normale liste."
+	 *
+	 * Nu bærer adressen søgningen, så listen ved siden af den åbne note er de andre
+	 * træffere. Og den skrives tilbage, når feltet ændres, så adressen kan gemmes og
+	 * deles — og frem for alt ikke lyver, når man har tømt feltet.
+	 *
+	 * `settled` er det, de to retninger er blevet enige om — og den læses med
+	 * `untrack`, hvilket er hele forskellen på at virke og ikke.
+	 *
+	 * Uden den: den nederste effekt sætter `settled`, det vækker den øverste, og
+	 * `replaceState` har endnu ikke opdateret `$page.url`. Den øverste læser derfor
+	 * den *gamle* adresse, finder en søgning, der ikke er enig med `settled`, og
+	 * skriver den tilbage i feltet. Man tømmer søgefeltet, og ordet kommer igen.
+	 * Hver effekt skal reagere på sin egen kilde — adressen og feltet — og aldrig
+	 * på den fælles markør.
+	 */
+	let settled = $state(null);
+
+	$effect(() => {
+		const inURL = $page.url.searchParams.get('q') ?? '';
+		if (inURL === untrack(() => settled)) return;
+		settled = inURL;
+		draftQuery = inURL;
+		query = inURL;
+	});
+
+	$effect(() => {
+		const now = query;
+		if (now === untrack(() => settled)) return;
+		settled = now;
+		const url = new URL(untrack(() => $page.url));
+		if (now) url.searchParams.set('q', now);
+		else url.searchParams.delete('q');
+		replaceState(url, {});
 	});
 
 	// Arriving from somewhere that names a note — a task's panel, a project's page —
