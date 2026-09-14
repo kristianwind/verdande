@@ -41,6 +41,16 @@ it in an export. Every raster format works; SVG is stored but not shown inline �
 it is a document that can run script, and a note is not a place to run somebody
 else's.
 
+**Click one to see it whole.** In the note it is scaled down to the width of the
+column — a photo off a phone is four thousand pixels across — so what you are
+looking at is a thumbnail that does not look like one. The full-size view has a
+button that copies the picture to the clipboard, and a link that opens it in its
+own tab. Escape closes it and puts the cursor back where it was.
+
+Copying converts to PNG on the way out when it has to. Clipboards take PNG and
+little else, and a photo off a phone is a JPEG — without the conversion the copy
+either fails or succeeds with something nothing will paste.
+
 ### Code blocks
 
 A fenced block is coloured for the language it names, and guesses when it does not.

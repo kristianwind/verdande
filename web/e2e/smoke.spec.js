@@ -4689,3 +4689,63 @@ test('en søgning i ⌘K efterlader de træffere, den fandt', async ({ page }) =
 
 	expect(trouble).toEqual([]);
 });
+/**
+ * Et indsat billede kan ses i fuld størrelse og kopieres videre.
+ *
+ * I arket er et billede skaleret ned til spaltens bredde — et foto fra en telefon
+ * er fire tusind pixels bredt — så det, man kigger på, er et miniaturebillede, der
+ * ikke ser ud som et. Der var ingen vej fra det til billedet selv.
+ *
+ * Prøven indsætter billedet ad den vej, folk gør det: en rigtig paste-hændelse med
+ * en fil i udklipsholderen. Et billede lagt ind ved at skrive markdown ville springe
+ * hele vedhæftningen over og dermed netop den kode, det her handler om.
+ */
+test('et indsat billede kan åbnes stort og kopieres', async ({ page, context }) => {
+	const trouble = watchForTrouble(page);
+	// Kopiering til udklipsholderen kræver lov. Uden den fejler knappen, og prøven
+	// ville måle en browserindstilling frem for programmet.
+	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+
+	await page.goto('/noter');
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const body = page.getByLabel('Notens tekst');
+	await body.fill('Billednote');
+
+	// En rigtig 1×1 JPEG, og med vilje ikke en PNG: udklipsholderen tager kun PNG,
+	// så et foto skal tegnes om undervejs — og et foto fra en telefon ER en JPEG.
+	// Med en PNG her ville prøven køre forbi netop den kode, den skal vogte.
+	await body.evaluate((el) => {
+		const jpeg =
+			'/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a' +
+			'HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA' +
+			'AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
+		const bytes = Uint8Array.from(atob(jpeg), (c) => c.charCodeAt(0));
+		const file = new File([bytes], 'skud.jpg', { type: 'image/jpeg' });
+		const data = new DataTransfer();
+		data.items.add(file);
+		el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+	});
+
+	const image = page.locator('[aria-label="Notens tekst"] img');
+	await expect(image).toBeVisible();
+
+	// Klikket åbner det, og ruden viser det samme billede.
+	await image.click();
+	const shot = page.getByRole('dialog', { name: 'Billede' });
+	await expect(shot).toBeVisible();
+	await expect(shot.locator('img')).toBeVisible();
+
+	// Kopiér-knappen skal gøre noget. En knap, der tier, er værre end ingen knap:
+	// man indsætter noget andet og opdager det et helt andet sted.
+	await shot.getByRole('button', { name: 'Kopiér billedet' }).click();
+	await expect(shot.getByRole('button', { name: 'Kopieret' })).toBeVisible();
+	await expect(shot.getByText('Kunne ikke kopiere')).toHaveCount(0);
+
+	// Escape lukker, og teksten har fokus igen — ellers står fokus på en knap, der
+	// ikke findes mere, og den næste tast går ingen steder.
+	await page.keyboard.press('Escape');
+	await expect(shot).toHaveCount(0);
+	await expect(body).toBeFocused();
+
+	expect(trouble).toEqual([]);
+});

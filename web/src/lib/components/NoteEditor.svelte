@@ -640,7 +640,67 @@
 			onopennote?.(link.getAttribute('data-note') ?? link.textContent);
 			return;
 		}
+		// Et billede i en note er et billede, man har indsat for at kunne se det. I
+		// arket er det skaleret ned til spaltens bredde — et foto fra en telefon er
+		// fire tusind pixels bredt — så det, man kigger på, er et miniaturebillede,
+		// der ikke ser ud som et.
+		const image = event.target.closest?.('img');
+		if (image) {
+			event.preventDefault();
+			showing = { src: image.currentSrc || image.src, alt: image.alt ?? '' };
+			copied = false;
+			copyError = '';
+			return;
+		}
 		colourCode();
+	}
+
+	// --- billedet i fuld størrelse ------------------------------------------------
+
+	let showing = $state(null);
+	let copied = $state(false);
+	let copyError = $state('');
+
+	function closeImage() {
+		showing = null;
+		// Tilbage i teksten, hvor man var. Uden det står fokus på en knap, der ikke
+		// findes længere, og den næste tast går ingen steder.
+		editor?.focus();
+	}
+
+	/**
+	 * Billedet som PNG, uanset hvad det kom som.
+	 *
+	 * Udklipsholderen tager kun PNG i de fleste browsere, og et foto fra en telefon
+	 * er en JPEG. Så et billede, der ikke allerede er PNG, tegnes om — ellers
+	 * lykkes skrivningen enten ikke, eller den lykkes med noget, ingen kan indsætte.
+	 */
+	async function asPNG(src) {
+		const blob = await (await fetch(src)).blob();
+		if (blob.type === 'image/png') return blob;
+
+		const bitmap = await createImageBitmap(blob);
+		const canvas = document.createElement('canvas');
+		canvas.width = bitmap.width;
+		canvas.height = bitmap.height;
+		canvas.getContext('2d').drawImage(bitmap, 0, 0);
+		return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+	}
+
+	async function copyImage() {
+		copyError = '';
+		try {
+			// Løftet gives videre frem for at blive ventet af først. Safari kræver, at
+			// clipboard.write kaldes i selve klikket, og en hentning imellem gør
+			// klikket til fortid — et ClipboardItem må gerne indeholde et løfte.
+			await navigator.clipboard.write([new ClipboardItem({ 'image/png': asPNG(showing.src) })]);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch (e) {
+			// Sagt højt frem for tavst. En kopiér-knap, der ikke gør noget, er værre
+			// end ingen knap: man indsætter noget andet og opdager det et andet sted.
+			copyError = t('notes.copyFailed');
+		}
 	}
 
 	/** Replaces the half-typed tag with the whole thing. */
@@ -1068,7 +1128,102 @@
 	</p>
 </div>
 
+<!-- Billedet i fuld størrelse. Uden for .wrap, fordi editoren har sin egen
+     rulning og sin egen stablingskontekst — et lag inde i den ville blive klippet
+     af netop det ark, det skal lægge sig over. -->
+{#if showing}
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+	<div class="lightbox" onclick={closeImage} role="dialog" aria-modal="true" aria-label={t('notes.imageTitle')}>
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+		<div class="shot" onclick={(e) => e.stopPropagation()}>
+			<img src={showing.src} alt={showing.alt} />
+			<div class="tools">
+				<button onclick={copyImage}>{copied ? t('notes.imageCopied') : t('notes.imageCopy')}</button>
+				<a href={showing.src} target="_blank" rel="noopener">{t('notes.imageOpen')}</a>
+				<button class="shut" onclick={closeImage}>{t('detail.close')}</button>
+			</div>
+			{#if copyError}<p class="bad">{copyError}</p>{/if}
+		</div>
+	</div>
+{/if}
+
+<svelte:window
+	onkeydown={(e) => {
+		if (showing && e.key === 'Escape') {
+			e.stopPropagation();
+			closeImage();
+		}
+	}}
+/>
+
 <style>
+	/* Over alt andet og midt på skærmen. Baggrunden er mørk nok til at billedet
+	   står alene — det er hele grunden til at åbne det. */
+	.lightbox {
+		position: fixed;
+		inset: 0;
+		z-index: 100;
+		background: rgb(0 0 0 / 0.8);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: var(--s4);
+	}
+
+	.shot {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--s3);
+		max-width: 100%;
+		max-height: 100%;
+	}
+
+	/* `min-height: 0` hører med: uden den nægter et flex-element at blive lavere
+	   end sit indhold, og et højt billede vokser ud over skærmen i stedet for at
+	   passe sig ind i den. */
+	.shot img {
+		min-height: 0;
+		max-width: 100%;
+		max-height: calc(100vh - 8rem);
+		object-fit: contain;
+		border-radius: var(--radius);
+	}
+
+	.tools {
+		display: flex;
+		gap: var(--s2);
+		align-items: center;
+		flex-wrap: wrap;
+	}
+
+	.tools button,
+	.tools a {
+		padding: var(--s2) var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		color: var(--ink);
+		font-size: var(--text-sm);
+		text-decoration: none;
+	}
+
+	.tools button:hover,
+	.tools a:hover {
+		border-color: var(--accent);
+	}
+
+	.bad {
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--danger);
+	}
+
+	/* Markøren siger, at billedet er til at klikke på, før man prøver. */
+	.page :global(img) {
+		cursor: zoom-in;
+	}
+
 	.wrap {
 		display: flex;
 		flex-direction: column;
