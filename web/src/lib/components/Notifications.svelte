@@ -24,6 +24,7 @@
 		assigned: 'notif.assigned',
 		'note.changed': 'notif.noteChanged',
 		'note.shared': 'notif.noteShared',
+		'project.shared': 'notif.projectShared',
 		'note.mention': 'notif.mention',
 		'daily.plan': 'notif.dailyPlan',
 		'update.available': 'notif.update',

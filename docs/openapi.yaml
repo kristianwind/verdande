@@ -2379,8 +2379,19 @@ paths:
         "422": { $ref: "#/components/responses/Validation" }
     delete:
       tags: [projects]
-      summary: Remove somebody from a project. Its owner only.
+      summary: Remove somebody from a project — its owner, or yourself.
       description: |
+        Two things through one route: the owner taking somebody off, and anybody
+        taking themselves off. The second is what makes a share something you can
+        undo. You are let into a project without being asked, so a way out that
+        does not go through asking its owner is the other half of that.
+
+        The owner cannot leave their own project. That is a transfer of ownership,
+        not an exit, and there is no transfer yet.
+
+        Pointing at somebody else's membership without owning the project answers
+        404 rather than 403: saying "you may not" confirms the membership exists.
+
         Their tasks are unassigned rather than left pointing at somebody who can
         no longer see the project — which is why changing a role is a PATCH and
         not a remove-and-reinvite.

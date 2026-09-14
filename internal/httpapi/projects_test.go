@@ -627,3 +627,98 @@ func hasPerson(raw any, id string) bool {
 	}
 	return false
 }
+
+// Man bliver lukket ind i et projekt uden at blive spurgt. Så skal man i det
+// mindste vide det — og kunne gå ud igen uden at bede ejeren om lov.
+func TestBeingAddedToAProjectIsToldAndCanBeUndone(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	anden := ts.newUser(t, "anden@example.dk", "Anden")
+
+	andenUser, err := ts.db.UserByEmail(t.Context(), "anden@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Fælleshuset"})
+	projectID := project["id"].(string)
+	ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites",
+		map[string]any{"user_id": andenUser.ID, "role": "editor"})
+
+	// Beskeden. Før stod projektet bare i sidebjælken næste gang, de kiggede.
+	_, inbox := anden.do(t, "GET", "/api/v1/notifications", nil)
+	var shared map[string]any
+	for _, raw := range inbox["notifications"].([]any) {
+		if n := raw.(map[string]any); n["kind"] == "project.shared" {
+			shared = n
+		}
+	}
+	if shared == nil {
+		t.Fatalf("ingen besked om delingen: %v", inbox["notifications"])
+	}
+	if shared["project_id"] != projectID {
+		t.Errorf("project_id = %v, want %s — uden det fører beskeden ingen steder hen",
+			shared["project_id"], projectID)
+	}
+
+	// Udgangen.
+	resp, _ := anden.do(t, "DELETE", "/api/v1/projects/"+projectID+"/members/"+andenUser.ID, nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("forlad projektet: status %d", resp.StatusCode)
+	}
+	if resp, _ := anden.do(t, "GET", "/api/v1/projects/"+projectID, nil); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("projektet er stadig synligt efter at være forladt: status %d", resp.StatusCode)
+	}
+}
+
+// En udgang for en selv er ikke en dør til de andres medlemskaber.
+func TestAMemberCannotRemoveAnotherMember(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	en := ts.newUser(t, "en@example.dk", "En")
+	ts.newUser(t, "to@example.dk", "To")
+
+	enUser, err := ts.db.UserByEmail(t.Context(), "en@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	toUser, err := ts.db.UserByEmail(t.Context(), "to@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Delt"})
+	projectID := project["id"].(string)
+	for _, u := range []string{enUser.ID, toUser.ID} {
+		ts.do(t, "POST", "/api/v1/projects/"+projectID+"/invites",
+			map[string]any{"user_id": u, "role": "editor"})
+	}
+
+	// 404 og ikke 403: "det må du ikke" bekræfter, at medlemskabet findes.
+	resp, _ := en.do(t, "DELETE", "/api/v1/projects/"+projectID+"/members/"+toUser.ID, nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status %d, want 404", resp.StatusCode)
+	}
+	_, members := ts.do(t, "GET", "/api/v1/projects/"+projectID+"/members", nil)
+	if len(members["members"].([]any)) != 3 {
+		t.Errorf("%d medlemmer tilbage, want 3", len(members["members"].([]any)))
+	}
+}
+
+// Ejeren kan ikke gå fra sit eget projekt. Det ville være en overdragelse.
+func TestTheOwnerCannotLeaveTheirOwnProject(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	me, err := ts.db.UserByEmail(t.Context(), "kristian@example.dk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, project := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Mit"})
+
+	resp, _ := ts.do(t, "DELETE",
+		"/api/v1/projects/"+project["id"].(string)+"/members/"+me.ID, nil)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("status %d, want 409", resp.StatusCode)
+	}
+}

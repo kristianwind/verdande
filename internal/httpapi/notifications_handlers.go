@@ -140,6 +140,30 @@ func (s *Server) notifyNoteShared(r *http.Request, n *store.Note, userID string)
 	})
 }
 
+// notifyProjectShared tells somebody that a project is now theirs to work in.
+//
+// Indtil nu skete det i tavshed. En note delt med dig gav en besked; et projekt gav
+// ingenting — det stod bare i sidebjælken næste gang, du kiggede, uden at noget
+// sagde hvornår eller fra hvem. Et projekt er mere end en note: der kan lægges
+// opgaver til dig i det.
+//
+// Én besked, når delingen sker. En rolle, der ændres bagefter, er ikke et nyt
+// projekt at åbne, og en invitation, der bliver taget imod, er modtagerens egen
+// handling — de skal ikke have besked om det, de lige selv gjorde.
+func (s *Server) notifyProjectShared(r *http.Request, project *store.Project, userID string) {
+	if project == nil || userID == "" {
+		return
+	}
+	actor := userFrom(r.Context())
+	if actor.ID == userID {
+		return
+	}
+	s.notify(r, &store.Notification{
+		UserID: userID, ActorID: actor.ID, ProjectID: project.ID,
+		Kind: "project.shared", Title: actor.Name + " delte et projekt med dig", Body: project.Name,
+	})
+}
+
 // notifyNoteChanged tells everybody who can see a note that somebody else wrote in
 // it — folded into one line per note while it is unread.
 //

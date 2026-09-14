@@ -4597,5 +4597,41 @@ test('et projekt kan deles med en, der allerede har en konto', async ({ browser,
 	// spring tilbage til det første projekt, og delingspanelet står åbent på tværs
 	// af det spring — så klikket på "Del" lukkede det, jeg lige havde åbnet.
 
+	// Og så den anden vej: hvad Gartner selv oplever. Man bliver lukket ind i et
+	// projekt uden at blive spurgt, så man skal i det mindste få det at vide og
+	// kunne gå ud igen uden at bede ejeren om lov.
+	const theirs = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const gartner = await theirs.newPage();
+	const gartnerTrouble = watchForTrouble(gartner);
+	await gartner.goto('/');
+	await gartner.getByLabel('E-mail').fill('gartner@example.dk');
+	await gartner.getByLabel('Adgangskode').fill('et langt kodeord til test');
+	await gartner.getByRole('button', { name: 'Log ind' }).click();
+	await expect(gartner.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+
+	await gartner.getByRole('button', { name: /Beskeder/ }).click();
+	const bell = gartner.getByRole('dialog', { name: 'Beskeder' });
+	await expect(bell.getByText('delte et projekt med dig')).toBeVisible();
+
+	// Beskeden fører hen til projektet. En besked, der ikke kan følges, er en
+	// oplysning om noget, man selv skal gå ud og finde.
+	await bell.locator('.row').filter({ hasText: 'delte et projekt med dig' }).click();
+	await expect(gartner.getByRole('heading', { name: 'Drivhuset' })).toBeVisible();
+
+	// Udgangen. Bekræftelsen siges ja til, ellers sker der intet.
+	gartner.on('dialog', (d) => d.accept());
+	await projectAction(gartner, /^Del/);
+	await gartner.getByRole('button', { name: 'Forlad projektet' }).click();
+
+	// Væk fra sidebjælken, og ikke længere til at åbne.
+	await expect(
+		gartner.getByRole('navigation', { name: 'Hovedmenu' }).getByRole('link', { name: /Drivhuset/ })
+	).toHaveCount(0);
+
+	// En 404 her er ikke uro: den er svaret på at bede om et projekt, man lige har
+	// forladt, og den er hele pointen med at have forladt det.
+	expect(gartnerTrouble.filter((t) => !t.includes('404'))).toEqual([]);
+	await theirs.close();
+
 	expect(trouble).toEqual([]);
 });

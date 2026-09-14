@@ -11,6 +11,7 @@ the app's icon.
 | --- | --- |
 | Somebody edited a note shared with you | Repeat edits fold into one line while it is unread |
 | Somebody shared a note with you | Once, when it happens |
+| Somebody shared a project with you | Once, when it happens — the entry opens the project, and its share panel has a *Leave the project* button |
 | Somebody named you in a note with `@` | Instead of "edited a note" — one act, one message |
 | Somebody gave you a task | Only on the change, and only to the person who got it |
 | Somebody commented | |

@@ -551,6 +551,21 @@
 		if (!inviteError) inviteEmail = '';
 	}
 
+	// Udgangen. Man bliver lukket ind i et projekt uden at blive spurgt, så der skal
+	// være en vej ud, der ikke går gennem at bede ejeren om det.
+	async function leave() {
+		if (!confirm(t('project.leaveSure', { name: project.name }))) return;
+		try {
+			await api.removeMember(project.id, app.user.id);
+			// Væk fra en side, man ikke længere må se: bliver man stående, er det
+			// næste, siden gør, at hente den og få 404.
+			await goto('/');
+			await app.refreshProjects();
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
 	async function withdraw(invite) {
 		try {
 			await api.withdrawInvite(project.id, invite.id);
@@ -824,6 +839,12 @@
 							</li>
 						{/each}
 					</ul>
+				{/if}
+
+				<!-- Kun for dem, der er lukket ind. Ejeren kan ikke gå fra sit eget
+				     projekt — det ville være en overdragelse, ikke en udgang. -->
+				{#if !isOwner}
+					<button class="leave" onclick={leave}>{t('project.leave')}</button>
 				{/if}
 
 				{#if isOwner}
@@ -1499,6 +1520,17 @@
 		gap: var(--s2);
 		align-items: center;
 		flex-wrap: wrap;
+	}
+
+	/* I fareskrift og alene: det er den eneste knap i panelet, der handler om en
+	   selv, og den skal ikke kunne forveksles med at fjerne en anden. */
+	.leave {
+		align-self: flex-start;
+		padding: var(--s2) var(--s3);
+		border: 1px solid var(--danger);
+		border-radius: var(--radius);
+		color: var(--danger);
+		font-size: var(--text-sm);
 	}
 
 	.byemail-hint {
