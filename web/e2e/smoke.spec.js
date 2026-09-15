@@ -4656,11 +4656,17 @@ test('en søgning i ⌘K efterlader de træffere, den fandt', async ({ page }) =
 
 	// Gemt ved at forlade feltet, som resten af fladen gør det — der er ingen
 	// Gem-knap at huske.
+	//
+	// Der ventes på "Gemt", før den næste note laves. Uden det klikkes "Ny note",
+	// mens den forrige stadig er undervejs, og listen når ikke at få den med — det
+	// fejlede i CI én gang ud af tre kørsler, og bestod hver gang her på maskinen.
+	// En prøve, der er hurtigere end programmet, måler maskinen den kører på.
 	for (const title of ['Fyrreskov nord', 'Fyrreskov syd', 'Egeskov']) {
 		await page.getByRole('button', { name: 'Ny note' }).click();
 		const body = page.getByLabel('Notens tekst');
 		await body.fill(`${title}\n\nnoget om den`);
 		await body.blur();
+		await expect(page.getByText('Gemt', { exact: true })).toBeVisible();
 		await expect(page.locator('.list').getByText(title, { exact: true })).toBeVisible();
 	}
 

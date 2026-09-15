@@ -20,7 +20,8 @@ Which is what a to-do list is.
 All six phases are built. See [What works today](#what-works-today) for what is
 tested and what is not.
 
-Documentation: [`docs/`](docs/), built with Material for MkDocs.
+Documentation: **<https://kristianwind.github.io/verdande/>** — the source is in
+[`docs/`](docs/), built with Material for MkDocs and published from `main`.
 
 ## Why this exists
 
@@ -43,6 +44,10 @@ and an MCP endpoint so Claude can work your task list directly.
   the text, which shares it with her and tells her. `#project` and
   `[[another note]]` are links, and a task shows the notes that mention it. A zip of Markdown goes in — Obsidian, Bear, or Apple Notes through
   the exporter in [`tools/`](tools/) — and comes back out the same shape.
+- **Notes are sealed at rest.** Title and body are encrypted in the database under
+  a key in a file beside it — the title too, because a title beside a sealed body
+  leaves the beginning of every note in the open. A copy of the file is not a copy
+  of the notes.
 - **Drag where it means something.** Reorder a list or a board, file a project under
   a group, drop a task on another project, or drop it on another day.
 - **Sharing.** Owner, editor and viewer roles. There is no open registration:
@@ -128,6 +133,17 @@ Apple Reminders, forward mail into it, and add it to Claude as a connector.
 | OpenAPI 3.1 spec, checked against the router | Done, tested |
 | End-to-end smoke tests (Playwright) | Done |
 | Documentation, landing page, licence | Done |
+| Notes sealed at rest: title and body encrypted in the database | Done, tested |
+| `@name` in a note shares it with that person, and tells them | Done, tested |
+| Share a project with somebody who already has an account, by name | Done, tested |
+| Invitations that have not been taken up stay visible, and can be withdrawn | Done, tested |
+| Told when a project is shared with you — and able to leave it | Done, tested |
+| Push from other programs: a webhook address per person | Done, tested |
+| Today's plan as a card on **I dag**, not only as a notification | Done, tested |
+| Search the settings, from the page or from ⌘K | Done, tested |
+| Choose which browser a link opens in | Done, tested |
+| Images in notes: open full size, copy to the clipboard | Done, tested |
+| Install count: two values, once a day, one click to stop | Done, tested |
 
 **Not finished:** Web Push, the AI providers and the Google Calendar API calls are
 implemented against their specifications and have only ever been exercised there,
