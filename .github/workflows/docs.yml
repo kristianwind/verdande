@@ -1,13 +1,21 @@
 name: Documentation
 
-# The docs are built on every push so a broken build is caught immediately, but
-# only published once GitHub Pages has been enabled for the repository. Until the
-# owner decides to publish, this job builds and stops.
+# Built on every push, and published from main.
 #
-# And on pull requests, where the build is the only check there is: `mkdocs build
-# --strict` fails on a link to a page that does not exist, and building only after
-# the merge means finding that out on `main`. Nothing is published from a pull
-# request — the `deploy` job below runs on a manual dispatch and nothing else.
+# The publishing used to wait for a manual dispatch, with a note saying it would
+# run "once Pages is enabled". Pages was enabled — and the condition was never
+# changed, so the site was built forty times and published none of them. What it
+# showed was a Verdande from before v0.43: /links/, /beacon/ and /notifications/
+# all answered 404, months after they were written. Nothing failed, because
+# building *is* what the job was asked to do.
+#
+# The lesson is not about this line. It is that "publish later" needs something
+# that fails when later arrives — a switch that is off and silent looks exactly
+# like a switch that is on.
+#
+# Pull requests still build and never publish: `mkdocs build --strict` fails on a
+# link to a page that does not exist, and building only after the merge means
+# finding that out on `main`.
 on:
   push:
     branches: [main]
@@ -54,9 +62,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    # Only runs once Pages is enabled. Until then the build above still guards
-    # against a broken docs tree.
-    if: github.event_name == 'workflow_dispatch'
+    # From main, and by hand. Never from a pull request — a fork could otherwise
+    # publish over the site by opening one.
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}

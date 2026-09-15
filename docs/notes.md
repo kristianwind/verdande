@@ -138,6 +138,14 @@ Search finds a word wherever it is:
   body. A word in the title is what the note is about; the same word once in a long
   body is a mention.
 
+Two places to search from, and they now agree. The field above the list filters it
+in place. **⌘K** searches everything at once — tasks, projects, notes and the
+settings — and picking a note from it opens that note *with the rest of the matches
+still in the list beside it*. It used to drop you on the ordinary list, so the
+other results existed only in the popup you had just closed. The address carries
+the search, which also means a search worth keeping can be bookmarked or sent to
+somebody.
+
 ## Putting notes away
 
 Two different things, and the difference matters:
