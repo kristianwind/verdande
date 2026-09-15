@@ -4755,3 +4755,69 @@ test('et indsat billede kan åbnes stort og kopieres', async ({ page, context })
 
 	expect(trouble).toEqual([]);
 });
+/**
+ * En opgaves tekst kan læses færdig, også på en telefon.
+ *
+ * Rapporteret fra en telefon, med et billede af en beskrivelse, der manglede sit
+ * første bogstav på hver linje: "hermostat RU0910301440" og "atteries". Det er
+ * ikke manglende tegn — det er et felt, der er rullet til højre. En beskrivelse er
+ * tit et klippet stykke mail med en URL i, et <textarea> ombryder ved mellemrum,
+ * og en URL har ingen.
+ *
+ * Og titlen var et <input>, som ikke kan ombryde overhovedet. "tado°: Your Smart
+ * Thermostat needs new batteries" er en almindelig opgavetitel, og halvdelen af
+ * den stod uden for kanten.
+ */
+test('en opgaves tekst kan læses færdig på en telefon', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto('/');
+
+	const langTitel = 'tado°: Your Smart Thermostat needs new batteries';
+	// "i dag" for at den lander på siden, prøven står på — parseren klipper det ud
+	// af titlen igen, så den hedder præcis det, den skal.
+	await page.getByLabel('Ny opgave').fill(`${langTitel} i dag`);
+	await page.getByLabel('Ny opgave').press('Enter');
+	await page.getByText('tado°', { exact: false }).first().click();
+
+	const titel = page.getByLabel('Opgavens tekst');
+	await expect(titel).toBeVisible();
+	await expect(titel).toHaveValue(langTitel);
+
+	// Beskrivelsen: en URL uden et eneste mellemrum at bryde ved.
+	const url = 'https://link.tado.com/emails/8/ttid/1-a37f2c9b4e6d8a1f0c3b5e7d9a2f4c6b8e0d1a3f5c7b9e2d4a6f8c0b3e5d7a9f';
+	const beskrivelse = page.getByLabel('Beskrivelse');
+	await beskrivelse.fill(`Thermostat RU0910301440\nBatteries\n${url}`);
+	await beskrivelse.blur();
+
+	// Målt frem for beskrevet: et felt, der ruller vandret, har en scrollWidth
+	// større end sin clientWidth. Det var dét, der klippede venstre kant.
+	//
+	// Felterne måles gennem deres egne lokatorer og ikke med en forespørgsel på
+	// aria-label: beskrivelsen har et <label for>, ikke et aria-label, så en
+	// forespørgsel fandt ingenting og ville have bestået tomt.
+	const spild = [];
+	for (const [navn, felt] of [
+		['Opgavens tekst', titel],
+		['Beskrivelse', beskrivelse]
+	]) {
+		const m = await felt.evaluate((el) => ({ ind: el.scrollWidth, ude: el.clientWidth }));
+		if (m.ind - m.ude > 1) spild.push(`${navn}: ${m.ind} > ${m.ude}`);
+	}
+	expect(spild).toEqual([]);
+
+	// Beskrivelsen løber ikke over i Chromium, heller ikke uden reglen — det var
+	// Safari, den blev set i, og det er en anden motor. Prøven måler derfor reglen
+	// selv frem for dens virkning. Det er svagere, og det står her, så den næste
+	// ved det: den vogter mod at reglen bliver slettet, ikke mod at den er forkert.
+	await expect(beskrivelse).toHaveCSS('overflow-wrap', 'break-word');
+
+	// Og titlen er blevet høj nok til at rumme sig selv frem for at klippe.
+	const linjer = await titel.evaluate((el) => ({
+		hoejde: el.clientHeight,
+		linje: parseFloat(getComputedStyle(el).lineHeight)
+	}));
+	expect(linjer.hoejde).toBeGreaterThan(linjer.linje * 1.5);
+
+	expect(trouble).toEqual([]);
+});

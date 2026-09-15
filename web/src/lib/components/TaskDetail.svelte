@@ -171,6 +171,32 @@
 	 * took is said out loud, because a title that edits itself without a word is
 	 * worse than one that does nothing.
 	 */
+	/**
+	 * Lader et felt være lige så højt som sin tekst.
+	 *
+	 * `height: auto` først, og så `scrollHeight`: uden nulstillingen kan feltet kun
+	 * vokse, for scrollHeight på et felt, der allerede er for højt, er dets egen
+	 * højde.
+	 */
+	function grow(node) {
+		const fit = () => {
+			node.style.height = 'auto';
+			node.style.height = `${node.scrollHeight}px`;
+		};
+		fit();
+		node.addEventListener('input', fit);
+		// Bredden skifter, når ruden gør — og en tekst, der fyldte to linjer, fylder
+		// tre på en smallere skærm uden at der er rørt ved den.
+		const watch = new ResizeObserver(fit);
+		watch.observe(node);
+		return {
+			destroy() {
+				node.removeEventListener('input', fit);
+				watch.disconnect();
+			}
+		};
+	}
+
 	async function saveContent() {
 		if (!task) return;
 		const trimmed = content.trim();
@@ -418,13 +444,27 @@
 
 	<div class="scroll">
 		<div class="field">
-			<input
+			<!-- Et felt frem for en linje. En opgavetitel er tit længere end en telefon
+			     er bred — "tado°: Your Smart Thermostat needs new batteries" er en
+			     almindelig en — og et <input> kan ikke ombryde: det ruller, og så står
+			     halvdelen af overskriften uden for kanten. -->
+			<textarea
 				class="title"
+				rows="1"
 				use:focusOnMount
+				use:grow
 				bind:value={content}
 				onblur={saveContent}
+				onkeydown={(e) => {
+					// Retur gemmer frem for at lave en ny linje. En titel er én linje,
+					// uanset hvor mange den fylder på skærmen.
+					if (e.key === 'Enter') {
+						e.preventDefault();
+						e.currentTarget.blur();
+					}
+				}}
 				aria-label={t('detail.text')}
-			/>
+			></textarea>
 		</div>
 
 		<div class="field">
@@ -894,6 +934,16 @@
 		resize: vertical;
 		font-family: inherit;
 		line-height: 1.5;
+		/* En beskrivelse er tit et klippet stykke mail med en URL i. Et <textarea>
+		   ombryder ved mellemrum, og en URL har ingen — så feltet rullede vandret,
+		   og på en telefon stod teksten forskudt med venstre kant klippet af. Det
+		   ser ikke ud som rulning; det ser ud som manglende bogstaver.
+
+		   `break-word` og ikke `anywhere`: den første bryder kun et ord, der ikke kan
+		   stå på en linje alene, mens den anden bryder ved først givne lejlighed og
+		   delte "GarageRisteriet" midt i en stavelse. Se h1 på projektets side — den
+		   lektion er betalt én gang. */
+		overflow-wrap: break-word;
 	}
 
 	/* The title is the one field that should not look like a field until you are in
@@ -905,6 +955,10 @@
 		background: transparent;
 		border-color: transparent;
 		padding-left: 0;
+		/* Højden sættes af `grow`, så håndtaget ville love noget, det ikke kan
+		   holde: trækker man i det, retter det næste bogstav det tilbage. */
+		resize: none;
+		overflow: hidden;
 	}
 
 	.title:hover {
