@@ -4687,10 +4687,11 @@ test('en søgning i ⌘K efterlader de træffere, den fandt', async ({ page }) =
 	await expect(list.getByText('Fyrreskov syd')).toBeVisible();
 	await expect(list.getByText('Egeskov')).toHaveCount(0);
 
-	// Og adressen lyver ikke, når feltet tømmes: uden det ville et genbesøg hente
-	// en søgning tilbage, man selv havde ryddet væk.
+	// Feltet kan tømmes, og listen kommer hel igen. Adressen beholder sit `q` —
+	// den skrives kun af navigation. Den første udgave skrev den ved hvert
+	// tastetryk, så den kunne deles, og det kostede bogstaver ud af feltet; se
+	// prøven nedenfor.
 	await page.getByPlaceholder('Søg i noter').fill('');
-	await expect(page).not.toHaveURL(/[?&]q=/);
 	await expect(list.getByText('Egeskov')).toBeVisible();
 
 	expect(trouble).toEqual([]);
@@ -4819,5 +4820,79 @@ test('en opgaves tekst kan læses færdig på en telefon', async ({ page }) => {
 	}));
 	expect(linjer.hoejde).toBeGreaterThan(linjer.linje * 1.5);
 
+	expect(trouble).toEqual([]);
+});
+/**
+ * Søgefeltet taber ikke bogstaver, og listen viser det, der blev spurgt om.
+ *
+ * Fra en skærmoptagelse, to billeder i sekundet:
+ *
+ *   2,5 s  feltet "verd"      listen ufiltreret
+ *   3,0 s  feltet "nde"       listen filtreret
+ *   6,0 s  feltet "verdande"  listen ufiltreret
+ *   6,5 s  feltet tomt        listen filtreret
+ *
+ * To fejl oven i hinanden.
+ *
+ * Bogstaverne forsvandt, fordi adressen blev skrevet ved hvert tastetryk:
+ * `replaceState` opdaterer `$page.url` et øjeblik efter, den kaldes, så en effekt
+ * læste den forrige adresse og skrev den gamle værdi tilbage i feltet.
+ *
+ * Og resultaterne landede for sent, fordi to hentninger kunne være undervejs på
+ * én gang uden at nogen holdt styr på, hvilken der gjaldt. Den langsomste vandt.
+ */
+test('søgefeltet taber ikke bogstaver, og det nyeste svar vinder', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	// Sin egen note at finde. Et ord fra en anden prøve ville gøre den her
+	// afhængig af rækkefølgen, og den kobling har allerede narret mig i denne fil.
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const krop = page.getByLabel('Notens tekst');
+	await krop.fill('Kaffemølle\n\nnoget om den');
+	await krop.blur();
+	await expect(page.getByText('Gemt', { exact: true })).toBeVisible();
+	await expect(page.locator('.list').getByText('Kaffemølle', { exact: true })).toBeVisible();
+
+	// Skrevet i et tempo, et menneske kan skrive i. Det var hastigheden, der
+	// afslørede det: en pause mellem hvert bogstav skjuler kapløbet helt.
+	const felt = page.getByPlaceholder('Søg i noter');
+	await felt.click();
+	await page.keyboard.type('kaffemølle', { delay: 40 });
+	await expect(felt).toHaveValue('kaffemølle');
+
+	// Og det bliver stående. Fejlen viste sig et halvt sekund efter, ikke med det
+	// samme — adressen skal nå at komme tilbage, før den kan skrive over noget.
+	await page.waitForTimeout(1500);
+	await expect(felt).toHaveValue('kaffemølle');
+
+	// Det nyeste svar vinder, også når det kommer først.
+	//
+	// Den første søgning holdes tilbage, den anden slippes igennem. Uden vagten
+	// lander den gamle sidst og overskriver listen med svaret på et spørgsmål, der
+	// ikke længere bliver stillet.
+	let held;
+	await page.route('**/api/v1/notes?*', async (route) => {
+		const q = new URL(route.request().url()).searchParams.get('q');
+		if (q === 'aaaaa' && !held) {
+			held = route;
+			return; // holdes, indtil den næste er kommet igennem
+		}
+		await route.continue();
+	});
+
+	await felt.fill('');
+	await felt.fill('aaaaa');
+	await page.waitForTimeout(500);
+	await felt.fill('kaffemølle');
+	await page.waitForTimeout(900);
+	if (held) await held.continue();
+	await page.waitForTimeout(700);
+
+	// Feltet og listen er enige: det, der står, er det, der blev spurgt om.
+	await expect(felt).toHaveValue('kaffemølle');
+	await expect(page.locator('.list').getByText('Kaffemølle', { exact: true })).toBeVisible();
+
+	await page.unroute('**/api/v1/notes?*');
 	expect(trouble).toEqual([]);
 });

@@ -15,7 +15,7 @@
 	import { app } from '$lib/stores.svelte.js';
 	import { page } from '$app/stores';
 	import { untrack } from 'svelte';
-	import { goto, replaceState } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { t, tag } from '$lib/i18n.svelte.js';
 	import { NOTE, startDrag } from '$lib/dnd.js';
 	import { colorVar } from '$lib/colors.js';
@@ -485,46 +485,30 @@
 	});
 
 	/**
-	 * En søgning, man kommer med, og en søgning, man kan gå videre med.
+	 * En søgning, man kommer med.
 	 *
-	 * ⌘K viste noter, der passede, i sin egen liste — og når man valgte en, åbnede
-	 * den noten på en side, hvis liste stod uændret. Så var de andre træffere væk,
-	 * og det eneste sted, de havde været, var en popup, der lige var lukket. "Jeg
-	 * får kun præsenteret en popup med resultater, og trykker jeg retur, kommer jeg
-	 * tilbage til den normale liste."
+	 * ⌘K sender `?note=…&q=…`, så listen ved siden af den åbne note er de andre
+	 * træffere frem for den almindelige liste.
 	 *
-	 * Nu bærer adressen søgningen, så listen ved siden af den åbne note er de andre
-	 * træffere. Og den skrives tilbage, når feltet ændres, så adressen kan gemmes og
-	 * deles — og frem for alt ikke lyver, når man har tømt feltet.
+	 * Læst, aldrig skrevet. Den første udgave skrev også søgningen tilbage i
+	 * adressen ved hvert tastetryk, så den kunne gemmes og deles — og det kostede
+	 * bogstaver. `replaceState` opdaterer `$page.url` et øjeblik efter, den kaldes,
+	 * så to hurtige tastetryk gav en effekt, der læste den *forrige* adresse, fandt
+	 * den uenig med det skrevne, og skrev den gamle værdi tilbage i feltet. Man
+	 * skrev "verd", og der stod "nde". Målt på en skærmoptagelse, ikke gættet.
 	 *
-	 * `settled` er det, de to retninger er blevet enige om — og den læses med
-	 * `untrack`, hvilket er hele forskellen på at virke og ikke.
-	 *
-	 * Uden den: den nederste effekt sætter `settled`, det vækker den øverste, og
-	 * `replaceState` har endnu ikke opdateret `$page.url`. Den øverste læser derfor
-	 * den *gamle* adresse, finder en søgning, der ikke er enig med `settled`, og
-	 * skriver den tilbage i feltet. Man tømmer søgefeltet, og ordet kommer igen.
-	 * Hver effekt skal reagere på sin egen kilde — adressen og feltet — og aldrig
-	 * på den fælles markør.
+	 * En markør, der skal holde to retninger enige, er en markør, der taber
+	 * kapløbet et sted. Adressen skrives derfor kun af navigation, og det her er
+	 * den eneste, der læser den.
 	 */
-	let settled = $state(null);
+	let cameWith = $state(null);
 
 	$effect(() => {
 		const inURL = $page.url.searchParams.get('q') ?? '';
-		if (inURL === untrack(() => settled)) return;
-		settled = inURL;
+		if (inURL === untrack(() => cameWith)) return;
+		cameWith = inURL;
 		draftQuery = inURL;
 		query = inURL;
-	});
-
-	$effect(() => {
-		const now = query;
-		if (now === untrack(() => settled)) return;
-		settled = now;
-		const url = new URL(untrack(() => $page.url));
-		if (now) url.searchParams.set('q', now);
-		else url.searchParams.delete('q');
-		replaceState(url, {});
 	});
 
 	// Arriving from somewhere that names a note — a task's panel, a project's page —
@@ -537,13 +521,30 @@
 		else api.note(asked).then(open).catch(() => {});
 	});
 
+	/**
+	 * Hvilken hentning der gælder.
+	 *
+	 * To søgninger kan være undervejs på én gang, og den langsomste kan lande
+	 * sidst. Uden det her betød det, at listen viste svaret på et spørgsmål, der
+	 * ikke længere blev stillet — på optagelsen stod resultaterne for "verdande" i
+	 * listen, efter feltet var tømt. Pausen på 250 ms gjorde det sjældnere og kunne
+	 * ikke gøre det umuligt.
+	 */
+	let newest = 0;
+
 	async function load(q) {
+		const mine = ++newest;
 		try {
 			const params = q ? { q } : showArchive ? { archived: '1' } : {};
-			notes = (await api.notes(params)).notes ?? [];
+			const got = (await api.notes(params)).notes ?? [];
+			// Et svar, der er blevet overhalet, kastes væk. Det er ikke forkert —
+			// det er bare ikke længere svaret på det, der blev spurgt om.
+			if (mine !== newest) return;
+			notes = got;
 			status = 'ready';
 			if (selectedId && !notes.some((n) => n.id === selectedId)) open(notes[0] ?? null);
 		} catch (e) {
+			if (mine !== newest) return;
 			status = 'failed';
 			app.toast(humanMessage(e));
 		}
