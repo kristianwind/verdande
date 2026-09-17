@@ -4657,16 +4657,23 @@ test('en søgning i ⌘K efterlader de træffere, den fandt', async ({ page }) =
 	// Gemt ved at forlade feltet, som resten af fladen gør det — der er ingen
 	// Gem-knap at huske.
 	//
-	// Der ventes på "Gemt", før den næste note laves. Uden det klikkes "Ny note",
-	// mens den forrige stadig er undervejs, og listen når ikke at få den med — det
-	// fejlede i CI én gang ud af tre kørsler, og bestod hver gang her på maskinen.
-	// En prøve, der er hurtigere end programmet, måler maskinen den kører på.
+	// Der ventes på et TOMT tekstfelt, før der skrives. Uden det kan udfyldningen
+	// ramme den forrige notes felt, mens den nye er undervejs, og så bliver teksten
+	// enten skrevet på den forkerte note eller tabt undervejs.
+	//
+	// Og der ventes IKKE på "Gemt": den tekst er hvilestanden, ikke et signal.
+	// Feltet siger "Gemmer" mens en gemning kører og "Gemt" ellers — altså også før
+	// den første gemning overhovedet er begyndt. En prøve, der venter på den, får
+	// grønt med det samme og måler ingenting. Det var den fejl, der gjorde den her
+	// prøve ustabil: rettelsen var en ventetid, der ikke kunne vente på noget.
+	// Rækken i listen er det rigtige tegn — den kommer først, når serveren har
+	// svaret.
 	for (const title of ['Fyrreskov nord', 'Fyrreskov syd', 'Egeskov']) {
 		await page.getByRole('button', { name: 'Ny note' }).click();
 		const body = page.getByLabel('Notens tekst');
+		await expect(body).toHaveText('');
 		await body.fill(`${title}\n\nnoget om den`);
 		await body.blur();
-		await expect(page.getByText('Gemt', { exact: true })).toBeVisible();
 		await expect(page.locator('.list').getByText(title, { exact: true })).toBeVisible();
 	}
 
@@ -4696,6 +4703,51 @@ test('en søgning i ⌘K efterlader de træffere, den fandt', async ({ page }) =
 
 	expect(trouble).toEqual([]);
 });
+
+/**
+ * En ny note åbnes med det samme, uden at editoren forsvinder undervejs.
+ *
+ * Serveren tømmer `body` på listerækker med vilje, og siden brugte den tomme krop
+ * som tegn på "det her er en række, hent noten hel". En nyoprettet note er også
+ * tom — og hel — så den blev sendt samme vej: editoren blev pillet af skærmen,
+ * noten hentet igen, og editoren sat op på ny.
+ *
+ * Det hul var ikke kun et blink. Mens det stod åbent, var der ingen valgt note, og
+ * gemningen går tavst tilbage uden en. Skrev man i det sekund, var teksten væk —
+ * ingen fejl, ingen toast, bare en tom note. Det er også det, der gjorde
+ * søgeprøven ovenfor ustabil: i CI var maskinen langsom nok til at ramme hullet.
+ *
+ * Prøven tæller opslagene frem for at måle et blink. Et blink er en tidsting og
+ * ville kræve, at prøven var hurtigere end programmet — præcis den fejl, den er
+ * skrevet for at lukke. Et opslag, der ikke sker, er et tal.
+ */
+test('en ny note hentes ikke igen, når den lige er lavet', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+
+	const fetched = [];
+	page.on('request', (r) => {
+		// Selve noten, ikke dens delinger: /notes/<id> og ikke /notes/<id>/shares.
+		const m = new URL(r.url()).pathname.match(/^\/api\/v1\/notes\/([0-9a-f-]+)$/);
+		if (r.method() === 'GET' && m) fetched.push(m[1]);
+	});
+
+	await page.goto('/noter');
+	await page.getByRole('button', { name: 'Ny note' }).click();
+
+	// Editoren er der, og den er tom — ikke væk og på vej tilbage.
+	const body = page.getByLabel('Notens tekst');
+	await expect(body).toHaveText('');
+
+	await body.fill('Grantræ\n\nnoget om det');
+	await body.blur();
+	await expect(page.locator('.list').getByText('Grantræ', { exact: true })).toBeVisible();
+
+	// Noten blev aldrig hentet igen: svaret på oprettelsen var den hele.
+	expect(fetched).toEqual([]);
+
+	expect(trouble).toEqual([]);
+});
+
 /**
  * Et indsat billede kan ses i fuld størrelse og kopieres videre.
  *

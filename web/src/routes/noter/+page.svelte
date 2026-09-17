@@ -561,7 +561,17 @@
 	 * Derfor hentes den hele her. Rækken vises med det samme, så det ikke føles som
 	 * at vente; teksten kommer, når den er der.
 	 */
-	async function open(note) {
+	/**
+	 * `whole` siger, at noten allerede er hel, og at der ikke skal hentes.
+	 *
+	 * En tom krop bruges ellers som tegn på, at det her er en listerække — serveren
+	 * tømmer `body` på dem med vilje. Men en *nyoprettet* note er også tom, og den
+	 * er hel. Uden det her blev den lukket ud som en halv note: editoren blev pillet
+	 * af skærmen, noten hentet igen, og editoren sat op på ny. I det hul står
+	 * `selected` som null, og `save()` går tavst tilbage uden at gemme — så tekst
+	 * skrevet der forsvandt sporløst.
+	 */
+	async function open(note, { whole = false } = {}) {
 		clearTimeout(timer);
 		if (!note) {
 			selectedId = null;
@@ -577,9 +587,9 @@
 		// id'et være det samme begge gange, så den anden aldrig blev vist. Man ville
 		// sidde med en tom note, der lige havde haft en titel.
 		selectedId = note.id;
-		if (note.body) {
+		if (whole || note.body) {
 			selected = note;
-			draft = note.body;
+			draft = note.body ?? '';
 			return;
 		}
 		selected = null;
@@ -691,7 +701,8 @@
 		try {
 			const note = await api.createNote({ body: '' });
 			notes = [note, ...notes];
-			open(note);
+			// Svaret er hele noten, så den skal ikke hentes igen — se open().
+			await open(note, { whole: true });
 			document.querySelector('.editor textarea')?.focus();
 		} catch (e) {
 			app.toast(humanMessage(e));
