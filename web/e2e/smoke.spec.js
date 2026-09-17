@@ -2758,7 +2758,9 @@ test('noteeditoren er rich text, og teksten overlever turen til Markdown og tilb
 	// And the round trip, which is the thing that can quietly ruin a note: what is
 	// stored is Markdown, and reopening it has to give back the same document. A
 	// converter that disagrees with itself reshapes a note a little on every save.
+	const rundtur = noteGemt(page);
 	await page_.blur();
+	await rundtur;
 	await page.reload();
 	await page.getByRole('button', { name: /Møde med Anders/ }).click();
 
@@ -3196,8 +3198,11 @@ test('[[ foreslår en note, og linket lander i noten', async ({ page }) => {
 	await expect(inline).toBeVisible();
 
 	// It survives the round-trip through Markdown and a reload.
+	// Gemningen, ikke en ventetid på 900 ms. Tallet var gættet til at overleve
+	// tastepausen på 700 ms, og et gæt om tid måler maskinen frem for programmet.
+	const linketGemt = noteGemt(page);
 	await ed.blur();
-	await page.waitForTimeout(900);
+	await linketGemt;
 	await page.reload();
 	await page.getByRole('button', { name: /Mine planer/ }).click();
 	await expect(ed.locator('a.notelink', { hasText: 'Rejseplan til Berlin' })).toBeVisible();
