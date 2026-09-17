@@ -29,6 +29,20 @@ class AppState {
 	people = $state([]);
 	tasks = $state([]);
 	loading = $state(true);
+
+	/**
+	 * True when the boot never reached the server — as opposed to reaching it and
+	 * being told the session is gone.
+	 *
+	 * The two are indistinguishable from `user === null`, and they are opposite
+	 * things to the person looking at the screen: one means "log ind", the other
+	 * means "der er intet at logge ind på herfra, og et kodeord hjælper ikke". A
+	 * total outage used to show the login screen, so the app blamed the user's
+	 * session for the network being down — and a login page that cannot possibly
+	 * work is worse than an error, because it looks like it might.
+	 */
+	unreachable = $state(false);
+
 	/** Transient messages: a failed save, a rolled-back change. */
 	toasts = $state([]);
 	connected = $state(false);
@@ -96,6 +110,7 @@ class AppState {
 		this.loading = true;
 		try {
 			this.user = await api.me();
+			this.unreachable = false;
 			// The interface's language follows the account, so it is set the moment
 			// the session is known — before anything has drawn a string.
 			i18n.set(this.user.locale);
@@ -111,6 +126,10 @@ class AppState {
 			this.loadNotifications();
 		} catch (e) {
 			this.user = null;
+			// `offline` is the one code the request layer makes up itself: it is what
+			// is thrown when the retry window ran out without any status ever
+			// arriving. A 401 is the server answering, and that is a real sign-out.
+			this.unreachable = e?.code === 'offline';
 		} finally {
 			this.loading = false;
 		}

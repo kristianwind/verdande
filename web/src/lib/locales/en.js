@@ -234,6 +234,9 @@ export const en = {
 	'nav.offlineHint': 'Changes from other people are not showing right now',
 	'net.reconnecting': 'Reconnecting…',
 	'net.offline': 'No connection',
+	'net.downTitle': 'No connection',
+	'net.downBody': 'Verdande cannot be reached from here right now. Nothing you wrote is lost — it is on the server, and it comes back when the connection does.',
+	'net.downRetry': 'Try again',
 	'nav.doItToday': 'Do it today',
 
 	// --- the sidebar's own sections ------------------------------------------------

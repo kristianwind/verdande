@@ -8,6 +8,7 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import SignIn from '$lib/components/SignIn.svelte';
+	import NoConnection from '$lib/components/NoConnection.svelte';
 	import TaskDetail from '$lib/components/TaskDetail.svelte';
 	import { t } from '$lib/i18n.svelte.js';
 	import { setBadge } from '$lib/badge.js';
@@ -166,6 +167,10 @@
 	<div class="booting"></div>
 {:else if standalone}
 	{@render children()}
+{:else if app.unreachable}
+	<!-- Ikke login-skærmen: en total udfald er ikke en udløbet session, og et
+	     kodeord hjælper ikke mod en manglende forbindelse. -->
+	<NoConnection />
 {:else if !app.user}
 	<SignIn />
 {:else}
