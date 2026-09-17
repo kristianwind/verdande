@@ -38,6 +38,27 @@ async function projectAction(page, name) {
 	await item.click();
 }
 
+/**
+ * Venter på, at en notes gemning faktisk er nået frem til serveren.
+ *
+ * Ikke på teksten "Gemt" i foden: den er hvilestanden. Feltet siger "Gemmer" mens
+ * en gemning kører og "Gemt" ellers — altså også før den første overhovedet er
+ * begyndt. En ventetid på den er grøn med det samme og venter på ingenting, og det
+ * har gjort tre prøver i den her fil ustabile. Svaret på PATCH'en kan der ventes
+ * på, og det er det eneste, der beviser, at serveren har hørt om teksten.
+ *
+ * Skal kaldes FØR den handling, der udløser gemningen — ellers er svaret måske
+ * allerede kommet og gået.
+ */
+function noteGemt(side) {
+	return side.waitForResponse(
+		(r) =>
+			r.request().method() === 'PATCH' &&
+			/\/notes\/[^/]+$/.test(new URL(r.url()).pathname) &&
+			r.ok()
+	);
+}
+
 function watchForTrouble(page) {
 	const trouble = [];
 	page.on('console', (message) => {
@@ -1703,8 +1724,21 @@ test('en gruppe er en side med sine projekter, en beskrivelse og filer', async (
 	const about = page.getByLabel('Om gruppen');
 	await expect(about).toBeVisible();
 	await about.fill('Alt der larmer og støver.');
+
+	// Gemningen skal være nået frem, FØR der genindlæses. Beskrivelsen tegnes
+	// optimistisk — siden sætter teksten på gruppen med det samme og sender PATCH'en
+	// bagefter — så en kontrol på teksten er grøn, før serveren har hørt om den. En
+	// reload i det hul henter den gamle gruppe tilbage, og prøven fejler på noget,
+	// der ikke er i stykker. Svaret er det, der kan ventes på.
+	const gemt = page.waitForResponse(
+		(r) =>
+			r.request().method() === 'PATCH' &&
+			new URL(r.url()).pathname.includes('/project-groups/') &&
+			r.ok()
+	);
 	await about.blur();
 	await expect(page.getByText('Alt der larmer og støver.')).toBeVisible();
+	await gemt;
 
 	// And it survives a reload, which is the difference between the page keeping up
 	// and the server taking it.
@@ -2911,8 +2945,9 @@ test('note links i en delt note fører til den rigtige note, eller siger hvorfor
 	await body.click();
 	await gæst.keyboard.press('Control+End');
 	await gæst.keyboard.type('\n[[Linneas egne maal]]\n[[Noget der aldrig blev skrevet]]');
+	const gemt = noteGemt(gæst);
 	await body.blur();
-	await expect(gæst.locator('footer .hint')).toHaveText('Gemt');
+	await gemt;
 
 	await gæst.goto(noterURL);
 	await gæst.locator('.notes button.row').filter({ hasText: /^Faelles aftale/ }).click();
@@ -2975,10 +3010,33 @@ test('en delt note tager de noter med, den peger på', async ({ browser, page })
 		'Aftale om levering\nse [[Prisliste i kroner]]'
 	]) {
 		await page.getByRole('button', { name: 'Ny note' }).click();
-		await page.getByRole('textbox', { name: 'Notens tekst' }).click();
+		const felt = page.getByRole('textbox', { name: 'Notens tekst' });
+		// Tomt felt før der skrives, og rækken i listen bagefter. IKKE "Gemt" i
+		// foden: den tekst er hvilestanden — der står "Gemmer" mens en gemning
+		// kører og "Gemt" ellers, altså også før den første er begyndt. En ventetid
+		// på den er grøn med det samme og venter på ingenting.
+		await expect(felt).toHaveText('');
+		await felt.click();
 		await page.keyboard.type(text);
-		await page.getByRole('textbox', { name: 'Notens tekst' }).blur();
-		await expect(page.locator('footer .hint')).toHaveText('Gemt');
+		await felt.blur();
+		const titel = text.split('\n')[0];
+		// Rækkens egen titel, og kun den. To fælder ligger på vejen hertil, og jeg
+		// gik i begge:
+		//
+		// `filter({ hasText: 'Aftale om levering' })` med en STRENG matcher
+		// delstreng og uden hensyn til store og små bogstaver — den fandt også
+		// "Fælles aftale om leveringen" fra en tidligere prøve, for databasen deles
+		// af hele suiten.
+		//
+		// `.notes` alene rækker for langt: en `[[henvisning]]` i editoren er også
+		// tekst med den titel i, så et opslag på teksten fandt tre.
+		//
+		// `button.row strong` er rækkens titelelement, og en forankret regex er både
+		// eksakt og versalfølsom. Titlerne her er almindelige ord uden
+		// regex-tegn — står der en dag en parentes i en af dem, skal den undviges.
+		await expect(
+			page.locator('.notes button.row strong').filter({ hasText: new RegExp(`^${titel}$`) })
+		).toHaveCount(1);
 	}
 
 	await page.locator('.notes button.row').filter({ hasText: /^Aftale om levering/ }).click();
@@ -3064,8 +3122,9 @@ test('</> sætter markeringen som kode, og kilden har sin egen knap', async ({ p
 
 	// Og den anden knap gør stadig det, den altid har gjort: viser filen, med
 	// baktikkerne i, som er beviset på at koden nåede hele vejen ned.
+	const kildeGemt = noteGemt(page);
 	await body.blur();
-	await expect(page.locator('footer .hint')).toHaveText('Gemt');
+	await kildeGemt;
 	await page.getByRole('button', { name: /Vis kilden/ }).click();
 	await expect(page.locator('textarea.source')).toHaveValue(/`/);
 
@@ -4937,7 +4996,7 @@ test('søgefeltet taber ikke bogstaver, og det nyeste svar vinder', async ({ pag
 	const krop = page.getByLabel('Notens tekst');
 	await krop.fill('Kaffemølle\n\nnoget om den');
 	await krop.blur();
-	await expect(page.getByText('Gemt', { exact: true })).toBeVisible();
+	// Rækken i listen er værnet. "Gemt" stod her før og er hvilestanden — se noteGemt().
 	await expect(page.locator('.list').getByText('Kaffemølle', { exact: true })).toBeVisible();
 
 	// Skrevet i et tempo, et menneske kan skrive i. Det var hastigheden, der
