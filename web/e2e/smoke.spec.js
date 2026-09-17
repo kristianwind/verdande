@@ -39,24 +39,58 @@ async function projectAction(page, name) {
 }
 
 /**
- * Venter på, at en notes gemning faktisk er nået frem til serveren.
+ * Venter på, at en gemning faktisk er nået frem til serveren.
  *
- * Ikke på teksten "Gemt" i foden: den er hvilestanden. Feltet siger "Gemmer" mens
- * en gemning kører og "Gemt" ellers — altså også før den første overhovedet er
- * begyndt. En ventetid på den er grøn med det samme og venter på ingenting, og det
- * har gjort tre prøver i den her fil ustabile. Svaret på PATCH'en kan der ventes
- * på, og det er det eneste, der beviser, at serveren har hørt om teksten.
+ * Hele fladen tegner en ændring med det samme og sender kaldet bagefter — en note
+ * står i listen, et projekt hopper ind under sin gruppe, en beskrivelse står på
+ * siden — så alt, hvad man kan se, er sandt, før serveren har hørt om det. En
+ * prøve, der genindlæser eller klikker videre i det hul, måler den gamle tilstand
+ * og fejler på noget, der ikke er i stykker.
  *
+ * Og teksten "Gemt" i notefoden duer ikke som værn: den er hvilestanden. Feltet
+ * siger "Gemmer" mens en gemning kører og "Gemt" ellers — altså også før den
+ * første overhovedet er begyndt. En ventetid på den er grøn med det samme og
+ * venter på ingenting. Det gjorde fem prøver i den her fil ustabile.
+ *
+ * En fast ventetid er den samme fejl med et tal foran: `waitForTimeout(1200)` er
+ * et gæt om, hvor hurtig maskinen er, og det gæt holder indtil CI er travl.
+ *
+ * Svaret på PATCH'en er det eneste, der beviser, at serveren har hørt om det.
  * Skal kaldes FØR den handling, der udløser gemningen — ellers er svaret måske
  * allerede kommet og gået.
  */
-function noteGemt(side) {
+function gemt(side, sti) {
 	return side.waitForResponse(
-		(r) =>
-			r.request().method() === 'PATCH' &&
-			/\/notes\/[^/]+$/.test(new URL(r.url()).pathname) &&
-			r.ok()
+		(r) => r.request().method() === 'PATCH' && sti.test(new URL(r.url()).pathname) && r.ok()
 	);
+}
+
+const noteGemt = (side) => gemt(side, /\/notes\/[^/]+$/);
+const opgaveGemt = (side) => gemt(side, /\/tasks\/[^/]+$/);
+const projektGemt = (side) => gemt(side, /\/projects\/[^/]+$/);
+
+/**
+ * Laver en ny note og giver feltet tilbage, når det er DEN nye, der skrives i.
+ *
+ * `create()` venter på serverens svar, før noten er oprettet, og imens står den
+ * forrige notes editor stadig på skærmen. Et klik på "Ny note" efterfulgt af
+ * tastetryk med det samme skriver derfor i den forrige note — teksten havner det
+ * forkerte sted, og den nye note bliver liggende tom. Efter en genindlæsning
+ * findes den titel, prøven leder efter, slet ikke.
+ *
+ * Det tomme felt er værnet. Det er samme form som resten af filen: alt kan ses,
+ * før serveren har hørt om det, så det, der kan ventes på, er tilstanden bagefter.
+ *
+ * Bemærk at hullet også findes for et menneske: klikker man Ny note og skriver
+ * straks, lander de første anslag i den forrige note. Det er hurtigt på en lokal
+ * maskine og sekunder på en dårlig forbindelse. Noteret som et selvstændigt punkt.
+ */
+async function nyNote(side) {
+	await side.getByRole('button', { name: 'Ny note' }).click();
+	const felt = side.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(felt).toHaveText('');
+	await felt.click();
+	return felt;
 }
 
 function watchForTrouble(page) {
@@ -1704,6 +1738,11 @@ test('en gruppe er en side med sine projekter, en beskrivelse og filer', async (
 	// HTML5 drag occasionally does not register the first time under CI load, and a
 	// single dragTo then leaves the group empty and the page assertion failing for a
 	// reason that has nothing to do with what the test is about.
+	// Sidebjælken viser flytningen med det samme og sender PATCH'en bagefter, så
+	// `nested` er sand, før serveren har hørt om den. Klikker prøven videre i det
+	// hul, henter gruppesiden en gruppe uden projekter i — og fejler på noget, der
+	// ikke er i stykker. Det er samme form som beskrivelsen længere nede.
+	const flyttet = projektGemt(page);
 	const nested = sidebar.locator('.folder > a').filter({ hasText: 'Drejebænk' });
 	await expect(async () => {
 		await sidebar
@@ -1711,6 +1750,7 @@ test('en gruppe er en side med sine projekter, en beskrivelse og filer', async (
 			.dragTo(sidebar.getByRole('link', { name: 'Værksted' }));
 		await expect(nested).toHaveCount(1, { timeout: 1000 });
 	}).toPass({ timeout: 10000 });
+	await flyttet;
 	await sidebar.getByRole('link', { name: 'Værksted' }).click();
 
 	await expect(page.getByRole('heading', { name: 'Værksted', level: 1 })).toBeVisible();
@@ -3739,9 +3779,7 @@ test('en monospace-linje kan forlades — på retur og gennem menuen', async ({ 
 	const trouble = watchForTrouble(page);
 	await page.goto('/noter');
 
-	await page.getByRole('button', { name: 'Ny note' }).click();
-	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
-	await ed.click();
+	const ed = await nyNote(page);
 	await page.keyboard.type('Titel');
 	await page.keyboard.press('Enter');
 
@@ -3777,8 +3815,7 @@ test('en monospace-linje kan forlades — på retur og gennem menuen', async ({ 
 
 	// Det overlever turen gennem Markdown. En ren note for sig, så prøven ikke
 	// afhænger af alt det ovenfor: kode, retur, brødtekst — gem, hent igen.
-	await page.getByRole('button', { name: 'Ny note' }).click();
-	await ed.click();
+	await nyNote(page);
 	await page.keyboard.type('Rundtur');
 	await page.keyboard.press('Enter');
 	await page.getByRole('button', { name: 'Formatér' }).click();
@@ -3786,8 +3823,9 @@ test('en monospace-linje kan forlades — på retur og gennem menuen', async ({ 
 	await page.keyboard.type('docker pull');
 	await page.keyboard.press('Enter');
 	await page.keyboard.type('og så videre i almindelig skrift');
+	const rundturGemt = noteGemt(page);
 	await ed.blur();
-	await page.waitForTimeout(1200);
+	await rundturGemt;
 	await page.reload();
 	await page.getByRole('button', { name: /Rundtur/ }).click();
 	await expect(ed.locator('pre')).toContainText('docker pull');
@@ -4089,9 +4127,10 @@ test('en opgave kan få et klokkeslæt, og beholder det når den flyttes', async
 	// Og datoen kan rettes bagefter uden at tage timen med sig.
 	const date = page.locator('#due');
 	const day = await date.inputValue();
+	const datoGemt = opgaveGemt(page);
 	await date.fill(day);
 	await date.blur();
-	await page.waitForTimeout(400);
+	await datoGemt;
 	await page.reload();
 	await page.getByText('ringe til tandlægen').click();
 	await expect(
@@ -4844,6 +4883,44 @@ test('et udfald siger ingen forbindelse frem for at bede om kodeordet', async ({
 
 	// Og ikke kodeordsfeltet. Det er hele pointen.
 	await expect(page.getByLabel('Adgangskode')).toHaveCount(0);
+});
+
+/**
+ * Klokkens panel bliver inden for skærmen på en telefon.
+ *
+ * Panelet hang under klokken og var 340 px bredt. Klokken sidder tættere på højre
+ * kant end det — der er en temaknap og en kantafstand til højre for den — så
+ * panelet blev skubbet ud over venstre side og klippet af. På en telefon stod der
+ * flere linjer tekst uden for skærmen, og overskriften "Beskeder" lå klods op ad
+ * kanten uden luft, hvilket er tegnet på, at der mangler noget til venstre for
+ * den.
+ *
+ * Målt på kasserne frem for på et skærmbillede: "ser rigtigt ud" er ikke en
+ * påstand, en prøve kan efterprøve, men "venstre kant er ikke negativ" er. Begge
+ * kanter tjekkes — en rettelse, der skubber panelet ind fra venstre ved at lade
+ * det stikke ud til højre, er ikke en rettelse.
+ */
+test('klokkens panel bliver inden for skærmen på en telefon', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto('/');
+
+	await page.getByRole('button', { name: /^Beskeder/ }).click();
+	const panel = page.getByRole('dialog', { name: 'Beskeder' });
+	await expect(panel).toBeVisible();
+
+	const kasse = await panel.boundingBox();
+	expect(kasse.x, 'panelet hænger ud over venstre kant').toBeGreaterThanOrEqual(0);
+	expect(kasse.x + kasse.width, 'panelet hænger ud over højre kant').toBeLessThanOrEqual(390);
+
+	// Og der er luft til overskriften. Et panel, der lige akkurat begynder ved nul,
+	// men hvis tekst gør det samme, er stadig klippet — det var netop sådan, det så
+	// ud på telefonen.
+	const overskrift = panel.getByText('Beskeder', { exact: true });
+	const tekst = await overskrift.boundingBox();
+	expect(tekst.x, 'overskriften klæber til kanten').toBeGreaterThan(kasse.x);
+
+	expect(trouble).toEqual([]);
 });
 
 /**

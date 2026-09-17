@@ -20,6 +20,31 @@
 	let open = $state(false);
 	let wrap = $state(null);
 
+	/**
+	 * Hvor panelet begynder på en telefon — målt, ikke regnet ud.
+	 *
+	 * På en bred skærm hænger panelet under klokken og hører til den. På en telefon
+	 * kan det ikke: klokken sidder tættere på højre kant end panelet er bredt, så et
+	 * panel, der er stillet op efter klokken, skydes ud over venstre side og bliver
+	 * klippet. Der stod tre en halv linje tekst uden for skærmen.
+	 *
+	 * Bredden kunne trækkes fra i CSS — der er en temaknap, et mellemrum og en
+	 * kantafstand til højre for klokken — men så ville den her fil kende sine
+	 * naboers størrelse, og næste knap i toplinjen ville lave fejlen om igen uden
+	 * at sige noget. Toplinjens underkant måles i stedet, og så spænder panelet over
+	 * skærmen med en kant i hver side.
+	 */
+	let below = $state(0);
+
+	function place() {
+		if (wrap) below = Math.round(wrap.getBoundingClientRect().bottom);
+	}
+
+	function toggle() {
+		open = !open;
+		if (open) place();
+	}
+
 	const KINDS = {
 		assigned: 'notif.assigned',
 		'note.changed': 'notif.noteChanged',
@@ -72,6 +97,7 @@
 
 <svelte:window
 	onclick={outside}
+	onresize={() => open && place()}
 	onkeydown={(e) => {
 		if (e.key === 'Escape' && open) open = false;
 	}}
@@ -81,7 +107,7 @@
 	<button
 		class="bell"
 		class:on={open}
-		onclick={() => (open = !open)}
+		onclick={toggle}
 		aria-expanded={open}
 		aria-haspopup="dialog"
 		aria-label={app.unread
@@ -101,7 +127,7 @@
 	</button>
 
 	{#if open}
-		<div class="panel" role="dialog" aria-label={t('notif.title')}>
+		<div class="panel" role="dialog" aria-label={t('notif.title')} style="--below: {below}px">
 			<header>
 				<span>{t('notif.title')}</span>
 				{#if app.unread}
@@ -191,6 +217,21 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius);
 		box-shadow: var(--shadow-lg, 0 8px 30px rgb(0 0 0 / 0.25));
+	}
+
+	/* På en telefon hører panelet til skærmen, ikke til klokken. Se `below` i
+	   skriptet for hvorfor det måles frem for at blive regnet ud. Samme knæk som
+	   toplinjens egen menuknap, så de to skifter form samtidig. */
+	@media (max-width: 820px) {
+		.panel {
+			position: fixed;
+			top: calc(var(--below) + 6px);
+			left: var(--s3);
+			right: var(--s3);
+			width: auto;
+			max-height: calc(100dvh - var(--below) - var(--s3) * 2);
+			overscroll-behavior: contain;
+		}
 	}
 
 	.panel header {
