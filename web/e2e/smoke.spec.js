@@ -4749,6 +4749,40 @@ test('en ny note hentes ikke igen, når den lige er lavet', async ({ page }) => 
 });
 
 /**
+ * Et totalt udfald siger "ingen forbindelse" — ikke "log ind".
+ *
+ * Opstarten spørger serveren, hvem man er. Når svaret aldrig kommer, står `user`
+ * som null, og null betyder "logget ud" alle andre steder i programmet — så et
+ * udfald blev vist som login-skærmen. Appen gav altså sessionen skylden for, at
+ * nettet var nede, og tilbød et kodeordsfelt, der umuligt kunne virke.
+ *
+ * Det er værre end en fejlbesked, fordi det ligner noget, der kunne virke: man
+ * taster kodeordet, der sker ingenting, og man konkluderer, at kontoen er i
+ * stykker. Det skete i virkeligheden 17. september 2026, da instansens DNS-post
+ * blev slettet.
+ *
+ * Prøven afbryder API-kaldene frem for at stoppe serveren: en afbrudt forespørgsel
+ * er præcis det, en manglende DNS-post giver browseren — fetch afviser, uden at der
+ * nogensinde kom en status. En 500 ville være serveren, der svarer, og det er den
+ * anden sag.
+ */
+test('et udfald siger ingen forbindelse frem for at bede om kodeordet', async ({ page }) => {
+	await page.route('**/api/v1/**', (route) => route.abort());
+
+	await page.goto('/');
+
+	// Prøvetiden skal kunne rumme hele forsøgsvinduet: forespørgselslaget prøver
+	// igen i femten sekunder, før det kalder det et udfald. Det er med vilje —
+	// et blink på nettet må ikke smide folk ud — så prøven må vente det ud.
+	await expect(page.getByText('Ingen forbindelse', { exact: true })).toBeVisible({
+		timeout: 25000
+	});
+
+	// Og ikke kodeordsfeltet. Det er hele pointen.
+	await expect(page.getByLabel('Adgangskode')).toHaveCount(0);
+});
+
+/**
  * Et indsat billede kan ses i fuld størrelse og kopieres videre.
  *
  * I arket er et billede skaleret ned til spaltens bredde — et foto fra en telefon

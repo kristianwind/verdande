@@ -237,6 +237,9 @@ export const da = {
 	'nav.offlineHint': 'Ændringer fra andre vises ikke lige nu',
 	'net.reconnecting': 'Genopretter forbindelse…',
 	'net.offline': 'Ingen forbindelse',
+	'net.downTitle': 'Ingen forbindelse',
+	'net.downBody': 'Verdande kan ikke nås herfra lige nu. Din tekst er ikke væk — den ligger på serveren, og den kommer igen, når forbindelsen gør.',
+	'net.downRetry': 'Prøv igen',
 	'nav.doItToday': 'Gør det i dag',
 
 	// --- the sidebar's own sections ------------------------------------------------
