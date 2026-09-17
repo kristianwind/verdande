@@ -819,6 +819,15 @@
 				color: var(--accent);
 			}
 		</style>
+		<!-- Besøgstælling for denne side — ikke for programmet, som melder det, der
+		     står under "It counts itself". Plausible på vores egen maskine: ingen
+		     cookie, ingen gemt adresse, ingen tredjepart, og derfor ingen bjælke at
+		     møde folk med. `defer`, så tælleren aldrig holder siden tilbage. -->
+		<script
+			defer
+			data-domain="verdandetodo.com"
+			src="https://plausible.yggdrasilpanel.com/js/script.outbound-links.js"
+		></script>
 	</head>
 
 	<body>
