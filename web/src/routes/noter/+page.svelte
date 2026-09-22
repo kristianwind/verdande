@@ -14,8 +14,8 @@
 	import { api, humanMessage } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { page } from '$app/stores';
-	import { untrack } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { onMount, untrack } from 'svelte';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { t, tag } from '$lib/i18n.svelte.js';
 	import { NOTE, startDrag } from '$lib/dnd.js';
 	import { colorVar } from '$lib/colors.js';
@@ -511,15 +511,43 @@
 		query = inURL;
 	});
 
-	// Arriving from somewhere that names a note — a task's panel, a project's page —
-	// opens it rather than dropping the person on a list to find it again.
-	let asked = $derived($page.url.searchParams.get('note'));
-	$effect(() => {
-		if (!asked || selectedId === asked) return;
-		const found = notes.find((n) => n.id === asked);
+	/**
+	 * En note, man kommer MED — en besked fra klokken, et link fra en opgave, en
+	 * træffer i ⌘K. Den åbnes, så man ikke bliver sat af på en liste og skal finde
+	 * den igen.
+	 *
+	 * Bundet til selve navigationen og ikke til adressens indhold, og det er hele
+	 * pointen. Siden skriver aldrig adressen — det blev fjernet, fordi det kostede
+	 * bogstaver ud af søgefeltet — så `?note=` bliver stående på den, man kom med,
+	 * uanset hvad man klikker bagefter. En effekt, der læste den igen, hver gang
+	 * noget ændrede sig, så derfor `selectedId` uenig med adressen og åbnede den
+	 * gamle igen: man kunne søge og ikke vælge, for hvert klik på en anden række
+	 * sprang tilbage til den første.
+	 *
+	 * En adresse, der ikke følger med, er ikke en tilstand at holde sig enig med.
+	 * Den er en besked, der kommer én gang — så den læses ved ankomsten frem for
+	 * ved hver ændring.
+	 */
+	function openFromURL(url) {
+		const id = url?.searchParams.get('note');
+		if (!id || id === selectedId) return;
+		const found = notes.find((n) => n.id === id);
 		if (found) open(found);
-		else api.note(asked).then(open).catch(() => {});
-	});
+		else api.note(id).then(open).catch(() => {});
+	}
+
+	// To veje ind, fordi der er to måder at ankomme på, og hver af dem er blind for
+	// den anden.
+	//
+	// `afterNavigate` alene rækker ikke: layoutet tegner ingenting, mens kontoen
+	// hentes, så den her side bliver monteret EFTER den første navigation er forbi.
+	// En lytter, der registreres der, hører den aldrig — `/noter?note=<id>` tastet
+	// eller fulgt udefra åbnede så ingenting.
+	//
+	// Og `onMount` alene rækker heller ikke: går man til en anden note inde i
+	// programmet, monteres siden ikke om.
+	onMount(() => openFromURL($page.url));
+	afterNavigate((nav) => openFromURL(nav?.to?.url ?? $page.url));
 
 	/**
 	 * Hvilken hentning der gælder.

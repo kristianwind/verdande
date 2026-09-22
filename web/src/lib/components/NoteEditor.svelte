@@ -788,6 +788,17 @@
 		});
 	}
 
+	/**
+	 * Står markøren i en punktliste eller en nummereret liste?
+	 *
+	 * Spurgt gennem kommandotilstanden frem for ved at gå op gennem træet: det er
+	 * den samme kilde, værktøjslinjen allerede markerer knappen efter, så de to kan
+	 * ikke blive uenige om, hvad der er en liste.
+	 */
+	const inList = () =>
+		document.queryCommandState('insertUnorderedList') ||
+		document.queryCommandState('insertOrderedList');
+
 	function onkeydown(event) {
 		// The suggestion list owns the arrows and return while it is open, the way
 		// every other completion does. Escape closes it without choosing.
@@ -814,6 +825,15 @@
 				suggestions = [];
 				return;
 			}
+		}
+
+		// Tab rykker et punkt ind og ud, som i enhver anden liste. Kun i en liste:
+		// alle andre steder er Tab den tast, der flytter fokus videre, og en editor,
+		// der stjæler den, er en editor, man ikke kan komme ud af med tastaturet.
+		if (event.key === 'Tab' && inList()) {
+			event.preventDefault();
+			apply(event.shiftKey ? 'outdent' : 'indent');
+			return;
 		}
 
 		if (event.key === 'Enter' && !event.shiftKey) {

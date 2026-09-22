@@ -4797,6 +4797,24 @@ test('en søgning i ⌘K efterlader de træffere, den fandt', async ({ page }) =
 	await expect(list.getByText('Fyrreskov syd')).toBeVisible();
 	await expect(list.getByText('Egeskov')).toHaveCount(0);
 
+	// Og de træffere kan ÅBNES. Adressen bærer stadig `?note=` på den, ⌘K åbnede,
+	// og den blev læst igen hver gang noget ændrede sig — så et klik på en anden
+	// række satte `selectedId`, effekten så den uenig med adressen, og trak én
+	// tilbage til den første. Man kunne søge og ikke vælge.
+	await list.getByText('Fyrreskov syd').click();
+	await expect(page.getByLabel('Notens tekst')).toContainText('Fyrreskov syd');
+	await expect(page.getByLabel('Notens tekst')).not.toContainText('Fyrreskov nord');
+
+	// Og tilbage til den, adressen stadig nævner. Det tilfælde er grunden til, at
+	// åbningen hænger på navigationen og ikke på adressens værdi: `?note=` peger
+	// stadig på "Fyrreskov nord", så en rettelse, der blot læste den én gang og
+	// huskede værdien, ville se den uændret og lade være med at åbne noget. Man
+	// kunne så ikke komme tilbage til den note, man kom fra.
+	await page.getByRole('button', { name: /Søg/ }).click();
+	await palette.getByRole('textbox').fill('Fyrreskov nord');
+	await palette.locator('li button', { hasText: 'Fyrreskov nord' }).click();
+	await expect(page.getByLabel('Notens tekst')).toContainText('Fyrreskov nord');
+
 	// Feltet kan tømmes, og listen kommer hel igen. Adressen beholder sit `q` —
 	// den skrives kun af navigation. Den første udgave skrev den ved hvert
 	// tastetryk, så den kunne deles, og det kostede bogstaver ud af feltet; se
@@ -4919,6 +4937,105 @@ test('klokkens panel bliver inden for skærmen på en telefon', async ({ page })
 	const overskrift = panel.getByText('Beskeder', { exact: true });
 	const tekst = await overskrift.boundingBox();
 	expect(tekst.x, 'overskriften klæber til kanten').toBeGreaterThan(kasse.x);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * En punktliste kan have niveauer, og de overlever gemningen.
+ *
+ * Tab rykker ind og shift+Tab ud, som i ethvert andet program med lister. Det var
+ * ikke bundet til noget: Tab uden for forslagslisten gjorde det, browseren gør med
+ * Tab, altså flyttede fokus ud af noten. Der var ingen vej til et niveau to.
+ *
+ * Omformeren kunne begge veje i forvejen — indrykning bærer niveauet i Markdown —
+ * men skriveren læste kun en underliste, der ligger INDE i sit punkt. Lægger
+ * browseren den som søskende, og det gør de uens, blev grenen sprunget over uden
+ * lyd: punktet forsvandt ved gemningen. Begge former læses nu.
+ *
+ * Målt efter en genindlæsning. Før den står indrykningen på skærmen uanset hvad —
+ * det er turen gennem Markdown, der afgør, om den blev skrevet ned.
+ */
+test('en punktliste kan have niveauer, der overlever gemningen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	await nyNote(page);
+	await page.keyboard.type('Indkøb');
+	await page.keyboard.press('Enter');
+	await page.getByRole('button', { name: 'Formatér' }).click();
+	await page.getByRole('menuitem', { name: 'Punktliste' }).click();
+	await page.keyboard.type('Frugt');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('Aebler');
+	await page.keyboard.press('Tab');
+
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	// Niveauet er der med det samme: en liste inde i en liste.
+	await expect(ed.locator('ul ul li')).toHaveText(['Aebler']);
+
+	const gemt = noteGemt(page);
+	await ed.blur();
+	await gemt;
+	await page.reload();
+	await page.getByRole('button', { name: /Indkøb/ }).click();
+
+	// Og efter turen gennem Markdown står det der stadig.
+	await expect(ed.locator('ul ul li')).toHaveText(['Aebler']);
+	await expect(ed.locator('ul > li').first()).toContainText('Frugt');
+
+	// Og tilbage igen: shift+Tab er vejen ud, ellers er niveauet en envejsdør.
+	await ed.locator('ul ul li').click();
+	await page.keyboard.press('Shift+Tab');
+	await expect(ed.locator('ul ul li')).toHaveCount(0);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * En kodeblok med flere linjer kommer tilbage med dem alle.
+ *
+ * Shift+retur bliver i blokken, som prøven ovenfor viser — men det, browseren
+ * lægger ind, er et <br>, og `textContent` på et <br> er den tomme streng. Blokken
+ * blev derfor skrevet til Markdown som én linje: "linje etlinje to". Man kunne
+ * skrive flere linjer og ikke gemme dem.
+ *
+ * Målt efter en genindlæsning og ikke før. Før gemningen står begge linjer der —
+ * det er turen gennem Markdown, der taber dem, og det er præcis den, prøven
+ * ovenfor stopper lige før.
+ */
+test('en kodeblok med flere linjer overlever gemningen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	await nyNote(page);
+	await page.keyboard.type('Opskrift');
+	await page.keyboard.press('Enter');
+	await page.getByRole('button', { name: 'Formatér' }).click();
+	await page.getByRole('menuitem', { name: 'Monotype' }).click();
+	await page.keyboard.type('first line');
+	await page.keyboard.press('Shift+Enter');
+	await page.keyboard.type('second line');
+
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	const gemt = noteGemt(page);
+	await ed.blur();
+	await gemt;
+	await page.reload();
+	await page.getByRole('button', { name: /Opskrift/ }).click();
+
+	// Én blok, to linjer. Teksten læses rå frem for gennem `toHaveText`, som
+	// normaliserer mellemrum væk — og linjeskiftet ER det, der måles.
+	//
+	// Og på <code>, ikke på <pre>: kopiér-knappen ligger inde i blokken for at
+	// kunne sidde i hjørnet af den, så `textContent` på <pre> har ordet "Kopiér"
+	// med. Det er samme fælde, som selve fejlen handler om — hvad der tæller med i
+	// en blocks tekst — bare fra den anden side.
+	const blok = ed.locator('pre');
+	await expect(blok).toHaveCount(1);
+	expect(await blok.locator('code').evaluate((el) => el.textContent.trim())).toBe(
+		'first line\nsecond line'
+	);
 
 	expect(trouble).toEqual([]);
 });

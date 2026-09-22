@@ -314,6 +314,41 @@ const BLOCK_TAGS = /^(P|H[1-6]|UL|OL|LI|PRE|BLOCKQUOTE|DIV)$/;
 /** Whether an element holds blocks, in which case reading it as one line loses them. */
 const holdsBlocks = (el) => [...el.children].some((c) => BLOCK_TAGS.test(c.tagName));
 
+/**
+ * Teksten i en kodeblok, med linjeskiftene i behold.
+ *
+ * `textContent` er ikke nok, og det er ikke en detalje: et <br> har den tomme
+ * streng som textContent, og <br> er præcis det, browseren lægger ind, når man
+ * trykker shift+retur i en blok. Blokken blev derfor skrevet ned som én linje —
+ * "first linesecond line" — så man kunne skrive flere linjer og ikke gemme dem.
+ * Det er usynligt indtil en genindlæsning, for på skærmen står de rigtigt hele
+ * tiden.
+ *
+ * Kopiér-knappen springes over. Den ligger inde i <pre> for at kunne sidde i
+ * hjørnet af den, og ellers stod ordet "Kopiér" i hver eneste kodeblok efter hver
+ * gemning.
+ *
+ * Rekursivt, fordi indholdet ligger i et <code> inde i blokken: en filtrering over
+ * <pre>'ens egne børn ser kun det ene element og spørger det om en textContent,
+ * der allerede har tabt linjeskiftet.
+ */
+function codeText(node) {
+	let out = '';
+	for (const n of node.childNodes) {
+		if (n.nodeType !== Node.ELEMENT_NODE) {
+			out += n.textContent ?? '';
+			continue;
+		}
+		if (n.classList?.contains('copy')) continue;
+		if (n.tagName === 'BR') {
+			out += '\n';
+			continue;
+		}
+		out += codeText(n);
+	}
+	return out;
+}
+
 export function htmlToMarkdown(root) {
 	const lines = [];
 
@@ -366,14 +401,7 @@ export function htmlToMarkdown(root) {
 					// else and an indent does not.
 					const lang = child.getAttribute('data-lang') ?? '';
 					emit('```' + lang);
-					// Knapper og andet, editoren har lagt oven på blokken, hører ikke til
-					// i filen. Kopiér-knappen ligger inde i <pre> for at kunne placeres i
-					// hjørnet af den, og `textContent` ville ellers skrive ordet "Kopiér"
-					// ind i hver eneste kodeblok, hver gang noten blev gemt.
-					const code = [...child.childNodes]
-						.filter((n) => n.nodeType !== Node.ELEMENT_NODE || !n.classList?.contains('copy'))
-						.map((n) => n.textContent ?? '')
-						.join('');
+					const code = codeText(child);
 					for (const l of code.replace(/\n$/, '').split('\n')) {
 						emit(l);
 					}
@@ -408,6 +436,14 @@ export function htmlToMarkdown(root) {
 		const pad = '  '.repeat(depth);
 
 		for (const li of el.children) {
+			// En underliste, der ligger som SØSKENDE til punktet frem for inde i det.
+			// Browserne er uenige om, hvilken af de to former en indrykning laver, og
+			// de to ser ens ud på skærmen — men den her løkke sprang søskendeformen
+			// over uden lyd, så et indrykket punkt ville forsvinde ved gemningen.
+			if (li.tagName === 'UL' || li.tagName === 'OL') {
+				list(li, depth + 1, emit);
+				continue;
+			}
 			if (li.tagName !== 'LI') continue;
 
 			// Punktets egen tekst er alt undtagen de lister, der ligger under det.
