@@ -13,7 +13,7 @@
 	 * unforgivable. When the replacement (the EditContext API) is everywhere, this
 	 * is the file to change.
 	 */
-	import { markdownToHtml, htmlToMarkdown } from '$lib/richtext.js';
+	import { markdownToHtml, htmlToMarkdown, blockText } from '$lib/richtext.js';
 	import { highlight, guessLanguage } from '$lib/highlight.js';
 	import { t } from '$lib/i18n.svelte.js';
 	import { app } from '$lib/stores.svelte.js';
@@ -133,20 +133,78 @@
 		// `<pre>…<p>body</p></pre>` — so the text stays monospace and there is no way
 		// out of the block from the menu. Do any conversion that touches a <pre> by
 		// hand, replacing the element rather than reformatting inside it.
-		const block = currentBlock();
-		if (block && (block.tagName === 'PRE' || style.tag === 'pre')) {
-			replaceBlock(block, style.tag);
+		//
+		// Hele markeringen, ikke blokken markøren står i. Den her vej spurgte efter
+		// `currentBlock()`, og det er ét blok — så en markering over ti linjers
+		// terminaludskrift gjorde den første linje til kode og lod resten stå. Det
+		// er den slags, man ikke opdager med to linjer og ikke kan overse med ti.
+		const blocks = selectedBlocks();
+		if (!blocks.length) return apply('formatBlock', style.tag);
+
+		if (style.tag === 'pre') {
+			mergeToMono(blocks);
+			return;
+		}
+
+		// Ud af monotype igen: hver blok for sig, uden at røre markeringen —
+		// tekstknuderne flytter med over i de nye elementer, så den range, browseren
+		// holder på, stadig peger på noget, der er i dokumentet. Resten klarer
+		// formatBlock bagefter, nu hvor der ikke er en <pre> i vejen.
+		const pres = blocks.filter((b) => b.tagName === 'PRE');
+		for (const b of pres) swapTag(b, style.tag);
+		if (pres.length === blocks.length) {
+			readState();
+			changed();
 			return;
 		}
 		apply('formatBlock', style.tag);
 	}
 
 	/**
-	 * Replaces a block element with one of another tag, keeping its contents and the
-	 * caret. Used where execCommand cannot be trusted — converting to or from a
-	 * <pre>, which it either nests or ignores.
+	 * Alle de blokke, markeringen rører — ikke kun den, markøren står i.
+	 *
+	 * En sammenfaldet markering rører præcis ét blok, så den enkle sag opfører sig
+	 * som før.
 	 */
-	function replaceBlock(block, tag) {
+	function selectedBlocks() {
+		const selection = window.getSelection();
+		if (!selection || !selection.rangeCount || !editor) return [];
+		const range = selection.getRangeAt(0);
+		return [...editor.children].filter((b) => range.intersectsNode(b));
+	}
+
+	/**
+	 * Lægger flere blokke sammen til én monotypeblok.
+	 *
+	 * Én blok og ikke én pr. linje: en udskrift, man indsætter, er ét stykke kode.
+	 * Tre blokke ved siden af hinanden ser næsten ens ud på skærmen og bliver til
+	 * tre hegn i filen — og så kan de ikke rulles eller kopieres som det ene,
+	 * de er.
+	 */
+	function mergeToMono(blocks) {
+		const pre = document.createElement('pre');
+		// blockText og ikke textContent: et <br> har den tomme streng som
+		// textContent, og det er netop <br>, der står for et linjeskift inde i en
+		// blok. Samme grund som da en kodeblok ikke kunne gemme mere end én linje.
+		pre.textContent = blocks.map((b) => blockText(b)).join('\n');
+		if (!pre.textContent) pre.appendChild(document.createElement('br'));
+
+		blocks[0].replaceWith(pre);
+		for (const b of blocks.slice(1)) b.remove();
+
+		const range = document.createRange();
+		range.selectNodeContents(pre);
+		range.collapse(false);
+		const selection = window.getSelection();
+		selection.removeAllRanges();
+		selection.addRange(range);
+
+		readState();
+		changed();
+	}
+
+	/** Bytter et bloks tag ud og flytter indholdet med, uden at røre markøren. */
+	function swapTag(block, tag) {
 		// The copy button lives inside the <pre> so it can sit in its corner; it is
 		// not text and must not travel into a paragraph. addCopyButtons puts it back
 		// on the next render for any <pre> that still needs one.
@@ -156,6 +214,16 @@
 		while (block.firstChild) el.appendChild(block.firstChild);
 		if (!el.firstChild) el.appendChild(document.createElement('br'));
 		block.replaceWith(el);
+		return el;
+	}
+
+	/**
+	 * Replaces a block element with one of another tag, keeping its contents and the
+	 * caret. Used where execCommand cannot be trusted — converting to or from a
+	 * <pre>, which it either nests or ignores.
+	 */
+	function replaceBlock(block, tag) {
+		const el = swapTag(block, tag);
 
 		const range = document.createRange();
 		range.selectNodeContents(el);
@@ -380,7 +448,7 @@
 			btn.addEventListener('click', async (e) => {
 				e.preventDefault();
 				e.stopPropagation();
-				const text = codeTextOf(pre);
+				const text = blockText(pre);
 				try {
 					await navigator.clipboard.writeText(text.replace(/\n$/, ''));
 					btn.textContent = t('notes.copied');
@@ -394,19 +462,16 @@
 	}
 
 	/**
-	 * Teksten i en kodeblok, uden knapper og andet, editoren har lagt oven på den.
+	 * Teksten i en kodeblok kommer fra `blockText` i richtext.js — ÉT sted, hvilket
+	 * den her kommentar påstod i forvejen, mens der stod en kopi lige her.
 	 *
-	 * Ét sted, fordi to steder skal bruge det samme svar: farvelægningen, som
-	 * skriver resultatet tilbage i blokken, og oversættelsen til Markdown, som
-	 * skriver det i filen. Var de to uenige, ville forskellen ende i noten.
+	 * De to skal bruge det samme svar: farvelægningen, som skriver resultatet
+	 * tilbage i blokken, og oversættelsen til Markdown, som skriver det i filen. De
+	 * var uenige om ét tegn — kopien her læste `textContent`, og et <br> har den
+	 * tomme streng som textContent. Så en blok, man havde skrevet med shift+retur,
+	 * fik sine linjer skrevet sammen af farvelægningen, i det øjeblik man klikkede
+	 * væk fra den. På skærmen, ikke kun i filen.
 	 */
-	function codeTextOf(pre) {
-		const from = pre.querySelector('code') ?? pre;
-		return [...from.childNodes]
-			.filter((n) => n.nodeType !== Node.ELEMENT_NODE || !n.classList?.contains('copy'))
-			.map((n) => n.textContent ?? '')
-			.join('');
-	}
 
 	function colourCode() {
 		if (!editor) return;
@@ -419,7 +484,7 @@
 			// maler resultatet tilbage ind i blokken — så et klik på "Kopiér" skrev
 			// "Kopieret" ind i koden, og den næste gemning lagde det i filen. Knappen
 			// spiste den kode, den var sat der for at kopiere.
-			const code = codeTextOf(pre);
+			const code = blockText(pre);
 			const lang = pre.getAttribute('data-lang') || guessLanguage(code);
 			if (lang) pre.setAttribute('data-lang', lang);
 			const painted = highlight(code, lang);
