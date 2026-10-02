@@ -4993,6 +4993,108 @@ test('en punktliste kan have niveauer, der overlever gemningen', async ({ page }
 });
 
 /**
+ * Farvelægningen skriver ikke linjerne sammen i en blok, man lige har forladt.
+ *
+ * Blokken farves, når markøren forlader den, og resultatet males TILBAGE ind i
+ * den. Den læsning havde sin egen kopi af "hvad er teksten i en blok", og kopien
+ * brugte `textContent` — hvor et <br> er den tomme streng. Så en blok skrevet med
+ * shift+retur fik sine linjer skrevet sammen i det øjeblik, man klikkede væk. På
+ * skærmen, ikke kun i filen, og uden at man havde rørt teksten.
+ *
+ * Kommentaren over kopien sagde "ét sted, fordi to steder skal bruge det samme
+ * svar". Der var to, og de var uenige om netop det tegn.
+ */
+test('et klik væk fra en kodeblok skriver ikke dens linjer sammen', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	await nyNote(page);
+	await page.keyboard.type('Farvelagt');
+	await page.keyboard.press('Enter');
+	await page.getByRole('button', { name: 'Formatér' }).click();
+	await page.getByRole('menuitem', { name: 'Monotype' }).click();
+	await page.keyboard.type('echo en');
+	await page.keyboard.press('Shift+Enter');
+	await page.keyboard.type('echo to');
+
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	// Ud af blokken, så farvelægningen tager fat i den.
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('End');
+	await ed.getByText('Farvelagt', { exact: true }).click();
+
+	// Kopiér-knappen ligger inde i blokken for at kunne sidde i hjørnet af den, så
+	// den skal ud, før teksten læses — præcis det, koden selv gør.
+	const tekst = await ed.locator('pre').evaluate((el) => {
+		const kopi = el.cloneNode(true);
+		kopi.querySelectorAll('.copy').forEach((b) => b.remove());
+		return kopi.innerText.trim();
+	});
+	expect(tekst).toBe('echo en\necho to');
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * Flere markerede afsnit bliver til ÉN monotypeblok — ikke kun det øverste.
+ *
+ * Monotype går uden om `execCommand`, fordi formatBlock pakker et <p> ind i
+ * <pre>'en i stedet for at lave den om. Den vej spurgte efter `currentBlock()`,
+ * altså det ene blok markøren står i — så af en markering over ti linjers
+ * terminaludskrift blev den første linje til kode og resten stod tilbage som
+ * brødtekst.
+ *
+ * Og det skal være én blok, ikke tre. En udskrift, man indsætter, er ét stykke
+ * kode; tre blokke ved siden af hinanden ser næsten ens ud på skærmen og er tre
+ * hegn i filen.
+ */
+test('flere markerede afsnit bliver til én monotypeblok', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	await nyNote(page);
+	await page.keyboard.type('Udskrift');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('linje et');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('linje to');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('linje tre');
+
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(ed.locator('p')).toHaveCount(3);
+
+	// Markér alle tre, som man gør det med musen eller tastaturet: fra begyndelsen
+	// af den første til enden af den sidste.
+	await ed.getByText('linje et', { exact: true }).click();
+	await page.keyboard.press('Home');
+	await page.keyboard.press('Shift+ArrowDown');
+	await page.keyboard.press('Shift+ArrowDown');
+	await page.keyboard.press('Shift+End');
+
+	await page.getByRole('button', { name: 'Formatér' }).click();
+	await page.getByRole('menuitem', { name: 'Monotype' }).click();
+
+	// Én blok med alle tre linjer, og ingen brødtekst tilbage.
+	const blok = ed.locator('pre');
+	await expect(blok).toHaveCount(1);
+	await expect(ed.locator('p')).toHaveCount(0);
+
+	const gemt = noteGemt(page);
+	await ed.blur();
+	await gemt;
+	await page.reload();
+	await page.getByRole('button', { name: /Udskrift/ }).click();
+
+	await expect(ed.locator('pre')).toHaveCount(1);
+	expect(await ed.locator('pre code').evaluate((el) => el.textContent.trim())).toBe(
+		'linje et\nlinje to\nlinje tre'
+	);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * En kodeblok med flere linjer kommer tilbage med dem alle.
  *
  * Shift+retur bliver i blokken, som prøven ovenfor viser — men det, browseren

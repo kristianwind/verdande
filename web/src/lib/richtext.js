@@ -315,7 +315,7 @@ const BLOCK_TAGS = /^(P|H[1-6]|UL|OL|LI|PRE|BLOCKQUOTE|DIV)$/;
 const holdsBlocks = (el) => [...el.children].some((c) => BLOCK_TAGS.test(c.tagName));
 
 /**
- * Teksten i en kodeblok, med linjeskiftene i behold.
+ * Teksten i et blok, med linjeskiftene i behold.
  *
  * `textContent` er ikke nok, og det er ikke en detalje: et <br> har den tomme
  * streng som textContent, og <br> er præcis det, browseren lægger ind, når man
@@ -332,7 +332,7 @@ const holdsBlocks = (el) => [...el.children].some((c) => BLOCK_TAGS.test(c.tagNa
  * <pre>'ens egne børn ser kun det ene element og spørger det om en textContent,
  * der allerede har tabt linjeskiftet.
  */
-function codeText(node) {
+export function blockText(node) {
 	let out = '';
 	for (const n of node.childNodes) {
 		if (n.nodeType !== Node.ELEMENT_NODE) {
@@ -344,7 +344,7 @@ function codeText(node) {
 			out += '\n';
 			continue;
 		}
-		out += codeText(n);
+		out += blockText(n);
 	}
 	return out;
 }
@@ -401,7 +401,7 @@ export function htmlToMarkdown(root) {
 					// else and an indent does not.
 					const lang = child.getAttribute('data-lang') ?? '';
 					emit('```' + lang);
-					const code = codeText(child);
+					const code = blockText(child);
 					for (const l of code.replace(/\n$/, '').split('\n')) {
 						emit(l);
 					}
