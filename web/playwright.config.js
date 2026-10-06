@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '..');
 const dataDir = join(here, '.playwright-data');
+const notesDataDir = join(here, '.playwright-data-notes');
 
 // A clean instance every run: the first test creates the first account, which only
 // works on an empty database.
@@ -31,9 +32,14 @@ const dataDir = join(here, '.playwright-data');
 // connection fail, with SQLITE_CANTOPEN. It looks exactly like a flaky auth bug.
 if (process.env.TEST_WORKER_INDEX === undefined) {
 	rmSync(dataDir, { recursive: true, force: true });
+	rmSync(notesDataDir, { recursive: true, force: true });
 }
 
 const PORT = 8097;
+// Noter-udgaven kører som sin egen server ved siden af den fulde. Den kan ikke
+// dele port, og den må ikke dele database: de to er to instanser, og en prøve der
+// lod dem skrive i den samme ville måle en tilstand, ingen af dem ejer.
+const NOTES_PORT = 8098;
 // `localhost`, not `127.0.0.1`. WebAuthn refuses an IP address as a relying party
 // id — `SecurityError: This is an invalid domain` — and localhost is the exception
 // every browser makes. The passkey test cannot run against a loopback address.
@@ -72,6 +78,10 @@ export default defineConfig({
 		{ name: 'setup', testMatch: /.*\.setup\.js/ },
 		{
 			name: 'chromium',
+			// Alt undtagen noter-udgaven, som har sin egen server på sin egen port.
+			// Uden den her linje kørte den prøve også her — mod den FULDE udgave, hvor
+			// den naturligvis fejler, og hvor fejlen læser som om skakten ikke virker.
+			testIgnore: /edition\.spec\.js/,
 			use: { ...devices['Desktop Chrome'], storageState: 'e2e/.auth/user.json' },
 			dependencies: ['setup']
 		},
@@ -95,6 +105,21 @@ export default defineConfig({
 		 *
 		 * WebKit here is the same engine Safari is, which is the whole point.
 		 */
+		/**
+		 * Noter-udgaven, som sit eget program.
+		 *
+		 * Egen server, egen port, egen database, og ingen `storageState`: den her
+		 * instans har aldrig set den konto, den fulde udgaves opsætning lavede, og
+		 * at låne dens cookie ville prøve to instanser som var de én.
+		 *
+		 * Den deler ikke `setup` af samme grund — den laver sin egen første konto.
+		 */
+		{
+			name: 'notes-edition',
+			testMatch: /edition\.spec\.js/,
+			use: { ...devices['Desktop Chrome'], baseURL: `http://127.0.0.1:${NOTES_PORT}` }
+		},
+
 		{
 			name: 'webkit-forms',
 			grep: /@forms/,
@@ -103,42 +128,64 @@ export default defineConfig({
 		}
 	],
 
-	webServer: {
-		// The whole chain, every run.
-		//
-		// The frontend is embedded in the binary at compile time, from a copy under
-		// cmd/verdande/webbuild — so a suite that merely started the server would
-		// test whatever frontend was copied there last, which during development is
-		// nearly always the wrong one. Testing a stale build is worse than not
-		// testing: it reports green on code that is not running.
-		command: [
-			'npm run build',
-			'rm -rf ../cmd/verdande/webbuild',
-			'cp -r build ../cmd/verdande/webbuild',
-			'cd .. && go run -tags embedweb ./cmd/verdande'
-		].join(' && '),
-		cwd: here,
-		url: `${baseURL}/healthz`,
-		reuseExistingServer: false,
-		// The first run compiles the binary and builds nothing else; a cold Go
-		// build on a CI runner is comfortably under two minutes.
-		timeout: 180_000,
-		stdout: 'pipe',
-		stderr: 'pipe',
-		env: {
-			VERDANDE_ADDR: `:${PORT}`,
-			// `localhost`, while the suite itself drives `127.0.0.1`. These are two
-			// different things: the suite's address is where the browser goes, and
-			// this one is what the server calls itself — which is now also the
-			// WebAuthn relying party id, and WebAuthn refuses an IP address.
+	webServer: [
+		{
+			// The whole chain, every run.
 			//
-			// The passkey test navigates to localhost explicitly so its origin
-			// matches. Everything else stays on the loopback address, where it has
-			// always been.
-			VERDANDE_BASE_URL: `http://localhost:${PORT}`,
-			VERDANDE_DATA_DIR: dataDir,
-			// Off: an update check would reach out to GitHub from a test run.
-			VERDANDE_UPDATE_CHECK: 'false'
+			// The frontend is embedded in the binary at compile time, from a copy under
+			// cmd/verdande/webbuild — so a suite that merely started the server would
+			// test whatever frontend was copied there last, which during development is
+			// nearly always the wrong one. Testing a stale build is worse than not
+			// testing: it reports green on code that is not running.
+			command: [
+				'npm run build',
+				'rm -rf ../cmd/verdande/webbuild',
+				'cp -r build ../cmd/verdande/webbuild',
+				'cd .. && go run -tags embedweb ./cmd/verdande'
+			].join(' && '),
+			cwd: here,
+			url: `${baseURL}/healthz`,
+			reuseExistingServer: false,
+			// The first run compiles the binary and builds nothing else; a cold Go
+			// build on a CI runner is comfortably under two minutes.
+			timeout: 180_000,
+			stdout: 'pipe',
+			stderr: 'pipe',
+			env: {
+				VERDANDE_ADDR: `:${PORT}`,
+				// `localhost`, while the suite itself drives `127.0.0.1`. These are two
+				// different things: the suite's address is where the browser goes, and
+				// this one is what the server calls itself — which is now also the
+				// WebAuthn relying party id, and WebAuthn refuses an IP address.
+				//
+				// The passkey test navigates to localhost explicitly so its origin
+				// matches. Everything else stays on the loopback address, where it has
+				// always been.
+				VERDANDE_BASE_URL: `http://localhost:${PORT}`,
+				VERDANDE_DATA_DIR: dataDir,
+				// Off: an update check would reach out to GitHub from a test run.
+				VERDANDE_UPDATE_CHECK: 'false'
+			}
+		},
+
+		// Den samme binær en gang til, med den anden udgave slået til. Bygningen er
+		// allerede lavet af serveren ovenfor — `go run` genbruger byggecachen — så
+		// det her koster en opstart og ikke en oversættelse.
+		{
+			command: 'cd .. && go run -tags embedweb ./cmd/verdande',
+			cwd: here,
+			url: `http://127.0.0.1:${NOTES_PORT}/healthz`,
+			reuseExistingServer: false,
+			timeout: 180_000,
+			stdout: 'pipe',
+			stderr: 'pipe',
+			env: {
+				VERDANDE_ADDR: `:${NOTES_PORT}`,
+				VERDANDE_BASE_URL: `http://localhost:${NOTES_PORT}`,
+				VERDANDE_DATA_DIR: notesDataDir,
+				VERDANDE_EDITION: 'notes',
+				VERDANDE_UPDATE_CHECK: 'false'
+			}
 		}
-	}
+	]
 });

@@ -85,7 +85,11 @@
 		...settings.map((s) => ({ kind: 'setting', id: s.href, label: `${s.tab} · ${s.title}` })),
 		...projects.map((p) => ({ kind: 'project', id: p.id, label: p.name })),
 		...notes.map((n) => ({ kind: 'note', id: n.id, label: n.title || n.body.slice(0, 60) })),
-		...tasks.map((t) => ({
+		// Serveren sender ingen opgaver i noter-udgaven, så listen er alligevel tom.
+		// Spurgt her også, fordi en tom liste af den rigtige grund og en tom liste
+		// ved et tilfælde ser ens ud — og den dag nogen mounter søgningen anderledes,
+		// skal ⌘K ikke være stedet, det viser sig.
+		...(app.notesOnly ? [] : tasks).map((t) => ({
 			kind: 'task',
 			id: t.id,
 			label: t.content,

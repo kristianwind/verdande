@@ -44,6 +44,11 @@ node_modules.nosync/
 # End-to-end runs: the throwaway instance the suite starts, the saved session it
 # signs in with, and whatever a failure left behind.
 /web/.playwright-data/
+# Noter-udgavens egen instans i prøvekørslen. Den har sin egen database OG sin
+# egen secret.key, og den nåede at blive committet én gang: et mønster, der
+# nævner den ene mappe ved navn, dækker ikke den anden, selv om de er to kopier
+# af det samme.
+/web/.playwright-data-notes/
 /web/e2e/.auth/
 /web/test-results/
 /web/playwright-report/

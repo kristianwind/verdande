@@ -155,9 +155,12 @@
 	// entry is a question the sidebar keeps asking and answering "no".
 	let navItems = $derived(
 		[
-			{ key: 'today', href: '/', label: 'nav.today' },
-			{ key: 'upcoming', href: '/upcoming', label: 'nav.upcoming' },
-			app.projects.some((p) => p.shared)
+			// Opgavernes egne indgange findes ikke i noter-udgaven. Ikke gråtonet og
+			// ikke skjult med CSS — udeladt, fordi ruterne bag dem ikke er monteret
+			// på serveren. Et link til noget, der ikke findes, er ikke en skønhedsfejl.
+			app.notesOnly ? null : { key: 'today', href: '/', label: 'nav.today' },
+			app.notesOnly ? null : { key: 'upcoming', href: '/upcoming', label: 'nav.upcoming' },
+			!app.notesOnly && app.projects.some((p) => p.shared)
 				? { key: 'delegated', href: '/uddelegeret', label: 'nav.delegated' }
 				: null,
 			// No href: the inbox is a project and is drawn by projectRow, which knows
@@ -185,7 +188,7 @@
 			// Sidst i rækken, fordi `navOrder` føjer en ukendt nøgle til bagest: står
 			// den et andet sted her, ser en ny konto én rækkefølge og alle
 			// eksisterende en anden.
-			{ key: 'calendar', href: '/kalender', label: 'nav.calendar' }
+			app.notesOnly ? null : { key: 'calendar', href: '/kalender', label: 'nav.calendar' }
 		].filter(Boolean)
 	);
 

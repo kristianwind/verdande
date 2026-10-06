@@ -206,13 +206,22 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks, err := s.db.ListTasks(r.Context(), user.ID, store.TaskFilter{
-		Search: query,
-		// Completed tasks are included: "what was that thing I did last week" is
-		// a search, and excluding them makes the box feel broken.
-		IncludeCompleted: true,
-		Limit:            parseLimit(r.URL.Query().Get("limit"), 40, 100),
-	})
+	// Søgningen er monteret i begge udgaver, fordi man også skal kunne finde sine
+	// noter og notesbøger. Men opgaverne må ikke komme med i noter-udgaven, og det
+	// er ikke en teoretisk sag: en instans lavet om fra en fuld har opgaverne
+	// liggende i databasen endnu, og så ville ⌘K være den ene dør, der stod åben
+	// ind til den halvdel, resten af programmet lige har lukket.
+	var tasks []store.Task
+	var err error
+	if !s.cfg.NotesOnly() {
+		tasks, err = s.db.ListTasks(r.Context(), user.ID, store.TaskFilter{
+			Search: query,
+			// Completed tasks are included: "what was that thing I did last week" is
+			// a search, and excluding them makes the box feel broken.
+			IncludeCompleted: true,
+			Limit:            parseLimit(r.URL.Query().Get("limit"), 40, 100),
+		})
+	}
 	if err != nil {
 		s.internal(w, r, "search tasks", err)
 		return

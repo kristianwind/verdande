@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -157,4 +158,73 @@ func routesOf(t *testing.T, edition string) map[string]bool {
 		t.Fatalf("only %d routes at edition %q — the walk found nothing to compare", len(out), edition)
 	}
 	return out
+}
+
+// The interface cannot gate itself on something it is not told, and it has to be
+// told before anybody is signed in — an instance's shape is not a permission.
+func TestSetupStateSaysWhichEdition(t *testing.T) {
+	for _, tc := range []struct{ edition, want string }{
+		{config.EditionFull, "full"},
+		{config.EditionNotes, "notes"},
+		{"", "full"}, // a config built by hand is the program as it has always been
+	} {
+		ts := newTestServerWith(t, func(c *config.Config) { c.Edition = tc.edition })
+
+		_, body := ts.do(t, "GET", "/api/v1/auth/setup", nil)
+		if got := body["edition"]; got != tc.want {
+			t.Errorf("edition %q reported as %v, want %q", tc.edition, got, tc.want)
+		}
+		// And the field it has always had is still there: adding one must not
+		// quietly replace the answer the sign-in screen depends on.
+		if _, ok := body["needs_setup"]; !ok {
+			t.Errorf("edition %q: needs_setup is gone from the answer", tc.edition)
+		}
+	}
+}
+
+// Search is mounted in both editions — notes and notebooks have to be findable —
+// so it is the one door that could still open onto the half the router just shut.
+//
+// Not a theoretical case. An instance converted from a full one still has the
+// tasks in its database, and ⌘K would be the only place they turned up.
+func TestNotesEditionSearchFindsNoTasks(t *testing.T) {
+	for _, tc := range []struct {
+		edition string
+		want    int
+	}{
+		{config.EditionFull, 1},
+		{config.EditionNotes, 0},
+	} {
+		ts := newTestServerWith(t, func(c *config.Config) { c.Edition = tc.edition })
+		ts.bootstrap(t)
+
+		_, me := ts.do(t, "GET", "/api/v1/auth/me", nil)
+		userID, _ := me["id"].(string)
+		if userID == "" {
+			t.Fatalf("no user: %v", me)
+		}
+
+		// Created through the store rather than the API: in the notes edition there
+		// is no route to create one, and the row this is about is the row that is
+		// already there.
+		inbox, err := ts.db.InboxID(context.Background(), userID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		task := &store.Task{ProjectID: inbox, Content: "Kvartalsregnskabet", CreatedBy: userID}
+		if err := ts.db.CreateTask(context.Background(), task, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		_, body := ts.do(t, "GET", "/api/v1/search?q=Kvartalsregnskabet", nil)
+		found, _ := body["tasks"].([]any)
+		if len(found) != tc.want {
+			t.Errorf("edition %q: search returned %d tasks, want %d", tc.edition, len(found), tc.want)
+		}
+		// The full edition's number is the control: a search that finds nothing at
+		// all would satisfy the notes case for the wrong reason.
+		if tc.edition == config.EditionFull && len(found) == 0 {
+			t.Errorf("the full edition found no tasks either — this proves nothing about the notes one")
+		}
+	}
 }
