@@ -492,7 +492,14 @@ func (s *Server) handleSetupState(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, "count users", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"needs_setup": n == 0})
+	// Udgaven hører til her og ikke på /auth/me: den er en egenskab ved
+	// instansen, ikke ved den, der er logget ind, og fladen skal kende den, før
+	// nogen er. Det her er i forvejen kaldet, der spørger "hvad er det her for en
+	// instans", så den følger med uden en ekstra tur.
+	writeJSON(w, http.StatusOK, struct {
+		NeedsSetup bool   `json:"needs_setup"`
+		Edition    string `json:"edition"`
+	}{n == 0, s.edition()})
 }
 
 func (s *Server) startSession(w http.ResponseWriter, r *http.Request, user *store.User) {

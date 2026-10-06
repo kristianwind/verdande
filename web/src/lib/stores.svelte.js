@@ -43,6 +43,27 @@ class AppState {
 	 */
 	unreachable = $state(false);
 
+	/**
+	 * Hvilken udgave af programmet den her instans er.
+	 *
+	 * `full` er opgaver, projekter og noter sammen. `notes` er notehalvdelen, hvor
+	 * opgaveruterne slet ikke er monteret på serveren — så fladen må ikke tilbyde
+	 * en vej til dem. Et link til en rute, der ikke findes, er ikke en skønhedsfejl:
+	 * det er en knap, der fører et sted hen, hvor der ikke er noget.
+	 *
+	 * Instansens form, ikke personens rettigheder. Derfor hentes den ved siden af
+	 * kontoen frem for efter den: den skal også være kendt, når ingen er logget ind.
+	 *
+	 * `full` som udgangspunkt, fordi det er det, programmet altid har været — en
+	 * instans, der ikke når at svare, skal ikke pludselig se ud som et andet
+	 * program.
+	 */
+	edition = $state('full');
+
+	get notesOnly() {
+		return this.edition === 'notes';
+	}
+
 	/** Transient messages: a failed save, a rolled-back change. */
 	toasts = $state([]);
 	connected = $state(false);
@@ -108,6 +129,17 @@ class AppState {
 
 	async load() {
 		this.loading = true;
+
+		// Formen hentes for sig, og en fejl på den tier. En 401 fra `me` må ikke
+		// tage udgaven med sig — login-skærmen er også en flade i en udgave — og
+		// en instans, der slet ikke svarer, melder `me` ordentligt nedenfor.
+		const shape = api
+			.setupState()
+			.then((state) => {
+				if (state?.edition) this.edition = state.edition;
+			})
+			.catch(() => {});
+
 		try {
 			this.user = await api.me();
 			this.unreachable = false;
@@ -131,6 +163,10 @@ class AppState {
 			// arriving. A 401 is the server answering, and that is a real sign-out.
 			this.unreachable = e?.code === 'offline';
 		} finally {
+			// Afventet her, så fladen aldrig tegnes, før den ved hvilket program den
+			// er. Tegnet først og rettet bagefter ville vise opgaver i et sekund på
+			// en instans, der ikke har nogen.
+			await shape;
 			this.loading = false;
 		}
 	}

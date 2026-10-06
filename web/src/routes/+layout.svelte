@@ -58,6 +58,39 @@
 	});
 
 	/**
+	 * Opgavernes sider findes ikke i noter-udgaven.
+	 *
+	 * Ét sted frem for en vagt i hver rute: listen ER beslutningen, og en vagt pr.
+	 * fil er syv steder at glemme den ottende. Skrevet som præfikser, fordi
+	 * `/opgave/<id>` og `/filter/<id>` er sider under dem.
+	 *
+	 * Sendt til noterne og ikke til en fejlside: der er ikke sket noget forkert.
+	 * Adressen hører bare til et andet program end det, der kører her — og nogen,
+	 * der har gemt et link fra en fuld instans, skal lande et sted, der giver
+	 * mening frem for i en blindgyde.
+	 *
+	 * `replaceState`, så Tilbage ikke fører hen til den side, man lige blev sendt
+	 * væk fra, og derfra tilbage igen.
+	 */
+	const TASK_PAGES = [
+		'/',
+		'/upcoming',
+		'/uddelegeret',
+		'/kalender',
+		'/faerdige',
+		'/opgave',
+		'/filter',
+		'/etiket'
+	];
+
+	$effect(() => {
+		if (!app.notesOnly) return;
+		const here = $page.url.pathname;
+		const taskPage = TASK_PAGES.some((p) => here === p || (p !== '/' && here.startsWith(p + '/')));
+		if (taskPage) goto('/noter', { replaceState: true });
+	});
+
+	/**
 	 * Links ud af programmet, åbnet i den browser, maskinen er sat op til.
 	 *
 	 * Ét sted frem for ét pr. komponent. Links står i opgavetitler, i
