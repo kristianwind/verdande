@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -270,6 +271,111 @@ func (s *Server) handleExportProject(w http.ResponseWriter, r *http.Request) {
 	if err := todoist.Write(w, todoist.ToRows(exported)); err != nil {
 		s.log.Error("write export", "err", err)
 	}
+}
+
+// handleExportAllCSV is every project at once, one CSV per project in a zip.
+//
+// A zip rather than one wide CSV with a project column: Todoist's own export is a
+// file per project, so that is the shape an importer on the other side expects —
+// and the shape somebody can pick a single project out of without opening a
+// spreadsheet. Same reasoning as the notes export, which is a folder of Markdown
+// rather than one long file.
+//
+// It exists because the per-project links are per project: fifteen projects meant
+// fifteen downloads to move your own tasks somewhere else, which is an export that
+// technically works and nobody uses.
+func (s *Server) handleExportAllCSV(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+
+	projects, err := s.db.ListProjects(r.Context(), user.ID, true)
+	if err != nil {
+		s.internal(w, r, "export projects", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition",
+		`attachment; filename="verdande-opgaver-`+time.Now().Format("2006-01-02")+`.zip"`)
+
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+
+	// Two projects can share a name — they are still two projects, and a zip with
+	// one entry written twice loses one of them. Same guard as the notes export.
+	used := map[string]int{}
+	for _, project := range projects {
+		exported, err := s.buildExport(r, user, &project)
+		if err != nil {
+			// The response is already streaming, so there is no status left to send.
+			// Stopping leaves a truncated zip, which a zip tool reports as truncated —
+			// better than a complete-looking file with a project missing from it.
+			s.log.Error("export projects", "err", err, "project", project.ID)
+			return
+		}
+
+		name := strings.TrimSuffix(ics.Filename(project.Name), ".ics")
+		used[name]++
+		if used[name] > 1 {
+			name = fmt.Sprintf("%s (%d)", name, used[name])
+		}
+
+		f, err := zw.CreateHeader(&zip.FileHeader{Name: name + ".csv", Method: zip.Deflate})
+		if err != nil {
+			s.log.Error("export projects", "err", err, "project", project.ID)
+			return
+		}
+		if err := todoist.Write(f, todoist.ToRows(exported)); err != nil {
+			s.log.Error("export projects", "err", err, "project", project.ID)
+			return
+		}
+	}
+}
+
+// handleExportAllICS is every dated task in one calendar.
+//
+// One file and not a zip, unlike the CSV above, because a calendar is made to hold
+// many things and every reader takes a file with hundreds of VTODOs. The project
+// travels with each task as its own field, so nothing is lost by merging them.
+func (s *Server) handleExportAllICS(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+	ctx := r.Context()
+
+	projects, err := s.db.ListProjects(ctx, user.ID, true)
+	if err != nil {
+		s.internal(w, r, "export ics", err)
+		return
+	}
+	names := map[string]string{}
+	for _, p := range projects {
+		names[p.ID] = p.Name
+	}
+
+	tasks, err := s.db.ListTasks(ctx, user.ID, store.TaskFilter{
+		IncludeCompleted: true, Limit: 5000,
+	})
+	if err != nil {
+		s.internal(w, r, "export ics", err)
+		return
+	}
+
+	cal := ics.Calendar{Name: "Verdande", Domain: feedDomain(s.cfg.BaseURL)}
+	for _, t := range tasks {
+		if t.DueDate == "" {
+			continue
+		}
+		cal.Tasks = append(cal.Tasks, ics.Task{
+			ID: t.ID, Content: t.Content, Description: t.Description,
+			ProjectName: names[t.ProjectID], DueDate: t.DueDate, DueDatetime: t.DueDatetime,
+			DurationMin: t.DurationMin, Priority: t.Priority, Recurrence: t.RecurrenceRule,
+			Completed: t.Completed(), CompletedAt: t.CompletedAt,
+			CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+	w.Header().Set("Content-Disposition",
+		`attachment; filename="verdande-opgaver-`+time.Now().Format("2006-01-02")+`.ics"`)
+	w.Write([]byte(ics.Render(cal)))
 }
 
 // buildExport turns a stored project back into the neutral shape the CSV writer

@@ -524,9 +524,9 @@ class AppState {
 	 * request is fast and the box clears immediately, which is where the
 	 * responsiveness actually needs to be.
 	 */
-	async quickAdd(text, projectId) {
+	async quickAdd(text, projectId, sectionId, parentId) {
 		try {
-			const task = await api.quickAdd(text, projectId);
+			const task = await api.quickAdd(text, projectId, sectionId, parentId);
 			this.upsert(task);
 			return task;
 		} catch (e) {

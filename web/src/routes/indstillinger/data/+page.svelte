@@ -393,6 +393,8 @@
 		     do with a Content-Disposition, and the session cookie rides along. -->
 		<a class="link" href={api.exportAccountURL()} download>{t('data.exportAccount')}</a>
 		<a class="link" href={api.exportNotesURL()} download>{t('data.exportNotes')}</a>
+		<a class="link" href={api.exportAllCSVURL()} download>{t('data.exportAllCSV')}</a>
+		<a class="link" href={api.exportAllICSURL()} download>{t('data.exportAllICS')}</a>
 	</div>
 
 	<!-- The way back in, and from anywhere else: a folder of Markdown is what
@@ -410,6 +412,8 @@
 		<p class="hint">{t('data.importNotesHint')}</p>
 	</div>
 
+	<!-- Vælgeren bliver stående ved siden af "alle": den er stadig vejen til ét
+	     projekt, og det er en anden opgave end at flytte hele kontoen. -->
 	<div class="field">
 		<label for="export-project">{t('data.exportOne')}</label>
 		<select id="export-project" bind:value={exportProject}>

@@ -501,6 +501,18 @@ type quickAddRequest struct {
 	// the foot of one. Same rule as the project: a "/section" in the text wins,
 	// because typing it is a choice and standing there is a circumstance.
 	SectionID string `json:"section_id,omitempty"`
+
+	// ParentID makes the new task a sub-task of an existing one. It is what a
+	// pasted list uses for its indented lines, and what the sub-task field at the
+	// foot of a task uses — both want the same parsing of dates, #project and
+	// @labels that a top-level task gets, so they come through here rather than
+	// through a second, dumber path.
+	//
+	// A sub-task lives in its parent's project. Saying otherwise would describe a
+	// task whose parent is somewhere else, which the list views cannot draw and
+	// nobody means; a "#project" on an indented line is therefore not honoured,
+	// and the caller is told so the word does not just vanish.
+	ParentID string `json:"parent_id,omitempty"`
 }
 
 func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
@@ -517,6 +529,18 @@ func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A parent decides the project before anything else is read: a sub-task
+	// somewhere other than its parent is not a shape this program has.
+	parent := (*store.Task)(nil)
+	if req.ParentID != "" {
+		found, err := s.db.GetTask(r.Context(), req.ParentID, user.ID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, CodeNotFound, "not found")
+			return
+		}
+		parent = found
+	}
+
 	projectID := req.ProjectID
 	// Set when the text named a project that does not exist. The task is still
 	// created — see below — but the caller is told, because the alternative is
@@ -531,6 +555,14 @@ func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
 		} else {
 			unknownProject = parsed.Project
 		}
+	}
+	// The parent has the last word, and the word it overrules is reported the same
+	// way an unknown project is — the task is created either way.
+	if parent != nil {
+		if parsed.Project != "" && projectID != parent.ProjectID {
+			unknownProject = parsed.Project
+		}
+		projectID = parent.ProjectID
 	}
 	if projectID == "" {
 		var err error
@@ -569,6 +601,9 @@ func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
 		ProjectID: projectID, SectionID: sectionID, Content: parsed.Content,
 		Priority: parsed.Priority, CreatedBy: user.ID, DueDate: parsed.DueDate,
 		RecurrenceRule: parsed.Recurrence,
+	}
+	if parent != nil {
+		t.ParentID = parent.ID
 	}
 	if parsed.DueDate != "" {
 		_, when, err := resolveDue(parsed.DueDate, parsed.DueTime, user.Timezone)

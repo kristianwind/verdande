@@ -15,6 +15,7 @@
 	import { api } from '$lib/api.js';
 	import { app } from '$lib/stores.svelte.js';
 	import { t } from '$lib/i18n.svelte.js';
+	import { readList } from '$lib/pastelist.js';
 	let { projectId = undefined, onadded = undefined, autofocus = false } = $props();
 
 	let text = $state('');
@@ -97,6 +98,60 @@
 		return out;
 	});
 
+	/**
+	 * En indsat liste bliver til opgaver frem for til én opgave med det hele i.
+	 *
+	 * Browseren smider linjeskiftene væk, når man indsætter i et `<input>`, så uden
+	 * det her blev en kopieret liste til én opgave med punkterne mast sammen. En
+	 * enkelt linje røres ikke — det er almindelig indsætning, og den skal opføre sig
+	 * som altid.
+	 *
+	 * Vist før den oprettes. Fyrre opgaver fra et fejlklik er ikke noget, man skal
+	 * opdage bagefter, og listen er også svaret på "forstod den indrykningen" —
+	 * stillet mens der stadig er en Fortryd-knap.
+	 */
+	let pending = $state([]);
+
+	function onpaste(event) {
+		const pasted = event.clipboardData?.getData('text/plain') ?? '';
+		if (!pasted.includes('\n')) return;
+
+		const rows = readList(pasted);
+		if (rows.length < 2) return;
+
+		event.preventDefault();
+		pending = rows;
+	}
+
+	async function createPending() {
+		if (submitting) return;
+		submitting = true;
+
+		// Den seneste opgave på hvert niveau, så en indrykket linje havner under den
+		// linje, den stod under — og ikke under den første, den bedste.
+		const parents = [];
+		let made = 0;
+		for (const row of pending) {
+			const parentId = row.depth > 0 ? parents[row.depth - 1] : undefined;
+			const task = await app.quickAdd(row.text, projectId, undefined, parentId);
+			// Stopper ved den første, der ikke kunne laves. At køre videre ville lægge
+			// resten af listen ind uden den, de hang under, og det er værre end at
+			// standse et sted, man kan se.
+			if (!task) break;
+			parents[row.depth] = task.id;
+			parents.length = row.depth + 1;
+			if (row.done) await app.complete(task.id);
+			onadded?.(task);
+			made++;
+		}
+
+		submitting = false;
+		// Det, der ikke nåede at blive lavet, bliver stående, så man kan se hvor langt
+		// den kom og prøve resten igen.
+		pending = pending.slice(made);
+		input?.focus();
+	}
+
 	async function submit(event) {
 		event?.preventDefault();
 		const value = text.trim();
@@ -164,11 +219,30 @@
 			aria-label={t('task.new')}
 			autocomplete="off"
 			spellcheck="false"
+			{onpaste}
 		/>
 	</div>
 
-	{#if text.trim()}
+	{#if text.trim() && !pending.length}
 		<button type="submit" class="submit" disabled={submitting}>{t('task.add')}</button>
+	{/if}
+
+	{#if pending.length}
+		<div class="pasted" role="group" aria-label={t('task.pastedTitle')}>
+			<ul>
+				{#each pending as row, i (i)}
+					<li style="--depth: {row.depth}" class:done={row.done}>{row.text}</li>
+				{/each}
+			</ul>
+			<div class="actions">
+				<button type="button" class="submit" disabled={submitting} onclick={createPending}>
+					{t('task.pastedAdd', { n: String(pending.length) })}
+				</button>
+				<button type="button" class="cancel" onclick={() => (pending = [])}>
+					{t('task.pastedCancel')}
+				</button>
+			</div>
+		</div>
 	{/if}
 
 	<!-- What the parser understands, spelled out while somebody is typing into it.
@@ -190,6 +264,57 @@
 </form>
 
 <style>
+	/* Den indsatte liste, før den bliver til opgaver. Ligger i flowet og ikke
+	   svævende: den skal kunne klikkes på, og den er noget, man læser færdig frem
+	   for et vink, der forsvinder. */
+	.pasted {
+		grid-column: 1 / -1;
+		margin-top: var(--s2);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		padding: var(--s2);
+	}
+
+	.pasted ul {
+		list-style: none;
+		margin: 0 0 var(--s2);
+		padding: 0;
+		max-height: 40vh;
+		overflow-y: auto;
+	}
+
+	.pasted li {
+		/* Indrykningen er hele pointen med visningen: den viser, hvad der bliver en
+		   underopgave, mens der stadig er en vej tilbage. */
+		padding: 2px 0 2px calc(var(--depth) * var(--s4));
+		font-size: var(--text-sm);
+		color: var(--ink);
+	}
+
+	.pasted li.done {
+		text-decoration: line-through;
+		color: var(--ink-muted);
+	}
+
+	.pasted .actions {
+		display: flex;
+		gap: var(--s2);
+		align-items: center;
+	}
+
+	.cancel {
+		border: none;
+		background: none;
+		padding: 0;
+		font: inherit;
+		color: var(--ink-muted);
+		cursor: pointer;
+	}
+	.cancel:hover {
+		text-decoration: underline;
+	}
+
 	/* Sits under the field it explains, in the same rhythm as a hint anywhere else. */
 	.syntax {
 		/* Nothing to click, and it floats over the first task in the list — which it

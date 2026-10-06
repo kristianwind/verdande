@@ -5095,6 +5095,132 @@ test('flere markerede afsnit bliver til én monotypeblok', async ({ page }) => {
 });
 
 /**
+ * Hele kontoens opgaver kan hentes i én omgang.
+ *
+ * Eksporten pr. projekt virkede og var ubrugelig ved enhver størrelse: femten
+ * projekter betød femten downloads for at flytte sine egne opgaver et andet sted
+ * hen. Det er en eksport, der teknisk set findes, og som ingen bruger.
+ *
+ * Prøven henter filerne og ser i dem. At et link findes beviser ingenting — en tom
+ * zip og en kalender uden VTODO'er er begge 200 med en troværdig Content-Type, og
+ * det er præcis den form, en fejl i en eksport har.
+ */
+test('alle opgaver kan hentes som CSV og som kalender', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+
+	await page.goto('/');
+	await page.getByLabel('Ny opgave').fill('Betal moms i dag');
+	await page.getByLabel('Ny opgave').press('Enter');
+	await expect(page.getByText('Betal moms', { exact: true })).toBeVisible();
+
+	await page.goto('/indstillinger/data');
+
+	const hent = async (navn) => {
+		const venter = page.waitForEvent('download');
+		await page.getByRole('link', { name: navn }).click();
+		const fil = await venter;
+		const sti = await fil.path();
+		return { sti, navn: fil.suggestedFilename() };
+	};
+
+	const zip = await hent('Alle opgaver (CSV)');
+	expect(zip.navn).toMatch(/\.zip$/);
+	// En zip er ikke tom, når den har mere end den afsluttende blok i sig.
+	const { size } = await import('node:fs/promises').then((fs) => fs.stat(zip.sti));
+	expect(size).toBeGreaterThan(100);
+
+	const kal = await hent('Alle opgaver (kalender)');
+	expect(kal.navn).toMatch(/\.ics$/);
+	const tekst = await import('node:fs/promises').then((fs) => fs.readFile(kal.sti, 'utf8'));
+	expect(tekst).toContain('BEGIN:VTODO');
+	expect(tekst).toContain('Betal moms');
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * En indsat liste bliver til opgaver og underopgaver.
+ *
+ * Quick-add er ét felt på én linje, og en browser smider linjeskiftene væk, når
+ * man indsætter i et `<input>` — så en kopieret liste blev til én opgave med det
+ * hele mast sammen.
+ *
+ * Her måles sammenhængen: at indsætningen fanges, at visningen kommer FØR noget
+ * oprettes, at indrykningen bliver til en underopgave, og at en afkrydset linje
+ * lander som gjort. De enkelte læseregler står i pastelist.spec.js, hvor de er
+ * billigere at stille.
+ */
+test('en indsat liste bliver til opgaver, og de indrykkede bliver underopgaver', async ({
+	page
+}) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const liste = ['- Flytte garagen', '  - Rydde hylderne', '  - [x] Leje trailer', '- Male døren'].join(
+		'\n'
+	);
+
+	await page.getByLabel('Ny opgave').click();
+	// En rigtig indsættelses-hændelse. At skrive teksten ind i feltet ville springe
+	// netop det over, prøven handler om — browseren smider linjeskiftene væk.
+	await page.evaluate((tekst) => {
+		const dt = new DataTransfer();
+		dt.setData('text/plain', tekst);
+		document
+			.querySelector('[data-quickadd]')
+			.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+	}, liste);
+
+	// Vist først, oprettet bagefter. Fyrre opgaver fra et fejlklik er ikke noget,
+	// man skal opdage bagefter.
+	const visning = page.getByRole('group', { name: 'Indsat liste' });
+	await expect(visning.locator('li')).toHaveCount(4);
+	await expect(page.getByText('Flytte garagen', { exact: true })).toHaveCount(1);
+
+	await visning.getByRole('button', { name: 'Opret 4 opgaver' }).click();
+	await expect(visning).toHaveCount(0);
+
+	// Ingen af linjerne har en dato, så de ligger i indbakken og ikke på I dag.
+	await page.getByRole('navigation', { name: 'Hovedmenu' }).getByRole('link', { name: 'Indbakke' }).click();
+	await expect(page.getByText('Flytte garagen', { exact: true })).toBeVisible();
+	await expect(page.getByText('Male døren', { exact: true })).toBeVisible();
+
+	// Og de indrykkede hænger under den linje, de stod under — ikke under den
+	// første, den bedste. Det ses i opgavens egen rude.
+	await page.getByText('Flytte garagen', { exact: true }).click();
+	await expect(page.getByText('Rydde hylderne', { exact: true })).toBeVisible();
+	await expect(page.getByText('Leje trailer', { exact: true })).toBeVisible();
+
+	// Afkrydsningen var indhold: den linje kom ind som gjort, så rækken tæller
+	// én af to. Målt på tælleren frem for på en streg gennem teksten — tælleren
+	// er det, serveren har gemt, stregen er, hvordan den tegnes.
+	await expect(page.getByRole('button', { name: /Flytte garagen 1\/2/ })).toBeVisible();
+
+	// Og "Male døren" hang ikke under noget: den stod uden indrykning.
+	await expect(page.getByRole('button', { name: /Male døren \d\/\d/ })).toHaveCount(0);
+
+	// Den anden halvdel af "enten opgaver eller undertasks": hvor man indsætter,
+	// afgør hvad linjerne bliver. Her er opgavens egen rude åben, så de bliver
+	// undertasks under den — uden at nogen skal vælge noget.
+	await page.evaluate((tekst) => {
+		const dt = new DataTransfer();
+		dt.setData('text/plain', tekst);
+		document
+			.querySelector('input[aria-label="Ny undertask"]')
+			.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+	}, '- Købe maling\n- Låne stige');
+
+	const flere = page.getByRole('group', { name: 'Indsat liste' });
+	await expect(flere.locator('li')).toHaveCount(2);
+	await flere.getByRole('button', { name: 'Opret 2 opgaver' }).click();
+
+	// To mere under den samme opgave: fire undertasks, én af dem lukket.
+	await expect(page.getByRole('button', { name: /Flytte garagen 1\/4/ })).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * En kodeblok med flere linjer kommer tilbage med dem alle.
  *
  * Shift+retur bliver i blokken, som prøven ovenfor viser — men det, browseren

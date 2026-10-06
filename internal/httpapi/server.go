@@ -456,6 +456,8 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 
 			r.Get("/export/account", s.handleExportAccount)
 			r.Get("/export/notes.zip", s.handleExportNotes)
+			r.Get("/export/projects.zip", s.handleExportAllCSV)
+			r.Get("/export/tasks.ics", s.handleExportAllICS)
 			r.Get("/export/projects/{projectID}.csv", s.handleExportProject)
 			r.Get("/export/projects/{projectID}.ics", s.handleExportProjectICS)
 

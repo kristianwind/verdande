@@ -365,8 +365,13 @@ export const api = {
 	moveTask: (id, data) => post(`/tasks/${id}/move`, data),
 	snoozeTask: (id, until) => post(`/tasks/${id}/snooze`, { until: until ?? '' }),
 
-	quickAdd: (text, projectId, sectionId) =>
-		post('/tasks/quick-add', { text, project_id: projectId, section_id: sectionId }),
+	quickAdd: (text, projectId, sectionId, parentId) =>
+		post('/tasks/quick-add', {
+			text,
+			project_id: projectId,
+			section_id: sectionId,
+			parent_id: parentId
+		}),
 	quickAddPreview: (text, signal) =>
 		get(`/tasks/quick-add/preview?text=${encodeURIComponent(text)}`, { signal }),
 
@@ -511,6 +516,8 @@ export const api = {
 	importCSV: (data) => post('/import/csv', data),
 	exportAccountURL: () => '/api/v1/export/account',
 	exportNotesURL: () => '/api/v1/export/notes.zip',
+	exportAllCSVURL: () => '/api/v1/export/projects.zip',
+	exportAllICSURL: () => '/api/v1/export/tasks.ics',
 	// Through `upload`, not `request`: a multipart body has to set its own boundary,
 	// and the browser only does that when nothing has claimed the header.
 	importNotes: (file) => upload('/notes/import', file),

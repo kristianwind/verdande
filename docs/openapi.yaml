@@ -848,6 +848,20 @@ paths:
                 project_id:
                   type: string
                   description: Where it goes when the text names no project.
+                section_id:
+                  type: string
+                  description: >
+                    The section the box was opened in. A "/section" in the text
+                    wins, because typing it is a choice and standing there is a
+                    circumstance.
+                parent_id:
+                  type: string
+                  description: >
+                    Makes it a sub-task. A sub-task lives in its parent's
+                    project, so a "#project" on the same line is not honoured —
+                    it comes back as `unknown_project` rather than being
+                    silently dropped. Dates, labels and priority are read the
+                    same way as for any other line.
       responses:
         "201":
           description: Created
@@ -3142,6 +3156,40 @@ paths:
                   from: { type: string, format: date }
                   to: { type: string, format: date }
         "422": { $ref: "#/components/responses/Validation" }
+
+  /api/v1/export/projects.zip:
+    get:
+      tags: [projects]
+      summary: Every project's tasks as a CSV, in a zip.
+      description: >
+        One CSV per project, in the column layout Todoist writes — so the files
+        import into Todoist and into anything else that reads that shape. A zip
+        rather than one wide file because that is the shape on the other side,
+        and because a single project can be lifted out of it without opening a
+        spreadsheet. The per-project link does the same for one project; this is
+        the whole account in one download.
+      responses:
+        "200":
+          description: A zip archive.
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+
+  /api/v1/export/tasks.ics:
+    get:
+      tags: [projects]
+      summary: Every dated task as a calendar of VTODOs.
+      description: >
+        One file, not a zip: a calendar is made to hold many things, and each
+        task carries its project with it, so nothing is lost by putting them
+        together. Tasks without a due date are left out — a VTODO with no date
+        is a line most readers drop on the floor.
+      responses:
+        "200":
+          description: An iCalendar file.
+          content:
+            text/calendar:
+              schema: { type: string }
 
   /api/v1/export/notes.zip:
     get:
