@@ -15,6 +15,22 @@
 Not what has been, and not what is fated to be: the thing you are in the middle of.
 Which is what a to-do list is.
 
+## Two editions: verdande and urd
+
+This repository builds one program with two faces. Start it with
+`VERDANDE_EDITION=notes` and it is **urd** — notes and nothing else: the task
+routes are not mounted, the sidebar has no way to them, and the program calls
+itself urd in its tab, its wordmark and its web manifest.
+
+Urðr is Verðandi's sister in Völuspá, and the poem has the Norns cutting marks into
+wood. Verdande is what is becoming; urd is what has become and was kept.
+
+Not a fork, because the two share everything that is hard — accounts, sharing,
+passkeys, the realtime socket, search, backups, migrations — and notes are about a
+twentieth of the Go here. A test walks both routers and fails in either direction,
+so "the task routes are not there" is measured rather than promised. See
+[Two editions](docs/editions.md).
+
 ## Status
 
 All six phases are built. See [What works today](#what-works-today) for what is

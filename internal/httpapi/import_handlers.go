@@ -358,7 +358,7 @@ func (s *Server) handleExportAllICS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cal := ics.Calendar{Name: "Verdande", Domain: feedDomain(s.cfg.BaseURL)}
+	cal := ics.Calendar{Name: s.cfg.ProductName(), Domain: feedDomain(s.cfg.BaseURL)}
 	for _, t := range tasks {
 		if t.DueDate == "" {
 			continue

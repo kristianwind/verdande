@@ -118,3 +118,64 @@ test('opgaveruterne findes slet ikke på serveren', async ({ page }) => {
 	// ovenstående bestå på en server, der var helt væk.
 	expect((await page.request.get('/api/v1/notes')).status()).toBe(200);
 });
+
+/**
+ * Navnet.
+ *
+ * To udgaver af ét program er to produkter, og det eneste sted en læser afgør
+ * hvilket af dem de ser på, er navnet: fanen, mærket i menuen, og det navn appen
+ * lægger sig under på en hjemmeskærm. De tre står i filer, browseren læser FØR
+ * noget JavaScript kører, så serveren skriver dem om på vejen ud — og derfor skal
+ * de måles her, på det der faktisk blev sendt, frem for i en funktion.
+ */
+test('fanen, mærket og manifestet siger alle urd', async ({ page }) => {
+	// Der er TO titler, og det blev opdaget her frem for i en Go-prøve: skallens,
+	// som browseren læser før noget JavaScript kører og som serveren skriver om,
+	// og rutens egen, som appen sætter i <svelte:head> når siden tegner. Den sidste
+	// overskriver den første — så en prøve, der kun læste den ene, ville være grøn
+	// over en fane, der sagde "Noter · verdande".
+	const skal = await (await page.request.get('/')).text();
+	expect(skal, 'skallens titel, før appen kører').toContain('<title>urd</title>');
+	await expect(page, 'rutens egen titel, efter appen har tegnet').toHaveTitle(/· urd$/);
+
+	const mærke = page.getByRole('navigation', { name: 'Hovedmenu' }).locator('.brand');
+	await expect(mærke.locator('.name')).toHaveText('urd');
+	// ᚢ uruz, det bogstav navnet begynder med i den ældre futhark — og ikke ᚹ
+	// wunjo, som er Verdandes. Begge er navngivne værdier frem for "der er en
+	// rune": en tom span og den forkerte rune ser ens ud for en prøve, der kun
+	// spørger om der står noget.
+	await expect(mærke.locator('.rune')).toHaveText('ᚢ');
+
+	const manifest = await (await page.request.get('/manifest.webmanifest')).json();
+	expect(manifest.name).toBe('urd');
+	expect(manifest.short_name).toBe('urd');
+});
+
+test('manifestet bliver sendt som et manifest, ikke som tekst', async ({ page }) => {
+	// Go kender ikke .webmanifest, så uden en eksplicit type sniffes den til
+	// text/plain — og en browser ignorerer så manifestet uden at sige noget.
+	// Symptomet er at installationsknappen bare ikke er der.
+	const svar = await page.request.get('/manifest.webmanifest');
+	expect(svar.headers()['content-type']).toContain('application/manifest+json');
+});
+
+test('omdøbningen rørte ikke lagernøglerne', async ({ page }) => {
+	// Fælden i hele øvelsen: produktnavnet og localStorage-præfikset er samme ord
+	// i app.html, og de er ikke samme ting. Omdøbes præfikset her og ikke i
+	// resten af appen, bliver temaet sat fra én nøgle og læst fra en anden, og det
+	// eneste symptom er det hvide blink, det indlejrede script findes for at
+	// undgå. Målt på de bytes der blev sendt, ikke på kilden.
+	const skal = await (await page.request.get('/')).text();
+	expect(skal).toContain("localStorage.getItem('verdande:theme')");
+	expect(skal).toContain("localStorage.getItem('verdande:look')");
+	expect(skal).not.toContain('urd:theme');
+});
+
+test('navnet står også i teksterne, ikke kun i mærket', async ({ page }) => {
+	// `{product}`-pladsholderen, hele vejen gennem i18n og ud på skærmen. Udseendet
+	// "som du kender det" er opkaldt efter programmet, så det er det kort, der
+	// skifter navn med udgaven.
+	await page.goto('/indstillinger');
+	await expect(page.getByRole('button', { name: /^Urd\b/ })).toBeVisible();
+	await expect(page.getByRole('button', { name: /^Verdande\b/ })).toHaveCount(0);
+});

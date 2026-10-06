@@ -24,13 +24,19 @@ import (
 type Sender struct {
 	cfg config.SMTP
 	log *slog.Logger
-	// appName and baseURL appear in the body of every message.
+	// appName and baseURL appear in every message. appName is the edition's own
+	// name — an invite from an urd instance that said "verdande" would be a letter
+	// to somebody else's inbox about a program they are not being invited to.
+	//
+	// It was a field with a value and no reader until 2026-10-07: the three places
+	// that needed it had the word written out instead, and the comment above said
+	// it appeared in every message. It does now.
 	appName string
 	baseURL string
 }
 
-func New(cfg config.SMTP, baseURL string, log *slog.Logger) *Sender {
-	return &Sender{cfg: cfg, log: log, appName: "verdande", baseURL: baseURL}
+func New(cfg config.SMTP, baseURL, appName string, log *slog.Logger) *Sender {
+	return &Sender{cfg: cfg, log: log, appName: appName, baseURL: baseURL}
 }
 
 // Configured reports whether mail can actually be sent. Handlers use it to decide
@@ -38,7 +44,7 @@ func New(cfg config.SMTP, baseURL string, log *slog.Logger) *Sender {
 func (s *Sender) Configured() bool { return s.cfg.Configured() }
 
 func (s *Sender) SendInvite(ctx context.Context, to, inviterName, projectName, link string, ttl time.Duration) error {
-	what := "verdande"
+	what := s.appName
 	if projectName != "" {
 		what = "projektet “" + projectName + "”"
 	}
@@ -61,7 +67,7 @@ func (s *Sender) SendNoteInvite(ctx context.Context, to, inviterName, noteTitle,
 }
 
 func (s *Sender) sendInvite(ctx context.Context, to, inviterName, what, link string, ttl time.Duration) error {
-	subject := fmt.Sprintf("%s har delt noget med dig i verdande", inviterName)
+	subject := fmt.Sprintf("%s har delt noget med dig i %s", inviterName, s.appName)
 	body := fmt.Sprintf(`Hej
 
 %s har inviteret dig til %s.
@@ -71,9 +77,9 @@ Opret din konto her:
 
 Linket virker i %s. Hvis du ikke ved, hvad det her handler om, kan du roligt slette denne mail — der sker ikke noget, hvis du ikke bruger linket.
 
-— verdande
+— %s
 %s
-`, inviterName, what, link, humanDuration(ttl), s.baseURL)
+`, inviterName, what, link, humanDuration(ttl), s.appName, s.baseURL)
 
 	return s.send(ctx, to, subject, body)
 }
@@ -88,17 +94,17 @@ Du bad om en påmindelse om:
 
 %s
 
-— verdande
-`, name, task, link)
+— %s
+`, name, task, link, s.appName)
 
 	return s.send(ctx, to, subject, body)
 }
 
 func (s *Sender) SendPasswordReset(ctx context.Context, to, name, link string, ttl time.Duration) error {
-	subject := "Nulstil din adgangskode i verdande"
+	subject := "Nulstil din adgangskode i " + s.appName
 	body := fmt.Sprintf(`Hej %s
 
-Der er bedt om at nulstille adgangskoden til din verdande-konto.
+Der er bedt om at nulstille adgangskoden til din %s-konto.
 
 Vælg en ny adgangskode her:
 %s
@@ -107,9 +113,9 @@ Linket virker i %s og kan kun bruges én gang.
 
 Har du ikke selv bedt om det, behøver du ikke gøre noget — din nuværende adgangskode virker stadig, og linket udløber af sig selv.
 
-— verdande
+— %s
 %s
-`, name, link, humanDuration(ttl), s.baseURL)
+`, name, s.appName, link, humanDuration(ttl), s.appName, s.baseURL)
 
 	return s.send(ctx, to, subject, body)
 }

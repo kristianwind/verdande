@@ -11,6 +11,7 @@ nowhere to put one that the operator would ever see.
 | `VERDANDE_ADDR` | `:8080` | Listen address. |
 | `VERDANDE_DATA_DIR` | `/data` | Database, uploaded files and backups. |
 | `VERDANDE_DEV` | `false` | Human-readable logs at debug level, and a relaxed origin check so a Vite dev server can connect. Never in production. |
+| `VERDANDE_EDITION` | `full` | Which of the two editions this instance is. `full` is verdande — tasks, projects and notes. `notes` is urd: the task routes are not mounted at all, and the program calls itself urd. Any other value refuses to start, by name. See [Two editions](editions.md). |
 
 ## Behind a proxy
 

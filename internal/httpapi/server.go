@@ -3,6 +3,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -77,6 +78,11 @@ type Server struct {
 	// Computed once from the built index.html; see csp.go.
 	csp string
 
+	// The shell and the manifest with this edition's name in them, or nil to serve
+	// the built files unchanged. Only the notes edition needs them; see shell.go.
+	shell    []byte
+	manifest []byte
+
 	router chi.Router
 }
 
@@ -86,7 +92,7 @@ type Server struct {
 func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server {
 	s := &Server{
 		cfg: cfg, db: db, log: log, web: web,
-		mail:         mail.New(cfg.SMTP, cfg.BaseURL, log),
+		mail:         mail.New(cfg.SMTP, cfg.BaseURL, cfg.ProductSlug(), log),
 		hub:          realtime.NewHub(log),
 		loginLimiter: newLimiter(10, 15*time.Minute),
 		// Generous on purpose: the caller is the mail server, one address delivering
@@ -101,8 +107,36 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 		// generous for a person and hopeless for a search through a million.
 		totpLimiter: newLimiter(10, time.Hour),
 	}
-	s.csp = contentSecurityPolicy(scriptHashes(web))
-	if w, err := auth.NewWebAuthn(cfg.BaseURL, "verdande"); err == nil {
+	// Before the CSP, deliberately: the policy has to describe the bytes that go
+	// out, and in the notes edition those are the renamed ones.
+	//
+	// A failure here is logged rather than fatal, and that is a judgement about
+	// this particular failure rather than a habit: an unknown VERDANDE_EDITION
+	// refuses to start, because serving task routes on an instance set up without
+	// them is a different kind of wrong. A shell whose title says the sibling's
+	// name is cosmetic — it must be loud, and it must not take the instance down.
+	// What makes it loud is not this line: the end-to-end suite reads the served
+	// title, so an anchor that falls out of app.html goes red there.
+	if web != nil && cfg.NotesOnly() {
+		shell, manifest, err := rebrandedAssets(web, cfg.ProductSlug(), notesShellDescription, notesManifestDescription)
+		if err != nil {
+			log.Error("the frontend could not be renamed for this edition; it will call itself verdande",
+				"edition", cfg.Edition, "err", err)
+		} else {
+			s.shell, s.manifest = shell, manifest
+		}
+	}
+
+	if s.shell != nil {
+		s.csp = contentSecurityPolicy(scriptHashesIn(s.shell))
+	} else {
+		s.csp = contentSecurityPolicy(scriptHashes(web))
+	}
+	// The second argument is WebAuthn's display name, not its relying party id —
+	// the id comes from BaseURL. So this is what the operating system's passkey
+	// prompt calls the site, and the slug keeps it identical to what every existing
+	// verdande instance already registered.
+	if w, err := auth.NewWebAuthn(cfg.BaseURL, cfg.ProductSlug()); err == nil {
 		s.passkeys = w
 	} else {
 		log.Warn("passkeys are unavailable", "err", err, "base_url", cfg.BaseURL)
@@ -685,7 +719,7 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 	if s.web == nil {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("verdande — API is running. The web interface was not built into this binary.\n"))
+		w.Write([]byte(s.cfg.ProductSlug() + " — API is running. The web interface was not built into this binary.\n"))
 		return
 	}
 
@@ -705,6 +739,24 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
+
+	// Only here is `name` settled, and that matters: every client-side route —
+	// /noter and all the rest — arrives as a path with no file behind it and is
+	// resolved to index.html by the fallback above. Asking before the fallback
+	// would have renamed the shell for a request to "/" and handed back the built
+	// one for every other route in the app.
+	//
+	// These two assets never reach the filesystem: they are the built files with
+	// this edition's name in them, held in memory since startup. See shell.go.
+	if b := s.renamed(name); b != nil {
+		w.Header().Set("Content-Type", contentTypeFor(name))
+		// A zero modification time tells ServeContent to send no Last-Modified and
+		// to answer no conditional request — right for a shell that must never be
+		// cached, and the same thing the built shell gets below.
+		w.Header().Set("Cache-Control", "no-cache")
+		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(b))
+		return
+	}
 
 	info, err := f.Stat()
 	if err != nil || info.IsDir() {

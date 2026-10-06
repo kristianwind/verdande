@@ -64,6 +64,35 @@ class AppState {
 		return this.edition === 'notes';
 	}
 
+	/**
+	 * Navnet instansen kalder sig selv — `Urd` i en sætning, `urd` i et mærke.
+	 *
+	 * To udgaver af ét program, to navne. Grunden til at det læses fra udgaven
+	 * frem for at stå skrevet i teksterne: for den der bruger en instans uden
+	 * opgaveruter er det et andet produkt, og et produkt, der kalder sig sin
+	 * søsters navn, er ikke et produkt — det er et flag, nogen har sat.
+	 *
+	 * Vinduets titel og manifestet står der IKKE. De læses af browseren, før
+	 * noget JavaScript kører, så serveren skriver dem om på vejen ud
+	 * (`internal/httpapi/shell.go`). Gjorde vi det her, ville hver indlæsning
+	 * vise søsterens navn et øjeblik og så rette sig selv.
+	 */
+	get productName() {
+		return this.notesOnly ? 'Urd' : 'Verdande';
+	}
+
+	get productSlug() {
+		return this.notesOnly ? 'urd' : 'verdande';
+	}
+
+	/**
+	 * Mærket: én rune, det bogstav navnet begynder med i den ældre futhark.
+	 * ᚹ wunjo for Verdande, ᚢ uruz for Urd.
+	 */
+	get productRune() {
+		return this.notesOnly ? '\u16A2' : '\u16B9';
+	}
+
 	/** Transient messages: a failed save, a rolled-back change. */
 	toasts = $state([]);
 	connected = $state(false);

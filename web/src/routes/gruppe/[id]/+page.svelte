@@ -126,7 +126,7 @@
 	}
 </script>
 
-<svelte:head><title>{group?.name ?? t('group.projects')} — verdande</title></svelte:head>
+<svelte:head><title>{group?.name ?? t('group.projects')} — {app.productSlug}</title></svelte:head>
 
 <div class="view">
 	{#if status === 'denied'}

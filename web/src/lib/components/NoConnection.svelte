@@ -38,7 +38,7 @@
 		</div>
 
 		<h2>{t('net.downTitle')}</h2>
-		<p class="lede">{t('net.downBody')}</p>
+		<p class="lede">{t('net.downBody', { product: app.productName })}</p>
 
 		<button onclick={again} disabled={trying}>
 			{trying ? t('net.reconnecting') : t('net.downRetry')}

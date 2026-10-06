@@ -379,7 +379,10 @@
 					<!-- Each card is written in the face it selects, because that is the
 					     only part of the choice a name cannot carry. -->
 					<span class="look-sample" data-look={option.id} aria-hidden="true">Aa</span>
-					<span class="theme-name">{t(option.name)}</span>
+					<!-- The product name is passed to every look, and only one of them has a
+					     place for it: the look named after the program. The other three
+					     carry no placeholder, so the parameter is ignored. -->
+					<span class="theme-name">{t(option.name, { product: app.productName })}</span>
 					<span class="theme-note">{t(option.note)}</span>
 				</button>
 			{/each}

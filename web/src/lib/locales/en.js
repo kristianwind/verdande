@@ -142,7 +142,7 @@ export const en = {
 	// the reader's ability to check it.
 	'beacon.noticeTitle': 'This installation reports that it exists',
 	'beacon.noticeBody':
-		'Once a day Verdande sends two values to the project, so it can see how many installations there are. Exactly these two — nothing else, no IP is stored, nothing about what you use it for:',
+		'Once a day {product} sends two values to the project, so it can see how many installations there are. Exactly these two — nothing else, no IP is stored, nothing about what you use it for:',
 	'beacon.noticeTo': 'Sent to {url}',
 	'beacon.noticeKeep': 'Keep it on',
 	'beacon.noticeStop': 'Turn it off',
@@ -235,7 +235,7 @@ export const en = {
 	'net.reconnecting': 'Reconnecting…',
 	'net.offline': 'No connection',
 	'net.downTitle': 'No connection',
-	'net.downBody': 'Verdande cannot be reached from here right now. Nothing you wrote is lost — it is on the server, and it comes back when the connection does.',
+	'net.downBody': '{product} cannot be reached from here right now. Nothing you wrote is lost — it is on the server, and it comes back when the connection does.',
 	'net.downRetry': 'Try again',
 	'nav.doItToday': 'Do it today',
 
@@ -350,7 +350,7 @@ export const en = {
 	'size.default': 'Default',
 	'size.large': 'Large',
 	'size.xl': 'Largest',
-	'look.verdande': 'Verdande',
+	'look.verdande': '{product}',
 	'look.verdandeNote': 'As you know it.',
 	'look.rolig': 'Calm',
 	'look.roligNote': 'Serif, more air. For reading and writing.',

@@ -26,6 +26,9 @@ var version = "dev"
 
 func main() {
 	if err := run(); err != nil {
+		// Not the edition's name: this fires before the configuration is read, so
+		// the edition is not known yet — and one of the things it reports is a
+		// VERDANDE_EDITION the program refused.
 		fmt.Fprintf(os.Stderr, "verdande: %v\n", err)
 		os.Exit(1)
 	}
@@ -37,7 +40,9 @@ func run() error {
 		return err
 	}
 	log := httpapi.NewLogger(cfg.Dev)
-	log.Info("starting verdande", "version", version, "data_dir", cfg.DataDir, "base_url", cfg.BaseURL)
+	// The edition's own name, so an urd instance's log says urd. The full edition
+	// still logs "starting verdande", which is what the release check reads.
+	log.Info("starting "+cfg.ProductSlug(), "version", version, "data_dir", cfg.DataDir, "base_url", cfg.BaseURL, "edition", cfg.Edition)
 
 	// The data volume is the only state that matters; create the whole layout up
 	// front so a failure here is a startup error rather than a surprise at the

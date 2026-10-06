@@ -64,7 +64,7 @@
 {#if notice}
 	<aside class="notice" role="region" aria-label={t('beacon.noticeTitle')}>
 		<h2>{t('beacon.noticeTitle')}</h2>
-		<p>{t('beacon.noticeBody')}</p>
+		<p>{t('beacon.noticeBody', { product: app.productName })}</p>
 
 		<!-- Det, der bliver sendt, med de rigtige værdier i. Ikke et eksempel: det
 		     er selve meldingen, og den kan sammenholdes med indstillingssiden. -->

@@ -12,8 +12,12 @@
 	 * and it reads the token out of the URL itself.
 	 */
 	import SignIn from '$lib/components/SignIn.svelte';
+	// Udgavens navn i titlen. Siden her tegner først, når layoutets `app.load()`
+	// har svaret, så udgaven er kendt — også uden en session, hvilket er hele
+	// pointen med den her rute.
+	import { app } from '$lib/stores.svelte.js';
 </script>
 
-<svelte:head><title>Invitation · verdande</title></svelte:head>
+<svelte:head><title>Invitation · {app.productSlug}</title></svelte:head>
 
 <SignIn />

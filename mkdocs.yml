@@ -44,6 +44,7 @@ extra_css:
 nav:
   - Home: index.md
   - Setting it up:
+      - Two editions: editions.md
       - As a Rune: rune.md
       - With Docker: self-hosting.md
       - Configuration: configuration.md

@@ -1,6 +1,7 @@
 # The install count
 
-verdande reports that it exists. Two values, once a day:
+verdande reports that it exists — and so does urd, which is the same program in
+its [notes edition](editions.md). Two values, once a day:
 
 ```json
 {
@@ -11,7 +12,8 @@ verdande reports that it exists. Two values, once a day:
 
 That is the whole message. No IP is stored by the collector, no hostname, no
 domain, no account, no counts of anything you have made, nothing about what you
-use it for. The payload is small enough to be printed in full on the settings page,
+use it for — and not which of the two editions is running, so the count does not
+tell the two apart either. The payload is small enough to be printed in full on the settings page,
 and it is printed there — a promise about telemetry is worth exactly as much as
 your ability to check it.
 

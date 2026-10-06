@@ -75,7 +75,7 @@
 	}
 </script>
 
-<svelte:head><title>{t('done.title')} — verdande</title></svelte:head>
+<svelte:head><title>{t('done.title')} — {app.productSlug}</title></svelte:head>
 
 <div class="view">
 	<header>
