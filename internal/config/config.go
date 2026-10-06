@@ -38,6 +38,28 @@ type Config struct {
 	// Empty means a key file beside the data — see internal/secret.
 	SecretKey string
 
+	// Edition decides which half of the program this instance serves.
+	//
+	// "full" is tasks, projects and notes together — what Verdande has always
+	// been. "notes" mounts the notes half and the base underneath it, and leaves
+	// the task routes unmounted: not hidden in the interface, absent from the
+	// router, so an instance that is not a task manager cannot be asked to be one
+	// through its API.
+	//
+	// Notes already stand nearly alone — they reference no task type anywhere in
+	// the store, and the one link between the halves is a `note_links` row whose
+	// kind happens to be "task". What is NOT separable is everything underneath
+	// both: accounts, sessions, invites, sharing, notifications, attachments,
+	// search. Hence one program with two faces rather than two programs: the
+	// alternative is two copies of the base, and two copies of a thing is how the
+	// copies start to disagree.
+	//
+	// Projects stay mounted in both. In the notes edition a project is a
+	// notebook — the same column, the same sharing, a different word — because a
+	// second grouping concept beside `note_shares` would be a second thing to keep
+	// in step for a difference nobody can see.
+	Edition string
+
 	// UpdateCheck asks GitHub whether a newer release exists. Off unless asked
 	// for: a self-hosted app that reaches out without being told to has broken
 	// the deal its operator made by self-hosting.
@@ -136,6 +158,7 @@ func Load() (*Config, error) {
 		PanelServerID:      env("VERDANDE_PANEL_SERVER_ID", ""),
 		GmailClientSecret:  env("VERDANDE_GMAIL_CLIENT_SECRET", ""),
 		SecretKey:          env("VERDANDE_SECRET_KEY", ""),
+		Edition:            env("VERDANDE_EDITION", EditionFull),
 		UpdateCheck:        envBool("VERDANDE_UPDATE_CHECK", false),
 	}
 
@@ -169,6 +192,19 @@ func Load() (*Config, error) {
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	if c.DataDir, err = filepath.Abs(c.DataDir); err != nil {
 		return nil, fmt.Errorf("VERDANDE_DATA_DIR: %w", err)
+	}
+
+	// Afvist frem for gætte. En stavefejl — "note", "Notes" — ville ellers falde
+	// tilbage til den fulde udgave og servere opgaveruterne på en instans, der
+	// blev sat op for ikke at have dem. Det er den stille retning af fejlen, og
+	// den eneste måde at opdage den på ville være at bemærke, at noget virker,
+	// som ikke burde.
+	switch c.Edition {
+	case EditionFull, EditionNotes:
+	case "":
+		c.Edition = EditionFull
+	default:
+		return nil, fmt.Errorf("VERDANDE_EDITION: %q is not %q or %q", c.Edition, EditionFull, EditionNotes)
 	}
 
 	c.RealIPHeader = env("VERDANDE_REAL_IP_HEADER", "X-Forwarded-For")

@@ -285,6 +285,10 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 
 		// Everything past this point needs a complete login.
 		r.Group(func(r chi.Router) {
+			// Opgavehalvdelen monteres kun i den fulde udgave. Ikke skjult i
+			// fladen — fraværende fra routeren, så en instans, der ikke er et
+			// opgaveprogram, heller ikke kan bedes om at være det gennem sit API.
+			full := !s.cfg.NotesOnly()
 			r.Use(s.requireAuth)
 
 			r.Get("/ws", s.handleWebSocket)
@@ -294,15 +298,19 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			r.Post("/mcp", s.handleMCP)
 
 			r.Get("/today", s.handleToday)
-			r.Get("/filters/preview", s.handlePreviewFilter)
+			if full {
+				r.Get("/filters/preview", s.handlePreviewFilter)
+			}
 
-			r.Route("/filters", func(r chi.Router) {
-				r.Get("/", s.handleListFilters)
-				r.Post("/", s.handleCreateFilter)
-				r.Get("/{filterID}/tasks", s.handleRunFilter)
-				r.Patch("/{filterID}", s.handleUpdateFilter)
-				r.Delete("/{filterID}", s.handleDeleteFilter)
-			})
+			if full {
+				r.Route("/filters", func(r chi.Router) {
+					r.Get("/", s.handleListFilters)
+					r.Post("/", s.handleCreateFilter)
+					r.Get("/{filterID}/tasks", s.handleRunFilter)
+					r.Patch("/{filterID}", s.handleUpdateFilter)
+					r.Delete("/{filterID}", s.handleDeleteFilter)
+				})
+			}
 
 			r.Get("/feed", s.handleGetFeed)
 
@@ -468,16 +476,20 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Delete("/{templateID}", s.handleDeleteTemplate)
 			})
 
-			r.Delete("/reminders/{reminderID}", s.handleDeleteReminder)
+			if full {
+				r.Delete("/reminders/{reminderID}", s.handleDeleteReminder)
+			}
 
-			r.Route("/labels", func(r chi.Router) {
-				r.Get("/", s.handleListLabels)
-				r.Post("/", s.handleCreateLabel)
-				r.Patch("/{labelID}", s.handleUpdateLabel)
-				r.Delete("/{labelID}", s.handleDeleteLabel)
-			})
-			r.Get("/upcoming", s.handleUpcoming)
-			r.Get("/delegated", s.handleDelegated)
+			if full {
+				r.Route("/labels", func(r chi.Router) {
+					r.Get("/", s.handleListLabels)
+					r.Post("/", s.handleCreateLabel)
+					r.Patch("/{labelID}", s.handleUpdateLabel)
+					r.Delete("/{labelID}", s.handleDeleteLabel)
+				})
+				r.Get("/upcoming", s.handleUpcoming)
+				r.Get("/delegated", s.handleDelegated)
+			}
 			r.Get("/people", s.handlePeople)
 			r.Get("/search", s.handleSearch)
 
@@ -583,27 +595,29 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Delete("/", s.handleDeleteSection)
 			})
 
-			r.Route("/tasks", func(r chi.Router) {
-				r.Get("/", s.handleListTasks)
-				r.Post("/", s.handleCreateTask)
-				r.Post("/quick-add", s.handleQuickAdd)
-				r.Get("/quick-add/preview", s.handleQuickAddPreview)
+			if full {
+				r.Route("/tasks", func(r chi.Router) {
+					r.Get("/", s.handleListTasks)
+					r.Post("/", s.handleCreateTask)
+					r.Post("/quick-add", s.handleQuickAdd)
+					r.Get("/quick-add/preview", s.handleQuickAddPreview)
 
-				r.Route("/{taskID}", func(r chi.Router) {
-					r.Get("/", s.handleGetTask)
-					r.Patch("/", s.handleUpdateTask)
-					r.Delete("/", s.handleDeleteTask)
-					r.Get("/comments", s.handleListComments)
-					r.Post("/comments", s.handleCreateComment)
-					r.Post("/attachments", s.handleUploadAttachment)
-					r.Get("/reminders", s.handleListReminders)
-					r.Post("/reminders", s.handleCreateReminder)
-					r.Post("/complete", s.handleCompleteTask)
-					r.Post("/reopen", s.handleReopenTask)
-					r.Post("/move", s.handleMoveTask)
-					r.Post("/snooze", s.handleSnoozeTask)
+					r.Route("/{taskID}", func(r chi.Router) {
+						r.Get("/", s.handleGetTask)
+						r.Patch("/", s.handleUpdateTask)
+						r.Delete("/", s.handleDeleteTask)
+						r.Get("/comments", s.handleListComments)
+						r.Post("/comments", s.handleCreateComment)
+						r.Post("/attachments", s.handleUploadAttachment)
+						r.Get("/reminders", s.handleListReminders)
+						r.Post("/reminders", s.handleCreateReminder)
+						r.Post("/complete", s.handleCompleteTask)
+						r.Post("/reopen", s.handleReopenTask)
+						r.Post("/move", s.handleMoveTask)
+						r.Post("/snooze", s.handleSnoozeTask)
+					})
 				})
-			})
+			}
 		})
 	})
 
