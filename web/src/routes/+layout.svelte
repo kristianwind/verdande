@@ -130,8 +130,20 @@
 		// Folding the sidebar had a button and nothing else, and a rectangle with a
 		// line down it is not a word: somebody who wanted the menu out of the way
 		// asked for the feature that was already there. ⌘B is where an editor puts
-		// it. Works while typing as well — it moves nothing in the field.
-		if ((event.metaKey || event.ctrlKey) && (event.key === 'b' || event.key === 'B')) {
+		// it.
+		//
+		// Men ikke i en rig editor. Her stod der "works while typing as well — it
+		// moves nothing in the field", og det passer for et <input>, hvor ⌘B ikke
+		// gør noget. I en contenteditable ER ⌘B fed tekst, og `preventDefault()`
+		// nedenfor stoppede browseren i at gøre den — så i noterne foldede
+		// sidebjælken sig i stedet for at gøre ordet fedt. Feltet, markøren står i,
+		// har førsteret til en tast, det selv bruger.
+		const writing = el?.isContentEditable || el?.closest?.('[contenteditable="true"]');
+		if (
+			(event.metaKey || event.ctrlKey) &&
+			(event.key === 'b' || event.key === 'B') &&
+			!writing
+		) {
 			event.preventDefault();
 			sidebar.toggle();
 			return;

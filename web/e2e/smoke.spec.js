@@ -5036,6 +5036,47 @@ test('et klik væk fra en kodeblok skriver ikke dens linjer sammen', async ({ pa
 });
 
 /**
+ * ⌘B gør teksten fed i en note — den folder ikke sidebjælken.
+ *
+ * Fladen tog ⌘B til sidebjælken med den begrundelse, at den "ikke flytter noget i
+ * feltet". Det passer for et <input>, hvor ⌘B ikke gør noget. I en contenteditable
+ * ER ⌘B fed tekst, og `preventDefault()` stoppede browseren i at gøre den — så i
+ * noterne foldede menuen sig, hver gang man ville fremhæve et ord.
+ *
+ * Begge halvdele måles. En rettelse, der bare holdt op med at folde, ville være
+ * halvt færdig: ordet skal også blive fedt.
+ */
+test('⌘B gør teksten fed i en note i stedet for at folde sidebjælken', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	const foldet = () => page.locator('.shell.sidebar-collapsed').count();
+	expect(await foldet()).toBe(0);
+
+	await nyNote(page);
+	await page.keyboard.type('Fremhævet');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('ordet');
+	await page.keyboard.press('ControlOrMeta+a');
+
+	const ed = page.getByRole('textbox', { name: 'Notens tekst' });
+	await page.keyboard.press('ControlOrMeta+b');
+
+	// Enten <b> eller <strong>: browserens egen fed er <b>, omformeren skriver
+	// <strong>, og begge læses som fed på vejen tilbage.
+	await expect(ed.locator('b, strong')).toContainText('ordet');
+	expect(await foldet()).toBe(0);
+
+	// Og uden for et skrivefelt gør den stadig det, den er sat til.
+	await page.getByRole('heading', { name: 'Noter' }).click();
+	await page.keyboard.press('ControlOrMeta+b');
+	expect(await foldet()).toBe(1);
+	await page.keyboard.press('ControlOrMeta+b');
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * Flere markerede afsnit bliver til ÉN monotypeblok — ikke kun det øverste.
  *
  * Monotype går uden om `execCommand`, fordi formatBlock pakker et <p> ind i
