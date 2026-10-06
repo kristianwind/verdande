@@ -475,11 +475,13 @@
 
 <nav class="sidebar" aria-label={t('nav.main')}>
 	<div class="brand">
-		<!-- Verdande's mark: the rune Wunjo, which is the letter the Norn's name
-		     starts with in the elder futhark. One glyph, no wordmark beside it —
-		     the name is in the tab and everywhere else already. -->
-		<span class="rune" aria-hidden="true">ᚹ</span>
-		<span class="name">verdande</span>
+		<!-- The mark: one rune, the letter the Norn's name starts with in the elder
+		     futhark — Wunjo for Verdande, Uruz for Urd. Both come from the store
+		     rather than from here, because the two editions of this program are two
+		     products with two names, and a wordmark is the one place a reader
+		     decides which one they are looking at. -->
+		<span class="rune" aria-hidden="true">{app.productRune}</span>
+		<span class="name">{app.productSlug}</span>
 	</div>
 
 	<div class="views">

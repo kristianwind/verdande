@@ -40,7 +40,7 @@ func newRunner(t *testing.T) (*Runner, *store.DB, *config.Config) {
 	t.Cleanup(func() { db.Close() })
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return New(cfg, db, log, mail.New(cfg.SMTP, cfg.BaseURL, log), realtime.NewHub(log)), db, cfg
+	return New(cfg, db, log, mail.New(cfg.SMTP, cfg.BaseURL, cfg.ProductSlug(), log), realtime.NewHub(log)), db, cfg
 }
 
 func seedUser(t *testing.T, db *store.DB) *store.User {

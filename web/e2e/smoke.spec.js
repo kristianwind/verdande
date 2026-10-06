@@ -5509,3 +5509,35 @@ test('søgefeltet taber ikke bogstaver, og det nyeste svar vinder', async ({ pag
 	await page.unroute('**/api/v1/notes?*');
 	expect(trouble).toEqual([]);
 });
+
+/**
+ * The control for the notes edition's renaming, and it belongs here rather than
+ * beside it: the whole point is that the full edition does NOT go through that
+ * path, and that can only be measured on an instance which is not the notes one.
+ *
+ * A gate asserted in one direction is half a gate. edition.spec.js proves the
+ * notes edition calls itself urd; without this, a rename that fired in both
+ * editions would pass there and change the name of this program.
+ */
+test('the full edition still calls itself verdande', async ({ page }) => {
+	await page.goto('/');
+	// Both titles, for the same reason edition.spec.js checks both: the shell's,
+	// which the browser reads before any script runs, and the route's own, set in
+	// <svelte:head> once the page draws. Today has no title of its own, so the
+	// shell's is what stands here — and /noter has one, so it is asked separately.
+	const shell = await (await page.request.get('/')).text();
+	expect(shell).toContain('<title>verdande</title>');
+	await expect(page).toHaveTitle('verdande');
+
+	const brand = page.getByRole('navigation', { name: /Hovedmenu|Main menu/ }).locator('.brand');
+	await expect(brand.locator('.name')).toHaveText('verdande');
+	// ᚹ wunjo, not ᚢ uruz.
+	await expect(brand.locator('.rune')).toHaveText('ᚹ');
+
+	await page.goto('/noter');
+	await expect(page).toHaveTitle(/· verdande$/);
+
+	const manifest = await (await page.request.get('/manifest.webmanifest')).json();
+	expect(manifest.name).toBe('verdande');
+	expect(manifest.description).toBe('Opgaver og projekter, delt.');
+});

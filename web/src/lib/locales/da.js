@@ -145,7 +145,7 @@ export const da = {
 	// læserens mulighed for at efterprøve det.
 	'beacon.noticeTitle': 'Denne installation melder, at den findes',
 	'beacon.noticeBody':
-		'Én gang i døgnet sender Verdande to værdier til projektet, så det kan ses, hvor mange installationer der er. Præcis de her to — intet andet, ingen IP bliver gemt, intet om hvad du bruger det til:',
+		'Én gang i døgnet sender {product} to værdier til projektet, så det kan ses, hvor mange installationer der er. Præcis de her to — intet andet, ingen IP bliver gemt, intet om hvad du bruger det til:',
 	'beacon.noticeTo': 'Sendes til {url}',
 	'beacon.noticeKeep': 'Behold den',
 	'beacon.noticeStop': 'Slå den fra',
@@ -238,7 +238,7 @@ export const da = {
 	'net.reconnecting': 'Genopretter forbindelse…',
 	'net.offline': 'Ingen forbindelse',
 	'net.downTitle': 'Ingen forbindelse',
-	'net.downBody': 'Verdande kan ikke nås herfra lige nu. Din tekst er ikke væk — den ligger på serveren, og den kommer igen, når forbindelsen gør.',
+	'net.downBody': '{product} kan ikke nås herfra lige nu. Din tekst er ikke væk — den ligger på serveren, og den kommer igen, når forbindelsen gør.',
 	'net.downRetry': 'Prøv igen',
 	'nav.doItToday': 'Gør det i dag',
 
@@ -353,7 +353,7 @@ export const da = {
 	'size.default': 'Standard',
 	'size.large': 'Stor',
 	'size.xl': 'Størst',
-	'look.verdande': 'Verdande',
+	'look.verdande': '{product}',
 	'look.verdandeNote': 'Som du kender den.',
 	'look.rolig': 'Rolig',
 	'look.roligNote': 'Serif, mere luft. Til at læse og skrive i.',

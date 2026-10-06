@@ -36,7 +36,18 @@ func scriptHashes(web fs.FS) []string {
 	if err != nil {
 		return nil
 	}
+	return scriptHashesIn(raw)
+}
 
+// scriptHashesIn is the same thing over bytes that are already in hand.
+//
+// It exists because the notes edition does not serve the index.html that is on
+// disk — it serves a renamed copy of it (see shell.go) — and the policy has to
+// describe the bytes that actually leave the server. Hashing the file while
+// serving something else is the shape of mistake that cannot be noticed locally:
+// the policy is not enforced for a page opened from a file, so the page is blank
+// in production and nowhere else.
+func scriptHashesIn(raw []byte) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, match := range inlineScript.FindAllStringSubmatchIndex(string(raw), -1) {

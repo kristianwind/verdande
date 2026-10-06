@@ -933,7 +933,7 @@
 
 </script>
 
-<svelte:head><title>{t('notes.title')} · verdande</title></svelte:head>
+<svelte:head><title>{t('notes.title')} · {app.productSlug}</title></svelte:head>
 
 <svelte:window
 	onclick={onShareOutside}
