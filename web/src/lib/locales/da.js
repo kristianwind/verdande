@@ -263,6 +263,9 @@ export const da = {
 
 	// --- a task in a list ----------------------------------------------------------
 	'task.add': 'Tilføj',
+	'task.pastedTitle': 'Indsat liste',
+	'task.pastedAdd': 'Opret {n} opgaver',
+	'task.pastedCancel': 'Fortryd',
 	'task.new': 'Ny opgave',
 	'task.syntaxProject': 'projekt',
 	'task.syntaxSection': 'sektion',
@@ -611,6 +614,8 @@ export const da = {
 	'data.importNotesHint': 'Én .md-fil pr. note; første linje bliver titlen. Billeder, der ligger ved siden af, følger med og bliver hængt på noten. Scriptet i tools/ henter dine Apple Noter ud.',
 	'data.notesImported': '{n} noter og {files} filer hentet ind.',
 	'data.exportNotes': 'Alle noter som Markdown-filer',
+	'data.exportAllCSV': 'Alle opgaver (CSV)',
+	'data.exportAllICS': 'Alle opgaver (kalender)',
 	'data.exportAccount': 'Hele kontoen som JSON',
 	'data.exportOne': 'Ét projekt',
 	'data.pickProject': 'Vælg et projekt',

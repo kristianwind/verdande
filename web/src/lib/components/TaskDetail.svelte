@@ -15,6 +15,7 @@
 	import { focusOnMount } from '$lib/focus.js';
 	import { t, tag } from '$lib/i18n.svelte.js';
 	import { REPEATS } from '$lib/when.js';
+	import { readList } from '$lib/pastelist.js';
 
 	let { task, onclose } = $props();
 
@@ -282,6 +283,73 @@
 
 	// --- sub-tasks ----------------------------------------------------------------
 
+	/**
+	 * En liste indsat i undertask-feltet bliver til undertasks under DEN her opgave.
+	 *
+	 * Det er den anden halvdel af "enten opgaver eller undertasks": hvor man
+	 * indsætter, afgør hvad linjerne bliver, uden at nogen skal vælge noget i en
+	 * menu. Indrykning i det indsatte giver stadig et niveau mere, så en liste med
+	 * punkter under punkter kommer ind som den stod.
+	 *
+	 * Som i quick-add vises den, før den oprettes — og af samme grund.
+	 */
+	let pastedSubtasks = $state([]);
+
+	function onPasteSubtasks(event) {
+		const pasted = event.clipboardData?.getData('text/plain') ?? '';
+		if (!pasted.includes('\n')) return;
+		const rows = readList(pasted);
+		if (rows.length < 2) return;
+		event.preventDefault();
+		pastedSubtasks = rows;
+	}
+
+	async function createPastedSubtasks() {
+		if (addingPasted) return;
+		addingPasted = true;
+
+		// Niveau nul hænger under den åbne opgave; dybere niveauer hænger under den
+		// seneste linje ovenfor, som i quick-add.
+		const parents = [task.id];
+		let made = 0;
+		for (const row of pastedSubtasks) {
+			const created = await app.quickAdd(row.text, task.project_id, undefined, parents[row.depth]);
+			if (!created) break;
+			parents[row.depth + 1] = created.id;
+			parents.length = row.depth + 2;
+			if (row.done) await app.complete(created.id);
+			// Kun dem, der hører direkte under den åbne opgave, står i listen her —
+			// resten hører under deres egen.
+			if (row.depth === 0) subtasks = [...subtasks, created];
+			made++;
+		}
+
+		addingPasted = false;
+		pastedSubtasks = pastedSubtasks.slice(made);
+		countSubtasks();
+	}
+
+	let addingPasted = $state(false);
+
+	/**
+	 * Rækkens tæller, når en undertask er kommet til eller er blevet lukket.
+	 *
+	 * Tallene bor på FORÆLDEREN og sendes med hver opgave, så listen kan sige
+	 * "1/4" uden at åbne noget. Serveren regner dem ud, når opgaverne hentes — den
+	 * sender ikke forælderen igen, fordi et barn blev lavet. Så uden det her stod
+	 * rækken bagved og sagde 1/2, mens ruden foran viste fire undertasks.
+	 *
+	 * Samme regel som resten af butikken: en lokal handling slår igennem med det
+	 * samme og bliver afstemt bagefter. Næste hentning henter serverens tal.
+	 */
+	function countSubtasks() {
+		app.upsert({
+			...task,
+			subtask_count: subtasks.length,
+			subtask_done: subtasks.filter((s) => s.completed).length
+		});
+	}
+
 	async function addSubtask(event) {
 		event.preventDefault();
 		const text = newSubtask.trim();
@@ -294,6 +362,7 @@
 				parent_id: task.id
 			});
 			subtasks = [...subtasks, created];
+			countSubtasks();
 		} catch (e) {
 			app.toast(humanMessage(e));
 		}
@@ -635,8 +704,31 @@
 			{/each}
 
 			<form onsubmit={addSubtask}>
-				<input bind:value={newSubtask} placeholder={t('detail.addSubtask')} aria-label={t('detail.newSubtask')} />
+				<input
+					bind:value={newSubtask}
+					onpaste={onPasteSubtasks}
+					placeholder={t('detail.addSubtask')}
+					aria-label={t('detail.newSubtask')}
+				/>
 			</form>
+
+			{#if pastedSubtasks.length}
+				<div class="pasted" role="group" aria-label={t('task.pastedTitle')}>
+					<ul>
+						{#each pastedSubtasks as row, i (i)}
+							<li style="--depth: {row.depth}" class:done={row.done}>{row.text}</li>
+						{/each}
+					</ul>
+					<div class="pasted-actions">
+						<button type="button" disabled={addingPasted} onclick={createPastedSubtasks}>
+							{t('task.pastedAdd', { n: String(pastedSubtasks.length) })}
+						</button>
+						<button type="button" class="plain" onclick={() => (pastedSubtasks = [])}>
+							{t('task.pastedCancel')}
+						</button>
+					</div>
+				</div>
+			{/if}
 		</section>
 
 		<section>
@@ -741,6 +833,43 @@
 </aside>
 
 <style>
+	/* Den indsatte liste, før den bliver til undertasks. Samme form som i
+	   quick-add — det er den samme beslutning, stillet samme sted i forløbet. */
+	.pasted {
+		margin-top: var(--s2);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		padding: var(--s2);
+	}
+	.pasted ul {
+		list-style: none;
+		margin: 0 0 var(--s2);
+		padding: 0;
+		max-height: 30vh;
+		overflow-y: auto;
+	}
+	.pasted li {
+		padding: 2px 0 2px calc(var(--depth) * var(--s4));
+		font-size: var(--text-sm);
+	}
+	.pasted li.done {
+		text-decoration: line-through;
+		color: var(--ink-muted);
+	}
+	.pasted-actions {
+		display: flex;
+		gap: var(--s2);
+		align-items: center;
+	}
+	.pasted-actions .plain {
+		border: none;
+		background: none;
+		padding: 0;
+		font: inherit;
+		color: var(--ink-muted);
+		cursor: pointer;
+	}
+
 	.linked-note {
 		display: block;
 		padding: var(--s2);

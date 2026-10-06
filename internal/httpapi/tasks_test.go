@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"io"
@@ -1562,6 +1563,178 @@ func TestImportTodoistCSV(t *testing.T) {
 }
 
 // The whole point of import and export together: what goes in comes back out.
+
+// TestQuickAddSubTask covers the parent a pasted list's indented lines use.
+//
+// The line still goes through the same parser as a top-level one — a sub-task
+// with a date is an ordinary thing to paste, and a second, dumber creation path
+// for indented lines would be a second place for "i morgen" to mean something
+// different.
+func TestQuickAddSubTask(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, parent := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "Flytte garagen",
+	})
+	parentID, _ := parent["id"].(string)
+	if parentID == "" {
+		t.Fatalf("no parent: %v", parent)
+	}
+
+	_, child := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "Rydde hylderne p1", "parent_id": parentID,
+	})
+	if got := child["parent_id"]; got != parentID {
+		t.Errorf("parent_id = %v, want %v", got, parentID)
+	}
+	// The line was parsed, not stored raw: the priority marker is gone from the
+	// text and present as a priority.
+	if got := child["content"]; got != "Rydde hylderne" {
+		t.Errorf("content = %v, want the line without its marker", got)
+	}
+	if got := child["priority"]; got != float64(1) {
+		t.Errorf("priority = %v, want 1", got)
+	}
+
+	t.Run("a sub-task cannot be put in another project", func(t *testing.T) {
+		_, other := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Andetsteds"})
+		otherID, _ := other["id"].(string)
+
+		_, moved := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+			"text": "Hente nøglen #Andetsteds", "parent_id": parentID,
+		})
+		if got := moved["project_id"]; got == otherID {
+			t.Errorf("the sub-task left its parent's project")
+		}
+		// And it is said out loud rather than the word just disappearing from the
+		// title — the failure this reports is exactly the one that used to be silent.
+		if got := moved["unknown_project"]; got != "Andetsteds" {
+			t.Errorf("unknown_project = %v, want the name that could not be honoured", got)
+		}
+	})
+}
+
+// raw fetches a download — a zip or a calendar — as bytes.
+//
+// `do` decodes JSON, which these two are not: it would report an empty body and a
+// parse error where the interesting thing is the bytes themselves.
+func (ts *testServer) raw(t *testing.T, path string) ([]byte, string) {
+	t.Helper()
+	req, _ := http.NewRequest("GET", ts.URL+path, nil)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("%s: status %d", path, resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body, resp.Header.Get("Content-Type")
+}
+
+// TestExportEverythingAtOnce covers the two whole-account exports.
+//
+// The per-project links worked and were unusable at any size: fifteen projects
+// meant fifteen downloads to move your own tasks somewhere else. These two are
+// the same data without the fifteen clicks.
+//
+// Asserted on the CONTENTS rather than on the status: a zip with no entries and a
+// calendar with no VTODOs are both 200 with a plausible Content-Type, and that is
+// exactly the shape an export bug takes.
+func TestExportEverythingAtOnce(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	// Two projects, so the zip has to hold more than the one that happens to be
+	// first — a loop that exports only the last project passes a one-project test.
+	_, first := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Firma"})
+	_, second := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Hjem"})
+	firstID, _ := first["id"].(string)
+	secondID, _ := second["id"].(string)
+
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "Betal moms", "project_id": firstID, "due_date": "2026-11-03",
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "Skifte daek", "project_id": secondID,
+	})
+
+	t.Run("csv zip holds one file per project", func(t *testing.T) {
+		body, ct := ts.raw(t, "/api/v1/export/projects.zip")
+		if ct != "application/zip" {
+			t.Fatalf("content-type %q", ct)
+		}
+		zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+		if err != nil {
+			t.Fatalf("not a zip: %v", err)
+		}
+
+		found := map[string]string{}
+		for _, f := range zr.File {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			text, _ := io.ReadAll(rc)
+			rc.Close()
+			found[f.Name] = string(text)
+		}
+		if len(found) < 2 {
+			t.Fatalf("want a file per project, got %d: %v", len(found), found)
+		}
+
+		// The task has to be IN the file named after its own project. A zip with the
+		// right filenames and every task in the wrong one is the failure this is for.
+		var sawMoms, sawDaek bool
+		for name, text := range found {
+			// Filenames are lower-cased by ics.Filename, so the comparison is too —
+			// asserting on the stored capitalisation would be asserting on a detail
+			// the exporter is free to change.
+			lower := strings.ToLower(name)
+			if strings.Contains(text, "Betal moms") {
+				sawMoms = true
+				if !strings.Contains(lower, "firma") {
+					t.Errorf("Betal moms landed in %q, not in Firma", name)
+				}
+			}
+			if strings.Contains(text, "Skifte daek") {
+				sawDaek = true
+				if !strings.Contains(lower, "hjem") {
+					t.Errorf("Skifte daek landed in %q, not in Hjem", name)
+				}
+			}
+		}
+		if !sawMoms || !sawDaek {
+			t.Errorf("a task is missing from the zip: moms=%v daek=%v", sawMoms, sawDaek)
+		}
+	})
+
+	t.Run("ics holds every dated task across projects", func(t *testing.T) {
+		body, ct := ts.raw(t, "/api/v1/export/tasks.ics")
+		if !strings.HasPrefix(ct, "text/calendar") {
+			t.Fatalf("content-type %q", ct)
+		}
+		text := string(body)
+		if n := strings.Count(text, "BEGIN:VTODO"); n != 1 {
+			t.Fatalf("want the one dated task, got %d VTODOs:\n%s", n, text)
+		}
+		if !strings.Contains(text, "Betal moms") {
+			t.Errorf("the dated task is missing:\n%s", text)
+		}
+		// Undated tasks are deliberately left out — a VTODO with no date is a line
+		// most readers drop. Asserted so the omission stays a decision.
+		if strings.Contains(text, "Skifte daek") {
+			t.Errorf("an undated task was exported:\n%s", text)
+		}
+	})
+}
+
 func TestTodoistImportExportRoundTrip(t *testing.T) {
 	ts := newTestServer(t)
 	ts.bootstrap(t)

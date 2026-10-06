@@ -260,6 +260,9 @@ export const en = {
 
 	// --- a task in a list ----------------------------------------------------------
 	'task.add': 'Add',
+	'task.pastedTitle': 'Pasted list',
+	'task.pastedAdd': 'Add {n} tasks',
+	'task.pastedCancel': 'Cancel',
 	'task.new': 'New task',
 	'task.syntaxProject': 'project',
 	'task.syntaxSection': 'section',
@@ -607,6 +610,8 @@ export const en = {
 	'data.importNotesHint': 'One .md file per note; the first line becomes the title. Pictures beside the files come with them and are attached to the note. The script in tools/ gets your Apple Notes out.',
 	'data.notesImported': '{n} notes and {files} files brought in.',
 	'data.exportNotes': 'Every note as Markdown files',
+	'data.exportAllCSV': 'All tasks (CSV)',
+	'data.exportAllICS': 'All tasks (calendar)',
 	'data.exportAccount': 'The whole account as JSON',
 	'data.exportOne': 'One project',
 	'data.pickProject': 'Pick a project',
