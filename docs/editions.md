@@ -26,10 +26,7 @@ No second image and no rune of its own, deliberately.
 
 The edition is for an operator who wants an instance that genuinely has no task
 routes — the routes are absent from the router, not hidden in the interface. It is
-**not** how urd is normally reached. That is being built as a second face of one
-instance, with its own entry point and its own web manifest, so that both can be
-installed as separate apps while sharing one database, one login and one set of
-links. Until that lands, this page describes the edition only.
+**not** how urd is normally reached. That is the second door, below.
 
 Two details that surprise people who look inside:
 
@@ -40,6 +37,64 @@ Two details that surprise people who look inside:
   to serve at `/icon.svg`, because Safari looks for `apple-touch-icon.png` by name
   and never reads the manifest, so renaming paths would have left iOS with the
   wrong mark.
+
+## The second door: two apps, one instance
+
+urd is normally reached at **`/urd`** on an ordinary verdande. One instance, one
+database, one login, one set of links between notes and tasks — and two things you
+can install.
+
+| | verdande | urd |
+|---|---|---|
+| entry | `/` | `/urd` |
+| manifest | `/manifest.webmanifest` | `/urd.webmanifest` |
+| manifest `id` | `/` | `/urd` |
+| tab and mark | verdande, ᚹ | urd, ð |
+| database, account, login | the same | the same |
+
+An operating system does not install a URL, it installs a **manifest**, and the
+identity of an installed app is that manifest's `id`. Two manifests on one origin
+with different ids are two apps; two URLs sharing one manifest are one app with a
+bookmark. That is the whole mechanism.
+
+The shell is served per door rather than patched by JavaScript after the page
+loads, because iOS reads the page's `<head>` when somebody taps Add to Home Screen
+— and Safari looks for `apple-touch-icon` **by name**, having historically ignored
+the manifest's icons altogether.
+
+urd's manifest is built from verdande's rather than written beside it, so the
+fields the two genuinely share — the colours, the display mode, the language —
+come from one place and cannot drift. Six keys are changed: `id`, `start_url`,
+`scope`, the two names and the icons. An icon in the built manifest that urd has no
+file for stops the server rather than being passed through, because the symptom
+would otherwise be urd's install prompt quietly showing Verdande's mark.
+
+### The face is a preference, not a gate
+
+Entering at `/urd` makes that **window** wear urd's face: its mark, its name, its
+tab. It is kept strictly apart from the notes edition in the code, and the
+distinction is the one thing worth reading twice:
+
+| | what it means | what follows |
+|---|---|---|
+| `notesOnly` | the server has no task routes | a **guard** — the interface must not fetch them, they answer 404 |
+| `urdFace` | this window came in through the urd door | a **preference** — the routes are there, the data is yours, only the name differs |
+
+Conflate them and the urd face starts hiding data rather than chrome: a notebook
+would stop showing its tasks because somebody chose a different entrance. A test
+asserts the opposite directly — the urd window still gets 200 from
+`/api/v1/tasks`.
+
+The face lives in `sessionStorage`, not `localStorage`, and that is what lets the
+two apps be two apps: they share an origin, so they share localStorage, cookies and
+the service worker. `sessionStorage` is per window, and an installed PWA is its own
+window. It survives a reload, which it must — after the first navigation the
+address is `/noter` and nobody passes through `/urd` again.
+
+!!! note "One thing the two doors cannot have separately"
+    Theme, typeface and text size are shared, because they are in the localStorage
+    the origin shares. That was a deliberate choice: splitting them per face would
+    mean migrating everybody's stored settings for a difference few people want.
 
 ## Moving between the two, measured
 
