@@ -137,3 +137,41 @@ func contentTypeFor(name string) string {
 	}
 	return "text/html; charset=utf-8"
 }
+
+// notesAssetAliases maps the icon paths the shell and the manifest already point
+// at to urd's own files. Both sets are in the binary; the server decides.
+//
+// Aliased rather than renamed in the manifest, and the reason is the third entry.
+// Safari ignores a manifest's icons entirely and looks for `apple-touch-icon.png`
+// BY NAME — so pointing the manifest at urd-icon-192.png would have left iOS with
+// Verdande's mark, or, if that file were renamed too, with a screenshot of the page
+// as its home-screen icon. Keeping the paths and swapping the bytes behind them
+// fixes all four at once, including the favicon in `app.html`, which is not in the
+// manifest either.
+var notesAssetAliases = map[string]string{
+	"icon.svg":             "urd-icon.svg",
+	"icon-192.png":         "urd-icon-192.png",
+	"icon-512.png":         "urd-icon-512.png",
+	"apple-touch-icon.png": "urd-apple-touch-icon.png",
+}
+
+// resolveNotesAssets returns the aliases that have a file behind them, and reports
+// the ones that do not.
+//
+// Resolved once at startup rather than per request, so a missing file is one loud
+// line in the log instead of a silent fallback on every page load. The fallback is
+// still to Verdande's icon rather than to nothing: an icon is the one asset whose
+// absence turns into a broken-image placeholder on the Updates screen — which is
+// exactly how four releases of nolimit-views shipped with no icon — so serving the
+// wrong mark beats serving none.
+func resolveNotesAssets(web fs.FS, missing func(name, alias string)) map[string]string {
+	out := map[string]string{}
+	for name, alias := range notesAssetAliases {
+		if _, err := fs.Stat(web, alias); err != nil {
+			missing(name, alias)
+			continue
+		}
+		out[name] = alias
+	}
+	return out
+}

@@ -277,3 +277,17 @@ jobs:
           set -eu
           docker buildx create --use --name ci-verdande 2>/dev/null || docker buildx use ci-verdande
           docker buildx build --platform linux/amd64 --output type=cacheonly .
+          # Begge udgaver, fordi EDITION rører den sidste stage: en Dockerfile, der
+          # ikke længere bygger med den, skal fejle her og ikke på et mærkat.
+          docker buildx build --platform linux/amd64 --build-arg EDITION=notes --output type=cacheonly .
+
+      # Hvad der IKKE er her, og hvorfor, så den næste læser ikke tror det er glemt:
+      # GitHubs ci.yml har et trin, der henter begge images ind i daemonen og
+      # påstår, at de deler alle lag — altså at verdande og urd bærer samme binær.
+      # Det kræver `--load` to gange, og det er et halvt minut per image på en
+      # runner, der deles med Yggdrasils produktionscontainere og allerede har
+      # dræbt en kørsel på hukommelse (exit 137). Påstanden er den samme kode
+      # begge steder, så det er nok at evaluere den ét sted — og GitHub er
+      # autoritativ for de offentlige projekter.
+      #
+      # Det, der SKAL være her, er ovenstående: at begge varianter kan bygges.

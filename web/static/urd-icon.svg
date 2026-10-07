@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Urd's mark: ð, the eth in Urðr. Drawn in Verdande's strokes so the two read
+       as one family — same width, same round caps, same plate.
+
+       NOT a rune, and that is the whole story of this file. The obvious mark was
+       ᚢ uruz, the letter the name begins with in the elder futhark, exactly as
+       Verdande's is ᚹ wunjo. It was drawn that way first. Then: uruz is already
+       one of this author's products, and uruz/scripts/gen-icons.ts says in its own
+       comment that it "draws the Uruz rune (ᚢ) in rune-gold" with "a tall left
+       vertical, a shoulder across the top, and a shorter" one — the same glyph,
+       the same construction, differing only in colour. Two of one person's apps
+       side by side on a home screen, which is precisely where this mark is meant
+       to be distinguishable.
+
+       ᚦ thurisaz was considered next, for the ð itself, and rejected for the same
+       reason one level down: it is a stave with a triangle on its right, and so is
+       ᚹ. At 16px they are one shape.
+
+       So the letter rather than the rune. ð is unmistakably Nordic, nothing else
+       here uses it, and it is a closed bowl where both neighbours are open staves.
+
+       Centred by counting painted pixels — white on black, headless Chromium, the
+       plate removed so the card is not what gets measured — rather than from the
+       path numbers, because a centred box is not a centred glyph:
+
+         verdande ᚹ   ink x  53–108  centre 80.5   ·  y  18–131  centre 74.5
+         urd      ð   ink x  39–110  centre 74.5   ·  y  15–134  centre 74.5
+
+       Verdande's +5.5 in x is its own deliberate nudge: a heavy stave beside a
+       light flag has to sit right of centre for the ink to look centred. ð is
+       symmetric enough not to need it, and the two agree exactly in y.
+
+       Legibility, measured rather than hoped: it reads as ð at 32px and above. At
+       16px it is a blob — and so is ᚹ, and a favicon is not what tells two
+       installed apps apart in a dock. -->
+  <rect width="64" height="64" rx="14" fill="#111312"/>
+  <g fill="none" stroke="#5fbf8f" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="32" cy="42" r="12"/>
+    <path d="M44 36L27 10"/>
+    <path d="M25 20h18"/>
+  </g>
+</svg>

@@ -480,12 +480,14 @@
 
 <nav class="sidebar" aria-label={t('nav.main')}>
 	<div class="brand">
-		<!-- The mark: one rune, the letter the Norn's name starts with in the elder
-		     futhark — Wunjo for Verdande, Uruz for Urd. Both come from the store
-		     rather than from here, because the two editions of this program are two
-		     products with two names, and a wordmark is the one place a reader
-		     decides which one they are looking at. -->
-		<span class="rune" aria-hidden="true">{app.productRune}</span>
+		<!-- The mark — ᚹ Wunjo for Verdande, ð for Urd. Not two runes, though it
+		     was meant to be: uruz is already another of this author's apps and
+		     carries that glyph. See web/static/urd-icon.svg.
+
+		     Both come from the store rather than from here, because the two editions
+		     of this program are two products with two names, and a wordmark is the
+		     one place a reader decides which one they are looking at. -->
+		<span class="rune" aria-hidden="true">{app.productMark}</span>
 		<span class="name">{app.productSlug}</span>
 	</div>
 

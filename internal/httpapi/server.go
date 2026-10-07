@@ -83,6 +83,9 @@ type Server struct {
 	shell    []byte
 	manifest []byte
 
+	// Icon paths this edition serves from another file. Empty in the full edition.
+	assets map[string]string
+
 	router chi.Router
 }
 
@@ -125,6 +128,11 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 		} else {
 			s.shell, s.manifest = shell, manifest
 		}
+
+		s.assets = resolveNotesAssets(web, func(name, alias string) {
+			log.Error("this edition has no icon of its own at that path; it will serve verdande's",
+				"path", name, "wanted", alias)
+		})
 	}
 
 	if s.shell != nil {
@@ -787,6 +795,13 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 	if name == "" || name == "." {
 		name = "index.html"
+	}
+
+	// This edition's own icon, where it has one. Before the Open rather than after,
+	// unlike the shell below: these are real files, so there is no fallback to get
+	// in the way, and resolveNotesAssets has already checked each one exists.
+	if alias, ok := s.assets[name]; ok {
+		name = alias
 	}
 
 	f, err := s.web.Open(name)

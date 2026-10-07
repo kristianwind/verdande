@@ -141,11 +141,11 @@ test('fanen, mærket og manifestet siger alle urd', async ({ page }) => {
 
 	const mærke = page.getByRole('navigation', { name: 'Hovedmenu' }).locator('.brand');
 	await expect(mærke.locator('.name')).toHaveText('urd');
-	// ᚢ uruz, det bogstav navnet begynder med i den ældre futhark — og ikke ᚹ
-	// wunjo, som er Verdandes. Begge er navngivne værdier frem for "der er en
-	// rune": en tom span og den forkerte rune ser ens ud for en prøve, der kun
-	// spørger om der står noget.
-	await expect(mærke.locator('.rune')).toHaveText('ᚢ');
+	// ð, ikke ᚹ wunjo og ikke ᚢ uruz. Begge de to er navngivne værdier frem for
+	// "der står noget": en tom span, Verdandes mærke og uruz-appens ser ens ud for
+	// en prøve, der kun spørger, om feltet er udfyldt.
+	await expect(mærke.locator('.rune')).toHaveText('ð');
+	await expect(mærke.locator('.rune')).not.toHaveText('ᚢ');
 
 	const manifest = await (await page.request.get('/manifest.webmanifest')).json();
 	expect(manifest.name).toBe('urd');
@@ -245,4 +245,28 @@ test('ingen side kalder en rute, udgaven ikke har', async ({ page }) => {
 
 	// Tallet med på det grønne: elleve sider og et projekt, frem for "ingen fejl".
 	expect(trouble, `besøgte ${sider.length} sider`).toEqual([]);
+});
+
+test('ikonet er urds, hele vejen ud', async ({ page }) => {
+	// Målt på stregerne i SVG'en frem for på "der kom et billede": en tom
+	// respons, verdandes mærke og urds ser alle ens ud for en prøve, der kun
+	// spørger, om der står noget.
+	const svg = await (await page.request.get('/icon.svg')).text();
+	expect(svg, 'ð: skålen').toContain('cx="32" cy="42" r="12"');
+	expect(svg, 'ð: ascenderen').toContain('M44 36L27 10');
+	expect(svg, 'ð: tværstregen, som er det der skiller ð fra et d').toContain('M25 20h18');
+	expect(svg, 'og ikke ᚹ wunjos flag').not.toContain('M26 15l17');
+
+	// De tre PNG'er har ingen streger at læse, så de måles på at de er urds —
+	// sammenlignet med filen under sit eget navn, som ligger i samme byg.
+	for (const [sti, egen] of [
+		['/icon-192.png', '/urd-icon-192.png'],
+		['/icon-512.png', '/urd-icon-512.png'],
+		['/apple-touch-icon.png', '/urd-apple-touch-icon.png']
+	]) {
+		const a = await (await page.request.get(sti)).body();
+		const b = await (await page.request.get(egen)).body();
+		expect(a.length, `${sti} er tom`).toBeGreaterThan(1000);
+		expect(a.equals(b), `${sti} er ikke urds`).toBe(true);
+	}
 });

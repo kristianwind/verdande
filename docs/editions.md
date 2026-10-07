@@ -13,6 +13,58 @@ Set `VERDANDE_EDITION=notes` and the instance is urd: the task routes are not
 mounted, the sidebar has no way to them, search answers with notes only, and the
 program calls itself urd in its tab, its wordmark and its web manifest.
 
+## Running the notes edition
+
+There is one image. The edition is an environment variable on the container:
+
+```
+docker run -e VERDANDE_EDITION=notes -v urd-data:/data -p 8080:8080 \
+    ghcr.io/kristianwind/verdande:latest
+```
+
+No second image and no rune of its own, deliberately.
+
+The edition is for an operator who wants an instance that genuinely has no task
+routes — the routes are absent from the router, not hidden in the interface. It is
+**not** how urd is normally reached. That is being built as a second face of one
+instance, with its own entry point and its own web manifest, so that both can be
+installed as separate apps while sharing one database, one login and one set of
+links. Until that lands, this page describes the edition only.
+
+Two details that surprise people who look inside:
+
+- **The binary is called `/verdande`** and the database file is `verdande.db`, in
+  both editions. Not an oversight: it is the same binary, and renaming the file per
+  edition would be a migration hazard in exchange for nothing a user sees.
+- **The icons for both editions ship in the one image.** The server decides which
+  to serve at `/icon.svg`, because Safari looks for `apple-touch-icon.png` by name
+  and never reads the manifest, so renaming paths would have left iOS with the
+  wrong mark.
+
+## Moving between the two, measured
+
+A `/data` directory moves between the editions in **both directions, losslessly**.
+Same binary, same schema, same migrations — so this is not a feature that was built,
+it is a property that was checked:
+
+| step | result |
+|---|---|
+| verdande creates a notebook, a note in it, and a task | 1 note, 1 task |
+| the same directory, `VERDANDE_EDITION=notes` | `needs_setup: false` — same account. The note keeps its title, its body **and its `project_id`**. `/api/v1/tasks` → 404 |
+| the same directory, back to `full` | the task is still there; so is the note |
+
+The ownership stayed at the panel's service account through all three.
+
+So the way to move notes is to change the variable. `GET /export/notes.zip` is for
+getting notes **into other programs** — it writes one `.md` per note and carries the
+body and nothing else: no notebook, no sharing, no attachments, no pinned flag. That
+is the right division of labour, because the database already holds those.
+
+!!! note "The task rows stay"
+    An instance run as `notes` still has its tasks in the database; they are simply
+    not served. Harmless on a fresh instance, dead weight on a converted one — and
+    worth knowing before handing a converted instance to somebody else.
+
 ## Why one codebase and not a fork
 
 The two share everything that is hard: accounts, sessions, passkeys, sharing,
