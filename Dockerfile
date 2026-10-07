@@ -20,6 +20,14 @@ FROM --platform=$BUILDPLATFORM node:22-alpine AS web
 WORKDIR /src
 COPY web/ ./
 
+# Passed into the frontend build, because SvelteKit's default build version is
+# `Date.now()` — a millisecond that landed in version.json, in index.html and in
+# the service worker, changed the content hash of every chunk referencing them, and
+# so changed those chunks' filenames. Every build of one commit produced different
+# bytes. See the long note in web/svelte.config.js.
+ARG VERSION=dev
+ENV VERDANDE_VERSION=${VERSION}
+
 # The frontend is built when it is present. During backend-only development it is
 # not, and the build must still produce a working image rather than failing on a
 # missing directory — so this stage falls back to a placeholder page. The Go stage
@@ -58,6 +66,12 @@ ARG TARGETARCH=amd64
 # CGO off is what makes this binary static, and it is only possible because the
 # SQLite driver is pure Go. -trimpath and the empty buildid keep the output
 # reproducible; -s -w drop the symbol and DWARF tables, which is most of the size.
+#
+# "Reproducible" was false for a year and nobody read the sentence that said it:
+# the flags above do their job, and the frontend embedded below carried a
+# millisecond timestamp, so every build of one commit produced a different binary.
+# Fixed in web/svelte.config.js, and CI now asserts that the two images' layers
+# match rather than trusting this comment.
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
         -tags embedweb \
         -trimpath \
@@ -65,7 +79,26 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
         -o /verdande ./cmd/verdande
 
 # --- 3. what actually ships --------------------------------------------------
+#
+# Two images come out of this stage, and the only difference between them is one
+# environment variable:
+#
+#     docker build .                          → verdande
+#     docker build --build-arg EDITION=notes  → urd
+#
+# Stages 1 and 2 are byte-identical for both, so the binary in the two images is
+# the same build rather than a rebuild that happens to match. That is the point:
+# urd is not a fork, and "built from the same source" is a property of the layers
+# instead of a sentence in a README. ENV is image *config* rather than a layer, so
+# the two images share every layer digest and differ only in that config — which CI
+# asserts on every pull request.
 FROM gcr.io/distroless/static-debian12:nonroot
+
+# Declared here as well as used here: an ARG is scoped to the stage it appears in,
+# so one above the FROM above would be invisible down here. `full` by default,
+# because that is what this program has always been and an unqualified build must
+# not quietly produce the other product.
+ARG EDITION=full
 
 # SQLite writes timestamps and verdande resolves due dates in the user's timezone,
 # so the container needs a tz database and CA certificates for outbound SMTP.
@@ -78,7 +111,8 @@ COPY --from=build /verdande /verdande
 # nightly backups.
 VOLUME ["/data"]
 ENV VERDANDE_DATA_DIR=/data \
-    VERDANDE_ADDR=:8080
+    VERDANDE_ADDR=:8080 \
+    VERDANDE_EDITION=${EDITION}
 
 EXPOSE 8080
 USER nonroot:nonroot

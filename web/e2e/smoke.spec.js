@@ -5498,7 +5498,7 @@ test('the full edition still calls itself verdande', async ({ page }) => {
 
 	const brand = page.getByRole('navigation', { name: /Hovedmenu|Main menu/ }).locator('.brand');
 	await expect(brand.locator('.name')).toHaveText('verdande');
-	// ᚹ wunjo, not ᚢ uruz.
+	// ᚹ wunjo, not ð.
 	await expect(brand.locator('.rune')).toHaveText('ᚹ');
 
 	await page.goto('/noter');
@@ -5507,4 +5507,11 @@ test('the full edition still calls itself verdande', async ({ page }) => {
 	const manifest = await (await page.request.get('/manifest.webmanifest')).json();
 	expect(manifest.name).toBe('verdande');
 	expect(manifest.description).toBe('Opgaver og projekter, delt.');
+
+	// The other half of the icon alias: this edition must still get Wunjo. Both
+	// sets of files are in the same binary, so a swap that fired in both editions
+	// would pass in edition.spec.js and quietly change this program's mark.
+	const icon = await (await page.request.get('/icon.svg')).text();
+	expect(icon).toContain('M26 15l17');
+	expect(icon).not.toContain('M44 36L27 10');
 });

@@ -233,3 +233,84 @@ func TestTheFullEditionServesTheBuiltFilesUnchanged(t *testing.T) {
 		})
 	}
 }
+
+// webWithIcons is builtWeb plus both editions' icons, as a real build has them.
+func webWithIcons() fstest.MapFS {
+	web := builtWeb()
+	for _, name := range []string{
+		"icon.svg", "icon-192.png", "icon-512.png", "apple-touch-icon.png",
+		"urd-icon.svg", "urd-icon-192.png", "urd-icon-512.png", "urd-apple-touch-icon.png",
+	} {
+		web[name] = &fstest.MapFile{Data: []byte("bytes of " + name)}
+	}
+	return web
+}
+
+// TestEachEditionServesItsOwnMark.
+//
+// Four paths, named one by one rather than counted: the favicon in app.html, the
+// manifest's two, and the one Safari looks for by name. The last is the reason
+// this is an alias rather than a rewritten manifest — Safari does not read the
+// manifest at all.
+func TestEachEditionServesItsOwnMark(t *testing.T) {
+	for _, tc := range []struct {
+		edition string
+		want    map[string]string
+	}{
+		{"notes", map[string]string{
+			"icon.svg":             "urd-icon.svg",
+			"icon-192.png":         "urd-icon-192.png",
+			"icon-512.png":         "urd-icon-512.png",
+			"apple-touch-icon.png": "urd-apple-touch-icon.png",
+		}},
+		// The control, and it is the half that stops this being a swap rather than
+		// a choice: the full edition must resolve nothing.
+		{"full", map[string]string{}},
+	} {
+		t.Run(tc.edition, func(t *testing.T) {
+			srv := serverWithWeb(t, tc.edition, webWithIcons())
+			if len(srv.assets) != len(tc.want) {
+				t.Errorf("%s edition aliases %d paths, want %d: %v", tc.edition, len(srv.assets), len(tc.want), srv.assets)
+			}
+			for path, alias := range tc.want {
+				if srv.assets[path] != alias {
+					t.Errorf("%s: %s resolves to %q, want %q", tc.edition, path, srv.assets[path], alias)
+				}
+			}
+			// And nothing else: an alias on a build asset would serve one file's
+			// bytes under another's hashed, immutable name.
+			for path := range srv.assets {
+				if _, ok := tc.want[path]; !ok {
+					t.Errorf("%s edition aliases %s, which is not an icon", tc.edition, path)
+				}
+			}
+			t.Logf("%s: %d aliased paths", tc.edition, len(srv.assets))
+		})
+	}
+}
+
+// TestAMissingMarkIsReportedAndFallsBack.
+//
+// The fallback is deliberate and it is the only place in this file that prefers
+// carrying on to failing: an icon's absence is a broken-image placeholder on the
+// one screen somebody reads before deciding whether to press update, so the wrong
+// mark beats no mark. What must not happen is it being quiet.
+func TestAMissingMarkIsReportedAndFallsBack(t *testing.T) {
+	web := webWithIcons()
+	delete(web, "urd-icon-512.png")
+
+	var reported []string
+	got := resolveNotesAssets(web, func(name, alias string) {
+		reported = append(reported, name+" → "+alias)
+	})
+
+	if len(reported) != 1 || reported[0] != "icon-512.png → urd-icon-512.png" {
+		t.Errorf("the missing icon was reported as %v, want exactly one naming both paths", reported)
+	}
+	if _, ok := got["icon-512.png"]; ok {
+		t.Error("a path with no file behind it was aliased anyway")
+	}
+	if got["icon.svg"] != "urd-icon.svg" {
+		t.Error("one missing icon took the other three with it")
+	}
+}

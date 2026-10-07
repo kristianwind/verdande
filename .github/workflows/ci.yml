@@ -123,9 +123,59 @@ jobs:
       # Build only — publishing happens on a tag, in release.yml. This job exists
       # so a Dockerfile that no longer builds fails on the pull request rather
       # than at release time.
+      #
+      # Loaded into the local daemon rather than discarded, because the step below
+      # has to inspect what came out.
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: false
+          load: true
+          tags: verdande:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: urd:ci
+          build-args: EDITION=notes
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The claim this repository makes about urd is that it is the same program,
+      # not a fork — and that claim is checkable rather than a sentence in a README.
+      #
+      # Stages 1 and 2 are identical for both builds, and the edition is set with
+      # ENV, which is image *config* rather than a layer. So the two images must
+      # have the same layer digests and differ only in that one variable. A change
+      # that made them diverge — a second COPY, a conditional RUN, a separate build
+      # of the binary — would quietly turn "one source" into two, and the only
+      # symptom would be a bug fixed in one product and not the other.
+      #
+      # This was impossible until the frontend build became deterministic: SvelteKit
+      # put Date.now() in version.json, so no two builds ever matched. See the note
+      # in web/svelte.config.js.
+      - name: The two images are one build
+        run: |
+          set -eu
+          layers() { docker image inspect "$1" --format '{{json .RootFS.Layers}}'; }
+          if [ "$(layers verdande:ci)" != "$(layers urd:ci)" ]; then
+            echo "The verdande and urd images do not share their layers:"
+            layers verdande:ci
+            layers urd:ci
+            echo "They are built from one source, so this is either a Dockerfile that"
+            echo "now builds the binary twice, or a stage that is no longer shared."
+            exit 1
+          fi
+          echo "Shared layers: $(layers verdande:ci | tr ',' '\n' | wc -l)"
+
+          # And the half that stops the check above from passing over two identical
+          # images: they must actually differ in the one way they are supposed to.
+          edition() { docker image inspect "$1" --format '{{json .Config.Env}}' | tr ',' '\n' | grep VERDANDE_EDITION; }
+          echo "verdande: $(edition verdande:ci)"
+          echo "urd:      $(edition urd:ci)"
+          edition verdande:ci | grep -q 'VERDANDE_EDITION=full'
+          edition urd:ci | grep -q 'VERDANDE_EDITION=notes'

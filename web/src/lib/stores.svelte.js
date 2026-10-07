@@ -86,11 +86,20 @@ class AppState {
 	}
 
 	/**
-	 * Mærket: én rune, det bogstav navnet begynder med i den ældre futhark.
-	 * ᚹ wunjo for Verdande, ᚢ uruz for Urd.
+	 * Mærket: ᚹ wunjo for Verdande, ð for Urd.
+	 *
+	 * Ikke to runer, selvom det var meningen. Urds oplagte mærke var ᚢ uruz,
+	 * bogstavet navnet begynder med i den ældre futhark, præcis som Verdandes er
+	 * wunjo — og det blev tegnet sådan først. Men uruz er allerede et af husets
+	 * egne produkter, og dets `gen-icons.ts` tegner samme glyf i guld. To af samme
+	 * persons apps side om side på en hjemmeskærm, hvilket er nøjagtig det sted,
+	 * mærket skal kunne skelnes. ᚦ thurisaz blev forkastet et niveau nede af samme
+	 * grund: en stav med en trekant til højre, og det er ᚹ også.
+	 *
+	 * Så bogstavet frem for runen. Hele historien står i web/static/urd-icon.svg.
 	 */
-	get productRune() {
-		return this.notesOnly ? '\u16A2' : '\u16B9';
+	get productMark() {
+		return this.notesOnly ? 'ð' : '\u16B9';
 	}
 
 	/** Transient messages: a failed save, a rolled-back change. */
