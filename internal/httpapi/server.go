@@ -86,6 +86,12 @@ type Server struct {
 	// Icon paths this edition serves from another file. Empty in the full edition.
 	assets map[string]string
 
+	// The second door: /urd and its own web manifest. Built on every instance,
+	// whatever the edition, because it is how the notes face is installed as its
+	// own app rather than a property of the instance. See shell.go.
+	urdShell    []byte
+	urdManifest []byte
+
 	router chi.Router
 }
 
@@ -133,6 +139,18 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			log.Error("this edition has no icon of its own at that path; it will serve verdande's",
 				"path", name, "wanted", alias)
 		})
+	}
+
+	// The second door, on every edition. A notes instance already calls itself urd
+	// at the root; the door is still built there so the two addresses behave the
+	// same, and so a single test does not have to know which edition it is in.
+	if web != nil {
+		urdShell, urdManifest, err := urdDoorAssets(web)
+		if err != nil {
+			log.Error("the urd door could not be built; /urd will not be its own app", "err", err)
+		} else {
+			s.urdShell, s.urdManifest = urdShell, urdManifest
+		}
 	}
 
 	if s.shell != nil {
@@ -795,6 +813,15 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 	if name == "" || name == "." {
 		name = "index.html"
+	}
+
+	// The second door, before anything else touches the filesystem: /urd is not a
+	// file, so the fallback below would hand back the other door's shell.
+	if b := s.door(name); b != nil {
+		w.Header().Set("Content-Type", contentTypeFor(name))
+		w.Header().Set("Cache-Control", "no-cache")
+		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(b))
+		return
 	}
 
 	// This edition's own icon, where it has one. Before the Open rather than after,

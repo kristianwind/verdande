@@ -65,6 +65,38 @@ class AppState {
 	}
 
 	/**
+	 * Hvilken dør dette vindue kom ind ad.
+	 *
+	 * HOLDT ADSKILT FRA `notesOnly` med vilje, og det er den vigtigste linje i
+	 * filen her. De to ligner hinanden og betyder ikke det samme:
+	 *
+	 *   notesOnly — serveren HAR ingen opgaveruter. En vagt: fladen må ikke hente
+	 *               dem, for de svarer 404.
+	 *   urdFace   — personen kom ind ad urd-døren. En præference: ruterne er der,
+	 *               dataene er deres egne, og der er intet at holde tilbage.
+	 *
+	 * Slås de sammen, begynder urd-ansigtet at skjule data frem for pynt — en
+	 * notesbog ville holde op med at vise sine opgaver, selvom de ligger i samme
+	 * database og personen bare valgte en anden indgang.
+	 *
+	 * Læst fra sessionStorage frem for localStorage, fordi de to apps deler origin
+	 * og dermed deler localStorage. sessionStorage er per vindue, og en installeret
+	 * PWA er sit eget vindue.
+	 */
+	urdFace = $state(false);
+
+	enterUrd() {
+		this.urdFace = true;
+		try {
+			sessionStorage.setItem('verdande:door', 'urd');
+		} catch (e) {
+			// Privat browsing kan nægte. Ansigtet holder så vinduet ud alligevel,
+			// fordi det står i $state ovenfor — det er kun genindlæsningen, der
+			// mister det.
+		}
+	}
+
+	/**
 	 * Navnet instansen kalder sig selv — `Urd` i en sætning, `urd` i et mærke.
 	 *
 	 * To udgaver af ét program, to navne. Grunden til at det læses fra udgaven
@@ -77,12 +109,24 @@ class AppState {
 	 * (`internal/httpapi/shell.go`). Gjorde vi det her, ville hver indlæsning
 	 * vise søsterens navn et øjeblik og så rette sig selv.
 	 */
+	/**
+	 * Om DETTE vindue viser urd — enten fordi instansen ikke har opgaveruter, eller
+	 * fordi personen kom ind ad urd-døren.
+	 *
+	 * De to grunde er forskellige og må ikke slås sammen andre steder end her: det
+	 * her er navnet og mærket, altså pynt. `notesOnly` alene er vagten, der afgør,
+	 * om der overhovedet er en rute at hente fra.
+	 */
+	get showsUrd() {
+		return this.notesOnly || this.urdFace;
+	}
+
 	get productName() {
-		return this.notesOnly ? 'Urd' : 'Verdande';
+		return this.showsUrd ? 'Urd' : 'Verdande';
 	}
 
 	get productSlug() {
-		return this.notesOnly ? 'urd' : 'verdande';
+		return this.showsUrd ? 'urd' : 'verdande';
 	}
 
 	/**
@@ -99,7 +143,7 @@ class AppState {
 	 * Så bogstavet frem for runen. Hele historien står i web/static/urd-icon.svg.
 	 */
 	get productMark() {
-		return this.notesOnly ? 'ð' : '\u16B9';
+		return this.showsUrd ? 'ð' : '\u16B9';
 	}
 
 	/** Transient messages: a failed save, a rolled-back change. */
@@ -167,6 +211,15 @@ class AppState {
 
 	async load() {
 		this.loading = true;
+
+		// Døren, hvis dette vindue allerede er gået gennem den. Genindlæser nogen på
+		// /noter inde i urd-appen, kommer de ikke forbi /urd igen, og uden den her
+		// linje ville ansigtet falde af ved hvert F5.
+		try {
+			if (sessionStorage.getItem('verdande:door') === 'urd') this.urdFace = true;
+		} catch (e) {
+			// Privat browsing nægter. Så holder ansigtet vinduet ud og ikke længere.
+		}
 
 		// Formen hentes for sig, og en fejl på den tier. En 401 fra `me` må ikke
 		// tage udgaven med sig — login-skærmen er også en flade i en udgave — og

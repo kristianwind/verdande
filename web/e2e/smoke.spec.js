@@ -5515,3 +5515,108 @@ test('the full edition still calls itself verdande', async ({ page }) => {
 	expect(icon).toContain('M26 15l17');
 	expect(icon).not.toContain('M44 36L27 10');
 });
+
+/**
+ * The second door.
+ *
+ * One instance, one database, one login — and two things that can be installed.
+ * This runs in the FULL edition on purpose: urd is a second face of an ordinary
+ * verdande, not a property of an instance, so if it only worked where
+ * VERDANDE_EDITION=notes it would not be the thing that was asked for.
+ *
+ * Measured on the bytes the server sends. An operating system installs a manifest,
+ * not a URL, so these assertions are about the manifest's `id` and the shell's
+ * <head> — the two things that decide whether /urd becomes a second icon on a home
+ * screen or a bookmark into the first app.
+ */
+test('urd is a second installable app on the same instance', async ({ page }) => {
+	const shell = await (await page.request.get('/urd')).text();
+	expect(shell, 'the tab, before any script runs').toContain('<title>urd</title>');
+	expect(shell, 'which manifest the browser fetches').toContain(
+		'<link rel="manifest" href="/urd.webmanifest" />'
+	);
+	// iOS looks for this one BY NAME and has historically ignored the manifest's
+	// icons, which is why the shell is served per door rather than patched by
+	// script after the page loads.
+	expect(shell, 'what iOS puts on a home screen').toContain(
+		'<link rel="apple-touch-icon" href="/urd-apple-touch-icon.png" />'
+	);
+	// And the root is untouched: two doors, not a rename.
+	const root = await (await page.request.get('/')).text();
+	expect(root).toContain('<title>verdande</title>');
+	expect(root).toContain('<link rel="manifest" href="/manifest.webmanifest" />');
+
+	const res = await page.request.get('/urd.webmanifest');
+	// A manifest served as text/html is ignored with no error anywhere; the only
+	// symptom is an install prompt that never appears.
+	expect(res.headers()['content-type']).toContain('application/manifest+json');
+
+	const urd = await res.json();
+	// `id` is the install identity. Without it, two manifests on one origin are one
+	// app with two start urls.
+	expect(urd.id).toBe('/urd');
+	expect(urd.start_url).toBe('/urd');
+	// Not "/urd": a scope that did not cover the origin would open the app's own
+	// links in a browser tab the first time somebody navigated out of /urd.
+	expect(urd.scope).toBe('/');
+	expect(urd.name).toBe('urd');
+	for (const icon of urd.icons) {
+		expect(icon.src, 'the install prompt must not show verdande’s mark').toMatch(/^\/urd-/);
+	}
+
+	const verdande = await (await page.request.get('/manifest.webmanifest')).json();
+	expect(verdande.name).toBe('verdande');
+	expect(verdande.id ?? '/').not.toBe('/urd');
+	// The shared fields come from one source, so a colour changed in the build
+	// reaches both doors.
+	expect(urd.theme_color).toBe(verdande.theme_color);
+	expect(urd.background_color).toBe(verdande.background_color);
+});
+
+test('entering through the urd door lands on the notes', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/urd');
+
+	// Asserted on what is drawn rather than on the URL: the Go binary serves the
+	// shell for anything it does not recognise, so a route that no longer exists
+	// still answers 200 here.
+	await expect(page.getByRole('heading', { name: /Noter/ }).first()).toBeVisible();
+	// replaceState, so the phone's back gesture does not return to a page whose
+	// only job is to redirect.
+	await expect(page).toHaveURL(/\/noter$/);
+
+	// And the window now wears urd's face: its mark, its name, its tab. This is
+	// chrome only — the task routes are all still there and still answer, which is
+	// the whole reason this is one instance.
+	const brand = page.getByRole('navigation', { name: /Hovedmenu|Main menu/ }).locator('.brand');
+	await expect(brand.locator('.name')).toHaveText('urd');
+	await expect(brand.locator('.rune')).toHaveText('ð');
+	await expect(page).toHaveTitle(/· urd$/);
+
+	// Nothing is withheld: the same window can still read a task route. A face that
+	// hid data would be the separate instance wearing a costume.
+	const tasks = await page.request.get('/api/v1/tasks');
+	expect(tasks.status(), 'the task routes are still served to the urd window').toBe(200);
+
+	// And the face survives a reload — sessionStorage, because the two doors share
+	// an origin. Nobody passes through /urd again after the first navigation.
+	await page.reload();
+	await expect(brand.locator('.name')).toHaveText('urd');
+
+	expect(trouble).toEqual([]);
+});
+
+test('the verdande door is unaffected by the urd one', async ({ page }) => {
+	// The control, and it is the half that stops the face from being a rename: a
+	// window that never went through /urd must be verdande, in the same browser,
+	// on the same origin, with the other app's sessionStorage sitting beside it.
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	const brand = page.getByRole('navigation', { name: /Hovedmenu|Main menu/ }).locator('.brand');
+	await expect(brand.locator('.name')).toHaveText('verdande');
+	await expect(brand.locator('.rune')).toHaveText('\u16B9');
+	await expect(page).toHaveTitle(/· verdande$/);
+
+	expect(trouble).toEqual([]);
+});

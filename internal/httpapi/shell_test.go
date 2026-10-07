@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -45,6 +46,8 @@ const builtShell = `<!doctype html>
 	<head>
 		<meta name="description" content="verdande — opgaver og projekter, delt." />
 		<link rel="manifest" href="/manifest.webmanifest" />
+		<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<title>verdande</title>
 		<script>
 			try {
@@ -62,7 +65,17 @@ const builtManifest = `{
   "name": "verdande",
   "short_name": "verdande",
   "description": "Opgaver og projekter, delt.",
-  "start_url": "/"
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111312",
+  "theme_color": "#111312",
+  "lang": "da",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
 }
 `
 
@@ -194,10 +207,19 @@ func TestAppHTMLStillCarriesTheAnchors(t *testing.T) {
 	}
 	src := string(raw)
 
-	for _, pair := range shellRebrands("urd", "d") {
-		if n := strings.Count(src, pair.old); n != 1 {
-			t.Errorf("web/src/app.html contains %d occurrences of the anchor %q, want exactly 1 — "+
-				"the notes edition renames the shell by replacing it", n, pair.old)
+	// Both sets: the edition's rename and the second door's. The door was added
+	// after this test and its anchors were NOT covered, which is how its fixture
+	// came to be missing two <link> lines the real file has — caught only because
+	// applyRebrands refuses an anchor it cannot find.
+	for what, pairs := range map[string][]rebrand{
+		"the notes edition's rename": shellRebrands("urd", "d"),
+		"the urd door":               urdShellRebrands(),
+	} {
+		for _, pair := range pairs {
+			if n := strings.Count(src, pair.old); n != 1 {
+				t.Errorf("web/src/app.html contains %d occurrences of the anchor %q, want exactly 1 — %s replaces it",
+					n, pair.old, what)
+			}
 		}
 	}
 	// And the keys the rename must not touch, asserted here too: app.html is where
@@ -206,7 +228,8 @@ func TestAppHTMLStillCarriesTheAnchors(t *testing.T) {
 	if !strings.Contains(src, `localStorage.getItem('verdande:theme')`) {
 		t.Error("web/src/app.html no longer reads verdande:theme; check that the app reads the same key")
 	}
-	t.Logf("app.html: %d bytes, %d anchors found", len(raw), len(shellRebrands("urd", "d")))
+	t.Logf("app.html: %d bytes, %d edition anchors, %d door anchors",
+		len(raw), len(shellRebrands("urd", "d")), len(urdShellRebrands()))
 }
 
 // TestTheFullEditionServesTheBuiltFilesUnchanged is the control. Everything above
@@ -312,5 +335,108 @@ func TestAMissingMarkIsReportedAndFallsBack(t *testing.T) {
 	}
 	if got["icon.svg"] != "urd-icon.svg" {
 		t.Error("one missing icon took the other three with it")
+	}
+}
+
+// TestTheUrdDoorIsItsOwnApp.
+//
+// An operating system does not install a URL, it installs a manifest, and the
+// identity of an installed app is that manifest's `id`. So this asserts the two
+// things that decide whether /urd becomes a second icon on a home screen or just a
+// bookmark into the first one — and it asserts them as named values, because an
+// empty manifest, verdande's manifest and urd's all parse as JSON.
+func TestTheUrdDoorIsItsOwnApp(t *testing.T) {
+	srv := serverWithWeb(t, "full", webWithIcons())
+
+	if srv.door("urd") == nil || srv.door("urd.webmanifest") == nil {
+		t.Fatal("the full edition does not serve the urd door; it is a second face, not an edition")
+	}
+
+	shell := string(srv.door("urd"))
+	for _, want := range []string{
+		"<title>urd</title>",
+		`<link rel="manifest" href="/urd.webmanifest" />`,
+		// iOS reads this one by name and has historically ignored the manifest's
+		// icons entirely, which is why the shell is served per door rather than
+		// patched by script after load.
+		`<link rel="apple-touch-icon" href="/urd-apple-touch-icon.png" />`,
+		`<link rel="icon" href="/urd-icon.svg" type="image/svg+xml" />`,
+	} {
+		if !strings.Contains(shell, want) {
+			t.Errorf("the urd door's shell does not contain %q", want)
+		}
+	}
+	// The same trap as the edition shell: the two doors share an origin and
+	// therefore share localStorage, so renaming a storage key here would give the
+	// two apps different themes by accident.
+	if !strings.Contains(shell, `localStorage.getItem('verdande:theme')`) {
+		t.Error("the urd door's shell lost a storage key; the two doors share one origin and one localStorage")
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(srv.door("urd.webmanifest"), &m); err != nil {
+		t.Fatalf("the urd manifest is not JSON: %v", err)
+	}
+	for key, want := range map[string]any{
+		// id is the install identity. Without it, two manifests on one origin are
+		// one app with two start urls.
+		"id":         "/urd",
+		"start_url":  "/urd",
+		"scope":      "/",
+		"name":       "urd",
+		"short_name": "urd",
+	} {
+		if m[key] != want {
+			t.Errorf("the urd manifest has %s = %v, want %v", key, m[key], want)
+		}
+	}
+	// And the shared half, to prove it was transformed rather than written out: a
+	// hand-written copy would drift on exactly these.
+	var built map[string]any
+	raw, _ := fs.ReadFile(webWithIcons(), "manifest.webmanifest")
+	_ = json.Unmarshal(raw, &built)
+	for _, key := range []string{"display", "background_color", "theme_color", "lang"} {
+		if _, ok := built[key]; ok && m[key] != built[key] {
+			t.Errorf("the urd manifest lost the built one's %s: %v vs %v", key, m[key], built[key])
+		}
+	}
+
+	icons, _ := m["icons"].([]any)
+	if len(icons) == 0 {
+		t.Fatal("the urd manifest has no icons")
+	}
+	for i, entry := range icons {
+		src, _ := entry.(map[string]any)["src"].(string)
+		if !strings.HasPrefix(src, "/urd-") {
+			t.Errorf("icon %d is %q — the urd manifest points at verdande's mark", i, src)
+		}
+	}
+	t.Logf("urd door: shell %d bytes, manifest %d bytes, %d icons", len(srv.door("urd")), len(srv.door("urd.webmanifest")), len(icons))
+}
+
+// TestAnUnknownIconStopsTheUrdManifest is the direction that matters: an icon
+// added to the built manifest and not to urd's map would otherwise leave urd's
+// install prompt showing Verdande's mark, which nobody reports.
+func TestAnUnknownIconStopsTheUrdManifest(t *testing.T) {
+	raw := []byte(`{"name":"verdande","icons":[{"src":"/icon-1024.png","sizes":"1024x1024"}]}`)
+	if _, err := urdManifest(raw); err == nil {
+		t.Error("urdManifest accepted an icon it has no file for")
+	} else if !strings.Contains(err.Error(), "/icon-1024.png") {
+		t.Errorf("the error does not name the icon: %v", err)
+	}
+}
+
+// TestTheWebmanifestTypeCoversBothDoors. A manifest served as text/html is ignored
+// by the browser with no error anywhere; the only symptom is that the install
+// prompt does not appear. This read `name == "manifest.webmanifest"` when the
+// second door was added.
+func TestTheWebmanifestTypeCoversBothDoors(t *testing.T) {
+	for _, name := range []string{"manifest.webmanifest", "urd.webmanifest"} {
+		if got := contentTypeFor(name); got != "application/manifest+json" {
+			t.Errorf("%s is served as %q", name, got)
+		}
+	}
+	if got := contentTypeFor("index.html"); got != "text/html; charset=utf-8" {
+		t.Errorf("index.html is served as %q", got)
 	}
 }
