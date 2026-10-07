@@ -73,6 +73,11 @@
 	// through the connector.
 	$effect(() => {
 		app.labelsChanged;
+		// Ikke i noter-udgaven: begge ruter findes slet ikke der, så de to kald var
+		// to 404'ere ved hver navigation — opslugt af .catch() og derfor usynlige.
+		// Fundet af vandringen i edition.spec.js, efter at porten havde været i
+		// drift i to merges.
+		if (app.notesOnly) return;
 		api.listFilters().then((r) => (filters = r.filters)).catch(() => {});
 		api.listLabels().then((r) => (labels = r.labels)).catch(() => {});
 	});

@@ -343,6 +343,21 @@ class AppState {
 	 * `completed: 'exclude'`.
 	 */
 	async loadTasks(params) {
+		// Noter-udgaven har ingen opgaveruter, så den her ville kaste en 404 — og
+		// kalderne samler den i et Promise.all, hvor én fejl tager hele siden med.
+		// Vagten står HER frem for ved de tre kaldesteder, fordi butikken er det
+		// ene sted, der kender udgaven: en vagt pr. kalder er tre steder at glemme
+		// den fjerde, og det var præcis sådan den her slap igennem.
+		if (this.notesOnly) {
+			// Skrevet kun hvis der ER noget at rydde. En ubetinget tilskrivning
+			// looper: projektsiden har en effekt, der læser app.tasks og kalder
+			// herind, så et skriv ved hvert kald er en uendelig runde —
+			// effect_update_depth_exceeded, ikke en 404. Før vagten kastede kaldet
+			// på 404'eren og nåede aldrig at skrive, så løkken var skjult bag en
+			// fejl.
+			if (this.tasks.length) this.tasks = [];
+			return this.tasks;
+		}
 		const { tasks } = await api.listTasks({
 			completed: completedView.shown ? 'include' : undefined,
 			...params

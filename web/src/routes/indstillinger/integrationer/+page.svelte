@@ -296,7 +296,11 @@
 	let mailConfigured = $state(null);
 
 	$effect(() => {
-		api.feed().then((r) => (feedURL = r.url)).catch(() => {});
+		// Feedet er en kalender af opgaver, så adressen findes ikke i
+		// noter-udgaven.
+		if (!app.notesOnly) {
+			api.feed().then((r) => (feedURL = r.url)).catch(() => {});
+		}
 		api
 			.getMailAddress()
 			.then((r) => {

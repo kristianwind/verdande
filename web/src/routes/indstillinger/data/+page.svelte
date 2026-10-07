@@ -141,6 +141,13 @@
 	let startDate = $state('');
 
 	$effect(() => {
+		// Skabeloner er projekt plus sektioner plus opgaver, så ruten findes ikke i
+		// noter-udgaven — og den her fangede fejlen i en toast, altså en synlig
+		// fejlbesked på indstillingssiden frem for en tom liste.
+		if (app.notesOnly) {
+			loadingTemplates = false;
+			return;
+		}
 		api
 			.listTemplates()
 			.then((r) => (templates = r.templates))

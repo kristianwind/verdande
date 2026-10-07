@@ -159,13 +159,31 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	// Docker both need this to answer before anyone has logged in.
 	r.Get("/healthz", s.handleHealth)
 
+	// The same question as inside /api/v1, asked again here because four of the
+	// task-only surfaces live outside it: the calendar feed, CalDAV, the inbox
+	// hook, and the well-known path CalDAV clients discover through. They are out
+	// here because their callers cannot hold a session, not because they are any
+	// less about tasks — and the first gate missed all four for exactly that
+	// reason. It read as complete because the /tasks tree was covered.
+	full := !s.cfg.NotesOnly()
+
 	// The calendar feed is outside /api/v1 and outside the session: a calendar
 	// client cannot log in, so the token in the path is the whole credential.
-	r.Get("/ics/{token}", s.handleICSFeed)
+	//
+	// A feed of VTODOs, so there is nothing for it to answer in the notes edition.
+	if full {
+		r.Get("/ics/{token}", s.handleICSFeed)
 
-	// CalDAV, outside /api/v1 because clients do well-known-path discovery
-	// against the root and authenticate with Basic rather than a session.
-	r.Get("/.well-known/caldav", s.wellKnownCalDAV)
+		// CalDAV, outside /api/v1 because clients do well-known-path discovery
+		// against the root and authenticate with Basic rather than a session.
+		//
+		// Withheld rather than left to answer an empty collection: the well-known
+		// path is a claim that a CalDAV server is here, and a client that believes
+		// it goes on to PROPFIND, authenticate, and sync nothing — reporting a
+		// broken calendar server on an instance that has none and needs none. Same
+		// reasoning as the /.well-known/ 404 in serveWeb.
+		r.Get("/.well-known/caldav", s.wellKnownCalDAV)
+	}
 
 	// Inbound mail. Delivered by the mail server rather than by a browser, and
 	// authenticated by the token in the recipient address.
@@ -190,8 +208,13 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	//
 	// Sin egen kvote frem for postens: en travl integration skal ikke kunne lukke
 	// for den indgående post, og omvendt.
-	r.Method(http.MethodPost, "/inbound/hook/{token}",
-		s.rateLimit(s.hookLimiter, http.HandlerFunc(s.handleInboundHook)))
+	//
+	// Opgaver, efter sin egen beskrivelse ovenfor — den skubber en linje tekst ind
+	// i indbakken — så den findes ikke i noter-udgaven.
+	if full {
+		r.Method(http.MethodPost, "/inbound/hook/{token}",
+			s.rateLimit(s.hookLimiter, http.HandlerFunc(s.handleInboundHook)))
+	}
 
 	// MCP with the token in the query string, for clients that cannot send a
 	// header. Claude's custom-connector dialog takes a URL and nothing else, so
@@ -218,7 +241,10 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 		// Gmail connection with calendar tokens.
 		r.Get("/oauth/calendar/callback", s.handleCalendarCallback)
 	})
-	r.Route("/caldav", s.caldavRoutes)
+	// Hele CalDAV-træet: otte ruter, der alle læser eller skriver en VTODO.
+	if full {
+		r.Route("/caldav", s.caldavRoutes)
+	}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(s.requireCSRF)
@@ -346,7 +372,12 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				})
 			}
 
-			r.Get("/feed", s.handleGetFeed)
+			// Tokenet til ICS-feedet ovenfor. Et token til et feed, der ikke
+			// findes, er en indstillingsside, der tilbyder en adresse, intet
+			// svarer på.
+			if full {
+				r.Get("/feed", s.handleGetFeed)
+			}
 
 			r.Route("/notifications", func(r chi.Router) {
 				r.Get("/", s.handleListNotifications)
@@ -372,7 +403,9 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Patch("/", s.handleUpdateComment)
 				r.Delete("/", s.handleDeleteComment)
 			})
-			r.Post("/feed/rotate", s.handleRotateFeed)
+			if full {
+				r.Post("/feed/rotate", s.handleRotateFeed)
+			}
 
 			r.Get("/mail-address", s.handleGetMailAddress)
 			r.Post("/mail-address/rotate", s.handleRotateMailAddress)
@@ -393,20 +426,24 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Get("/settings", s.handleGetAISettings)
 				r.Put("/settings", s.handleSetAISettings)
 				r.Post("/summary", s.handleAISummary)
-				r.Post("/tasks/{taskID}/split", s.handleAISplit)
-				// Forslag, ikke skrivninger. De to første svarer med linjer i
-				// quick-add-syntaks, som fladen viser frem; de to sidste er dét,
-				// der sker, når nogen siger ja til én af dem.
-				r.Post("/inbox/tidy", s.handleAITidyInbox)
-				r.Post("/inbox/tidy/apply", s.handleAIApplyToTask)
+				if full {
+					r.Post("/tasks/{taskID}/split", s.handleAISplit)
+					// Forslag, ikke skrivninger. De to første svarer med linjer i
+					// quick-add-syntaks, som fladen viser frem; de to sidste er dét,
+					// der sker, når nogen siger ja til én af dem.
+					r.Post("/inbox/tidy", s.handleAITidyInbox)
+					r.Post("/inbox/tidy/apply", s.handleAIApplyToTask)
+				}
 				r.Post("/notes/{noteID}/actions", s.handleAINoteActions)
 				r.Post("/notes/{noteID}/actions/apply", s.handleAICreateFromNote)
 				// Dagens plan: indstillingen, og en knap til at se den nu. En
 				// indstilling, man skal vente til i morgen for at se virkningen af,
 				// er en indstilling, ingen tør slå til.
-				r.Get("/plan", s.handleGetPlanSettings)
-				r.Put("/plan", s.handleSetPlanSettings)
-				r.Post("/plan/now", s.handlePlanNow)
+				if full {
+					r.Get("/plan", s.handleGetPlanSettings)
+					r.Put("/plan", s.handleSetPlanSettings)
+					r.Post("/plan/now", s.handlePlanNow)
+				}
 				// Spørg om sine egne noter og opgaver i almindeligt sprog. Basen
 				// finder kandidaterne, modellen læser dem — og svaret bærer, hvad
 				// det er bygget på.
@@ -491,24 +528,38 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Delete("/subscriptions/{id}", s.handleUnsubscribeCalendar)
 			})
 
-			r.Route("/import", func(r chi.Router) {
-				r.Post("/todoist", s.handleImportTodoist)
-				r.Post("/csv", s.handleImportCSV)
-			})
+			// Begge retninger laver eller læser opgaver: Todoist-importen laver
+			// dem, CSV-importen laver dem, og de fire opgave-eksporter skriver dem
+			// ud. De blev alle betjent i noter-udgaven indtil nu — de svarede tomt
+			// frem for at fejle, hvilket er den stille version af samme fejl.
+			if full {
+				r.Route("/import", func(r chi.Router) {
+					r.Post("/todoist", s.handleImportTodoist)
+					r.Post("/csv", s.handleImportCSV)
+				})
+			}
 
 			r.Get("/export/account", s.handleExportAccount)
 			r.Get("/export/notes.zip", s.handleExportNotes)
-			r.Get("/export/projects.zip", s.handleExportAllCSV)
-			r.Get("/export/tasks.ics", s.handleExportAllICS)
-			r.Get("/export/projects/{projectID}.csv", s.handleExportProject)
-			r.Get("/export/projects/{projectID}.ics", s.handleExportProjectICS)
+			if full {
+				r.Get("/export/projects.zip", s.handleExportAllCSV)
+				r.Get("/export/tasks.ics", s.handleExportAllICS)
+				r.Get("/export/projects/{projectID}.csv", s.handleExportProject)
+				r.Get("/export/projects/{projectID}.ics", s.handleExportProjectICS)
+			}
 
-			r.Route("/templates", func(r chi.Router) {
-				r.Get("/", s.handleListTemplates)
-				r.Post("/", s.handleSaveTemplate)
-				r.Post("/{templateID}/use", s.handleUseTemplate)
-				r.Delete("/{templateID}", s.handleDeleteTemplate)
-			})
+			// En skabelon er et projekt plus sektioner plus opgaver — læst i
+			// CreateProjectFromTemplate frem for gættet ud fra rutenavnet, som
+			// kun siger "projekt". Uden opgaver er den et tomt projekt med
+			// overskrifter i.
+			if full {
+				r.Route("/templates", func(r chi.Router) {
+					r.Get("/", s.handleListTemplates)
+					r.Post("/", s.handleSaveTemplate)
+					r.Post("/{templateID}/use", s.handleUseTemplate)
+					r.Delete("/{templateID}", s.handleDeleteTemplate)
+				})
+			}
 
 			if full {
 				r.Delete("/reminders/{reminderID}", s.handleDeleteReminder)
@@ -539,7 +590,13 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 					r.Use(s.requireProject(store.RoleViewer))
 
 					r.Get("/", s.handleGetProject)
-					r.Get("/sections", s.handleListSections)
+					// Sektioner grupperer opgaver inde i et projekt, og det er
+					// afgjort af skemaet frem for af navnet: `section_id` står på
+					// `tasks` og findes ikke på `notes`. En sektion i en notesbog
+					// kan ikke indeholde noget.
+					if full {
+						r.Get("/sections", s.handleListSections)
+					}
 					r.Get("/members", s.handleListMembers)
 					// Uden for ejer-gruppen, fordi den nu dækker to ting: ejeren, der
 					// fjerner nogen, og den, der selv går. Handleren skiller dem ad.
@@ -548,8 +605,10 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 
 					r.Group(func(r chi.Router) {
 						r.Use(s.requireProject(store.RoleEditor))
-						r.Post("/sections", s.handleCreateSection)
-						r.Post("/sections/reorder", s.handleReorderSections)
+						if full {
+							r.Post("/sections", s.handleCreateSection)
+							r.Post("/sections/reorder", s.handleReorderSections)
+						}
 					})
 
 					r.Group(func(r chi.Router) {
@@ -624,10 +683,12 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			r.Get("/trash/projects", s.handleListTrashedProjects)
 			r.Post("/trash/projects/{projectID}/restore", s.handleRestoreProject)
 
-			r.Route("/sections/{sectionID}", func(r chi.Router) {
-				r.Patch("/", s.handleUpdateSection)
-				r.Delete("/", s.handleDeleteSection)
-			})
+			if full {
+				r.Route("/sections/{sectionID}", func(r chi.Router) {
+					r.Patch("/", s.handleUpdateSection)
+					r.Delete("/", s.handleDeleteSection)
+				})
+			}
 
 			if full {
 				r.Route("/tasks", func(r chi.Router) {
