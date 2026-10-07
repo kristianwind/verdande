@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { watchForTrouble } from './trouble.js';
 
 /**
  * Noter-udgaven, kørt som sit eget program.
@@ -178,4 +179,70 @@ test('navnet står også i teksterne, ikke kun i mærket', async ({ page }) => {
 	await page.goto('/indstillinger');
 	await expect(page.getByRole('button', { name: /^Urd\b/ })).toBeVisible();
 	await expect(page.getByRole('button', { name: /^Verdande\b/ })).toHaveCount(0);
+});
+
+/**
+ * Hver side, der KAN nås i noter-udgaven, må ikke kalde noget, der er lukket.
+ *
+ * Det er den halvdel, en port let glemmer, og den fejler stille: lukkes en rute,
+ * fladen stadig henter, svarer serveren 404, komponenten fanger det, og siden
+ * tegner uden den sektion — pænt, tomt, og uden at nogen får at vide, at noget
+ * manglede. Der er ingen fejlskærm at se.
+ *
+ * Målt på svarene frem for på det tegnede: en manglende sektion ser ud som en
+ * sektion, der ikke var noget i.
+ *
+ * Skrevet før ruterne blev lukket, og den fangede SYV — fire af dem fra den første
+ * port, som havde været i drift i to merges: sidebjælken hentede /filters og
+ * /labels ved hver navigation, notifikationssiden hentede /ai/plan, og
+ * notesbogens egen side hentede /tasks. Den sidste var ikke støj: kaldene samles i
+ * et Promise.all, så 404'eren kastede og siden viste `status = 'failed'` frem for
+ * notesbogens noter.
+ *
+ * Og den fangede én mere, som rettelsen selv lavede: da opgavekaldet holdt op med
+ * at fejle, kom en uendelig effekt-løkke frem, som 404'eren havde holdt låg på
+ * (effect_update_depth_exceeded). Derfor læser den konsollen og ikke kun svarene.
+ *
+ * Hvad den IKKE dækker, sagt her frem for underforstået: elleve sider plus ét
+ * projekt. En gruppe (/gruppe/{id}) og en åben note er ikke med, fordi begge
+ * kræver, at prøven først laver en — og skuffer og dialoger, der åbnes ved et
+ * klik, er slet ikke besøgt. En grøn her betyder "ingen af de tolv adresser",
+ * ikke "ingen flade".
+ */
+test('ingen side kalder en rute, udgaven ikke har', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+
+	// Projektet skal med som en rigtig adresse: /projekt/{id} er en notesbog her,
+	// og den er den eneste side med en id i stien, der kan nås.
+	await page.goto('/noter');
+	const projekter = await (await page.request.get('/api/v1/projects')).json();
+	const id = (projekter.projects ?? projekter)[0]?.id;
+	expect(id, 'der skal findes mindst ét projekt at åbne').toBeTruthy();
+
+	const sider = [
+		'/noter',
+		'/genveje',
+		'/indstillinger',
+		'/indstillinger/ai',
+		'/indstillinger/brugere',
+		'/indstillinger/data',
+		'/indstillinger/fejl',
+		'/indstillinger/historik',
+		'/indstillinger/integrationer',
+		'/indstillinger/notifikationer',
+		'/indstillinger/tokens',
+		`/projekt/${id}`
+	];
+
+	for (const side of sider) {
+		await page.goto(side);
+		// Ventet på at fladen er tegnet, så de kald siden laver ved opstart er
+		// nået at komme afsted. Uden den her går løkken videre, før svarene er
+		// kommet, og prøven måler ingenting.
+		await expect(page.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+		await page.waitForLoadState('networkidle');
+	}
+
+	// Tallet med på det grønne: elleve sider og et projekt, frem for "ingen fejl".
+	expect(trouble, `besøgte ${sider.length} sider`).toEqual([]);
 });

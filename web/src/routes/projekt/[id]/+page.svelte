@@ -88,9 +88,14 @@
 		if (!projectId) return;
 		status = 'loading';
 		try {
+			// Sektioner findes ikke i noter-udgaven, hvor et projekt er en notesbog
+			// — og det er ikke bare støj: Promise.all kaster på den første, der
+			// fejler, så en 404 herfra satte status = 'failed', og siden viste en
+			// fejlskærm frem for notesbogens noter. `loadTasks` vogter sig selv i
+			// butikken, fordi den har tre kaldesteder her.
 			const [p, s] = await Promise.all([
 				api.getProject(projectId),
-				api.listSections(projectId),
+				app.notesOnly ? Promise.resolve({ sections: [] }) : api.listSections(projectId),
 				app.loadTasks({ project_id: projectId })
 			]);
 			project = p;

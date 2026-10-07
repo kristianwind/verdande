@@ -28,7 +28,8 @@ wood. Verdande is what is becoming; urd is what has become and was kept.
 Not a fork, because the two share everything that is hard — accounts, sharing,
 passkeys, the realtime socket, search, backups, migrations — and notes are about a
 twentieth of the Go here. A test walks both routers and fails in either direction,
-so "the task routes are not there" is measured rather than promised. See
+so "the task routes are not there" is measured rather than promised — 63 routes and
+five of nine MCP tools. See
 [Two editions](docs/editions.md).
 
 ## Status

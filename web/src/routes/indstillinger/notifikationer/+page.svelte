@@ -92,6 +92,8 @@
 	let planBusy = $state(false);
 
 	$effect(() => {
+		// Dagens plan er dagens opgaver.
+		if (app.notesOnly) return;
 		api
 			.planSettings()
 			.then((p) => (plan = p))

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -36,28 +37,69 @@ func TestNotesEditionServesOnlyItsOwnRoutes(t *testing.T) {
 	// Every route the full edition has and the notes edition does not. Written as
 	// the whole list rather than a prefix rule: a prefix is a description of what
 	// somebody meant, and this has to be a description of what is there.
+	//
+	// And note what this list could NOT catch, because it is the shape of mistake
+	// that outlived the first version of this test. The list went green at 29
+	// routes for two merges while CalDAV, the ICS feed, the inbox hook, four task
+	// exports, both task imports, the project templates, the sections and six AI
+	// task endpoints were all still served by the notes edition — because the test
+	// compares the router against THIS LIST, and the list was written from the
+	// routes somebody had thought of. It is a drift check, and it cannot be an
+	// is-it-complete check.
+	//
+	// So when a route is added that one edition should not have, the question to
+	// ask is not "does the walk still pass" but "can this endpoint do anything at
+	// all without the half it is being withheld from". Three of the ones above were
+	// settled by reading rather than by the name: a template turned out to create
+	// tasks (CreateProjectFromTemplate), `section_id` turned out to exist on
+	// `tasks` and not on `notes`, and add_comment turned out to hang off a task.
 	withheld := map[string]bool{}
 	for _, r := range []string{
 		"DELETE /api/v1/filters/{filterID}",
 		"DELETE /api/v1/labels/{labelID}",
 		"DELETE /api/v1/reminders/{reminderID}",
+		"DELETE /api/v1/sections/{sectionID}",
 		"DELETE /api/v1/tasks/{taskID}",
+		"DELETE /api/v1/templates/{templateID}",
+		"DELETE /caldav/{userID}/{projectID}/{taskFile}",
+		"GET /.well-known/caldav",
+		"GET /api/v1/ai/plan",
 		"GET /api/v1/delegated",
+		"GET /api/v1/export/projects.zip",
+		"GET /api/v1/export/projects/{projectID}.csv",
+		"GET /api/v1/export/projects/{projectID}.ics",
+		"GET /api/v1/export/tasks.ics",
+		"GET /api/v1/feed",
 		"GET /api/v1/filters",
 		"GET /api/v1/filters/preview",
 		"GET /api/v1/filters/{filterID}/tasks",
 		"GET /api/v1/labels",
+		"GET /api/v1/projects/{projectID}/sections",
 		"GET /api/v1/tasks",
 		"GET /api/v1/tasks/quick-add/preview",
 		"GET /api/v1/tasks/{taskID}",
 		"GET /api/v1/tasks/{taskID}/comments",
 		"GET /api/v1/tasks/{taskID}/reminders",
+		"GET /api/v1/templates",
 		"GET /api/v1/upcoming",
+		"GET /caldav/{userID}/{projectID}/{taskFile}",
+		"GET /ics/{token}",
+		"OPTIONS /caldav/*",
 		"PATCH /api/v1/filters/{filterID}",
 		"PATCH /api/v1/labels/{labelID}",
+		"PATCH /api/v1/sections/{sectionID}",
 		"PATCH /api/v1/tasks/{taskID}",
+		"POST /api/v1/ai/inbox/tidy",
+		"POST /api/v1/ai/inbox/tidy/apply",
+		"POST /api/v1/ai/plan/now",
+		"POST /api/v1/ai/tasks/{taskID}/split",
+		"POST /api/v1/feed/rotate",
 		"POST /api/v1/filters",
+		"POST /api/v1/import/csv",
+		"POST /api/v1/import/todoist",
 		"POST /api/v1/labels",
+		"POST /api/v1/projects/{projectID}/sections",
+		"POST /api/v1/projects/{projectID}/sections/reorder",
 		"POST /api/v1/tasks",
 		"POST /api/v1/tasks/quick-add",
 		"POST /api/v1/tasks/{taskID}/attachments",
@@ -67,6 +109,15 @@ func TestNotesEditionServesOnlyItsOwnRoutes(t *testing.T) {
 		"POST /api/v1/tasks/{taskID}/reminders",
 		"POST /api/v1/tasks/{taskID}/reopen",
 		"POST /api/v1/tasks/{taskID}/snooze",
+		"POST /api/v1/templates",
+		"POST /api/v1/templates/{templateID}/use",
+		"POST /inbound/hook/{token}",
+		"PROPFIND /caldav",
+		"PROPFIND /caldav/{userID}",
+		"PROPFIND /caldav/{userID}/{projectID}",
+		"PUT /api/v1/ai/plan",
+		"PUT /caldav/{userID}/{projectID}/{taskFile}",
+		"REPORT /caldav/{userID}/{projectID}",
 	} {
 		withheld[r] = true
 	}
@@ -115,10 +166,25 @@ func TestNotesEditionServesOnlyItsOwnRoutes(t *testing.T) {
 	for _, must := range []string{
 		"GET /api/v1/notes",
 		"POST /api/v1/notes",
+		"PATCH /api/v1/notes/{noteID}",
+		"DELETE /api/v1/notes/{noteID}",
+		// Deling er hele grunden til at det er et selvstændigt produkt frem for en
+		// enkeltbrugers notesblok, så den halvdel skal navngives her.
+		"POST /api/v1/notes/{noteID}/shares",
+		"GET /api/v1/notes/{noteID}/shares",
+		"POST /api/v1/notes/{noteID}/attachments",
+		"POST /api/v1/notes/import",
 		"GET /api/v1/export/notes.zip",
+		"GET /api/v1/export/account",
+		"POST /api/v1/ai/notes/{noteID}/actions",
 		"GET /api/v1/projects", // a notebook, in this edition
 		"GET /api/v1/search",
 		"GET /api/v1/auth/me",
+		// 34 ruter blev lukket i den anden omgang af denne port. Den her linje er
+		// den, der afgør, at det var en port: MCP-endepunktet er stadig der, og det
+		// er værktøjslisten bagved, der er kortere.
+		"POST /api/v1/mcp",
+		"POST /mcp",
 	} {
 		if !notes[must] {
 			t.Errorf("the notes edition does not serve %s — that is a deletion, not a gate", must)
@@ -227,4 +293,83 @@ func TestNotesEditionSearchFindsNoTasks(t *testing.T) {
 			t.Errorf("the full edition found no tasks either — this proves nothing about the notes one")
 		}
 	}
+}
+
+// TestNotesEditionOffersNoTaskToolsOverMCP.
+//
+// The same hole as the routes, through a different door — and it was still open
+// after the first gate. An MCP server advertises its tools, so a model connected
+// to a notes instance would be told it can create_task, call it, get something
+// back, and tell the person their task was filed.
+//
+// Asked through tools/list rather than by reading the server's own slice: that is
+// what a client actually sees, and the slice is unexported for the same reason.
+func TestNotesEditionOffersNoTaskToolsOverMCP(t *testing.T) {
+	taskTools := []string{"search_tasks", "create_task", "update_task", "complete_task", "add_comment"}
+	noteTools := []string{"search_notes", "create_note", "update_note"}
+
+	for _, edition := range []string{config.EditionFull, config.EditionNotes} {
+		t.Run(edition, func(t *testing.T) {
+			names := mcpToolNames(t, edition)
+
+			// Both editions: the shared tool, and the notes half.
+			for _, want := range append([]string{"list_projects"}, noteTools...) {
+				if !names[want] {
+					t.Errorf("%s edition does not offer %s", edition, want)
+				}
+			}
+			for _, task := range taskTools {
+				switch edition {
+				case config.EditionFull:
+					if !names[task] {
+						t.Errorf("the full edition lost %s — that is a deletion, not a gate", task)
+					}
+				default:
+					if names[task] {
+						t.Errorf("the notes edition offers %s over MCP", task)
+					}
+				}
+			}
+			t.Logf("%s: %d tools", edition, len(names))
+		})
+	}
+}
+
+// mcpToolNames asks one edition's MCP server for its tool list.
+func mcpToolNames(t *testing.T, edition string) map[string]bool {
+	t.Helper()
+
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	cfg := &config.Config{BaseURL: "http://localhost", DataDir: t.TempDir(), SessionTTL: time.Hour, Edition: edition}
+	srv := New(cfg, db, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+
+	resp := srv.mcp.Handle(context.Background(), "nobody", []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	if resp == nil {
+		t.Fatal("tools/list got no response")
+	}
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Result struct {
+			Tools []struct{ Name string } `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("tools/list: %v — %s", err, raw)
+	}
+	if len(parsed.Result.Tools) == 0 {
+		t.Fatalf("tools/list returned no tools at all: %s", raw)
+	}
+	names := map[string]bool{}
+	for _, tool := range parsed.Result.Tools {
+		names[tool.Name] = true
+	}
+	return names
 }

@@ -23,7 +23,9 @@ import (
 // `search_tasks` and `list_projects` is answering "which of these gets me closer",
 // and a description that only names the endpoint gives it nothing to decide with.
 func (s *Server) buildMCP() *mcp.Server {
-	m := mcp.NewServer("verdande", "1")
+	// Udgavens eget navn: det er sådan, instansen står i klientens
+	// forbindelsesliste.
+	m := mcp.NewServer(s.cfg.ProductSlug(), "1")
 
 	m.Register(mcp.Tool{
 		Name: "list_projects",
@@ -34,72 +36,79 @@ func (s *Server) buildMCP() *mcp.Server {
 		}),
 	}, s.mcpListProjects)
 
-	m.Register(mcp.Tool{
-		Name: "search_tasks",
-		Description: "Find tasks by text, project, label, priority, due date or assignee. " +
-			"This is the tool for any question about what the user has to do — " +
-			"\"what is due today\", \"what is overdue\", \"anything about the tax return\". " +
-			"The query accepts the same filter language as the app: \"today & p1\", " +
-			"\"overdue\", \"#Firma & @regnskab\", \"7 days\", \"assigned to: me\".",
-		InputSchema: mcp.Schema(map[string]any{
-			"query":             mcp.Str("A filter expression, e.g. \"today & p1\" or \"overdue\"."),
-			"text":              mcp.Str("Free text to search task titles and descriptions for."),
-			"limit":             mcp.Int("How many tasks to return. Defaults to 50, maximum 200."),
-			"include_completed": mcp.Bool("Include tasks that are already done. Defaults to false."),
-		}),
-	}, s.mcpSearchTasks)
+	// De fem opgaveværktøjer. Udeladt i noter-udgaven af samme grund som ruterne:
+	// et værktøj, en model kan kalde, er en flade på instansen, og et værktøj der
+	// svarer "der er ingen opgaver" er værre end et, der ikke findes — modellen
+	// prøver det, får et tomt svar og fortæller brugeren, at der ikke er noget at
+	// lave. add_comment er med her: en kommentar hænger på en opgave.
+	if !s.cfg.NotesOnly() {
+		m.Register(mcp.Tool{
+			Name: "search_tasks",
+			Description: "Find tasks by text, project, label, priority, due date or assignee. " +
+				"This is the tool for any question about what the user has to do — " +
+				"\"what is due today\", \"what is overdue\", \"anything about the tax return\". " +
+				"The query accepts the same filter language as the app: \"today & p1\", " +
+				"\"overdue\", \"#Firma & @regnskab\", \"7 days\", \"assigned to: me\".",
+			InputSchema: mcp.Schema(map[string]any{
+				"query":             mcp.Str("A filter expression, e.g. \"today & p1\" or \"overdue\"."),
+				"text":              mcp.Str("Free text to search task titles and descriptions for."),
+				"limit":             mcp.Int("How many tasks to return. Defaults to 50, maximum 200."),
+				"include_completed": mcp.Bool("Include tasks that are already done. Defaults to false."),
+			}),
+		}, s.mcpSearchTasks)
 
-	m.Register(mcp.Tool{
-		Name: "create_task",
-		Description: "Create a task. Prefer passing the whole thing as natural language in " +
-			"`text` — \"betal moms i morgen kl 10 p1 #Firma @regnskab\" — because the app's own " +
-			"parser handles dates, times, priorities, projects, labels and recurrence in Danish " +
-			"and English. Use the explicit fields only when the user was explicit.",
-		InputSchema: mcp.Schema(map[string]any{
-			"text":        mcp.Str("The task as a sentence, parsed for date, time, priority, #project, @label and recurrence."),
-			"content":     mcp.Str("The task title, if not using `text`."),
-			"project_id":  mcp.Str("Which project. Defaults to the Inbox. Naming a project that does not exist is not an error — the task goes to the Inbox and the answer says so."),
-			"parent_id":   mcp.Str("Make this a sub-task of that task. It joins the parent's project. One level deep."),
-			"due_date":    mcp.Str("A date as YYYY-MM-DD."),
-			"priority":    mcp.Int("1 (highest) to 4 (none)."),
-			"description": mcp.Str("Longer notes on the task."),
-			"labels":      mcp.StrArray("Label names."),
-		}),
-	}, s.mcpCreateTask)
+		m.Register(mcp.Tool{
+			Name: "create_task",
+			Description: "Create a task. Prefer passing the whole thing as natural language in " +
+				"`text` — \"betal moms i morgen kl 10 p1 #Firma @regnskab\" — because the app's own " +
+				"parser handles dates, times, priorities, projects, labels and recurrence in Danish " +
+				"and English. Use the explicit fields only when the user was explicit.",
+			InputSchema: mcp.Schema(map[string]any{
+				"text":        mcp.Str("The task as a sentence, parsed for date, time, priority, #project, @label and recurrence."),
+				"content":     mcp.Str("The task title, if not using `text`."),
+				"project_id":  mcp.Str("Which project. Defaults to the Inbox. Naming a project that does not exist is not an error — the task goes to the Inbox and the answer says so."),
+				"parent_id":   mcp.Str("Make this a sub-task of that task. It joins the parent's project. One level deep."),
+				"due_date":    mcp.Str("A date as YYYY-MM-DD."),
+				"priority":    mcp.Int("1 (highest) to 4 (none)."),
+				"description": mcp.Str("Longer notes on the task."),
+				"labels":      mcp.StrArray("Label names."),
+			}),
+		}, s.mcpCreateTask)
 
-	m.Register(mcp.Tool{
-		Name: "update_task",
-		Description: "Change an existing task: its title, description, priority, due date or " +
-			"project. Only the fields given are changed. To move a due date, pass due_date; " +
-			"to clear it, pass an empty string.",
-		InputSchema: mcp.Schema(map[string]any{
-			"task_id":     mcp.Str("The task to change."),
-			"content":     mcp.Str("A new title."),
-			"description": mcp.Str("New notes."),
-			"priority":    mcp.Int("1 (highest) to 4 (none)."),
-			"due_date":    mcp.Str("A date as YYYY-MM-DD, or an empty string to remove the date."),
-			"project_id":  mcp.Str("Move the task to another project."),
-			"labels":      mcp.StrArray("Replace the task's labels."),
-		}, "task_id"),
-	}, s.mcpUpdateTask)
+		m.Register(mcp.Tool{
+			Name: "update_task",
+			Description: "Change an existing task: its title, description, priority, due date or " +
+				"project. Only the fields given are changed. To move a due date, pass due_date; " +
+				"to clear it, pass an empty string.",
+			InputSchema: mcp.Schema(map[string]any{
+				"task_id":     mcp.Str("The task to change."),
+				"content":     mcp.Str("A new title."),
+				"description": mcp.Str("New notes."),
+				"priority":    mcp.Int("1 (highest) to 4 (none)."),
+				"due_date":    mcp.Str("A date as YYYY-MM-DD, or an empty string to remove the date."),
+				"project_id":  mcp.Str("Move the task to another project."),
+				"labels":      mcp.StrArray("Replace the task's labels."),
+			}, "task_id"),
+		}, s.mcpUpdateTask)
 
-	m.Register(mcp.Tool{
-		Name: "complete_task",
-		Description: "Mark a task done. A repeating task advances to its next occurrence " +
-			"instead of closing, and the result says so.",
-		InputSchema: mcp.Schema(map[string]any{
-			"task_id": mcp.Str("The task to complete."),
-		}, "task_id"),
-	}, s.mcpCompleteTask)
+		m.Register(mcp.Tool{
+			Name: "complete_task",
+			Description: "Mark a task done. A repeating task advances to its next occurrence " +
+				"instead of closing, and the result says so.",
+			InputSchema: mcp.Schema(map[string]any{
+				"task_id": mcp.Str("The task to complete."),
+			}, "task_id"),
+		}, s.mcpCompleteTask)
 
-	m.Register(mcp.Tool{
-		Name:        "add_comment",
-		Description: "Add a comment to a task. Everyone else with access to the project is notified.",
-		InputSchema: mcp.Schema(map[string]any{
-			"task_id": mcp.Str("The task to comment on."),
-			"body":    mcp.Str("What to say."),
-		}, "task_id", "body"),
-	}, s.mcpAddComment)
+		m.Register(mcp.Tool{
+			Name:        "add_comment",
+			Description: "Add a comment to a task. Everyone else with access to the project is notified.",
+			InputSchema: mcp.Schema(map[string]any{
+				"task_id": mcp.Str("The task to comment on."),
+				"body":    mcp.Str("What to say."),
+			}, "task_id", "body"),
+		}, s.mcpAddComment)
+	}
 
 	s.registerNoteTools(m)
 	return m

@@ -97,7 +97,13 @@ jobs:
       # -race is the whole point of running tests in CI for a server with a
       # WebSocket fan-out: a data race is exactly the bug that passes locally.
       - name: Test
-        run: go test -race -count=1 ./...
+        # -timeout, fordi internal/httpapi nærmer sig Go's standardgrænse på 600s:
+        # 498s i CI på #95, 656s på udviklingsmaskinen. Når den krydser, er
+        # beskeden "panic: test timed out after 10m0s" plus et goroutine-dump, og
+        # det læser som en deadlock i koden frem for som en suite, der blev for
+        # stor. Grænsen er der stadig; den er bare sat et sted, hvor den betyder
+        # "noget hænger" i stedet for "maskinen var langsom i dag".
+        run: go test -race -count=1 -timeout 20m ./...
 
       - name: Build
         run: CGO_ENABLED=0 go build ./...
