@@ -5723,7 +5723,17 @@ test('en ny note åbner med markøren i overskriften', async ({ page }) => {
 	await page.goto('/noter');
 	await page.getByRole('button', { name: 'Ny note' }).click();
 
-	expect(await caretBlock(page), 'markøren skal stå i h1').toBe('h1');
+	// `expect.poll` og ikke én læsning: `click()` vender tilbage, så snart klikket er
+	// sendt, mens markøren sættes efter en netværksrundtur OG en gentegning. Lokalt
+	// er rundturen under et millisekund, så ét snapshot ramte altid — på en runner
+	// ramte det `null`, og prøven bestod på main ved held frem for ved regel.
+	//
+	// Kontrollen nedenfor (`stjæler ikke markøren`) må IKKE laves om til en poll:
+	// den forventer null, så en poll ville bestå på første læsning, uanset hvad
+	// koden gjorde. Den ankrer sig i stedet på overskriftens tekst først.
+	await expect
+		.poll(() => caretBlock(page), { message: 'markøren skal stå i h1' })
+		.toBe('h1');
 
 	// Og den står et sted, man kan skrive: det, der tastes, bliver titlen, og
 	// titlen er det, listen kalder noten.
@@ -5764,7 +5774,9 @@ test('urd-døren opfører sig ens: ny note, markør i overskriften', async ({ pa
 	await expect(page).toHaveURL(/\/noter$/);
 	await page.getByRole('button', { name: 'Ny note' }).click();
 
-	expect(await caretBlock(page), 'markøren skal stå i h1 også i urd').toBe('h1');
+	await expect
+		.poll(() => caretBlock(page), { message: 'markøren skal stå i h1 også i urd' })
+		.toBe('h1');
 	expect(trouble).toEqual([]);
 });
 
@@ -5787,7 +5799,9 @@ test('en note oprettet fra et projekt åbner også med markøren i overskriften'
 	await page.getByRole('button', { name: 'Ny note', exact: true }).click();
 	await expect(page).toHaveURL(/\/noter\?note=/);
 
-	expect(await caretBlock(page), 'markøren skal stå i h1 efter navigationen').toBe('h1');
+	await expect
+		.poll(() => caretBlock(page), { message: 'markøren skal stå i h1 efter navigationen' })
+		.toBe('h1');
 	await page.keyboard.type('Dæk og kort');
 	await expect(page.locator('.editor h1').first()).toHaveText('Dæk og kort');
 
