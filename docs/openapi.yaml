@@ -304,8 +304,7 @@ paths:
               type: object
               properties:
                 minutes:
-                  type: integer
-                  nullable: true
+                  type: [integer, "null"]
                   maximum: 0
                   minimum: -10080
                   description: |
@@ -4844,18 +4843,18 @@ components:
             The sidebar headings this person has folded away. Always an array,
             never null: a client that has to check for both an absent array and an
             empty one will one day check for only one of them.
+          example: ["labels"]
         default_reminder_min:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
           description: |
             The account's standing alarm on tasks that have a clock, as minutes
             relative to the due moment and negative for before it. Null is off,
             which is where every account starts.
 
-            Nullable rather than a number with a sentinel, because zero is a real
-            setting here — an alarm exactly at the due moment — so "off" and "at
-            the time" have to stay different answers.
-          example: ["labels"]
+            A type union rather than a number with a sentinel, because zero is a
+            real setting here — an alarm exactly at the due moment — so "off" and
+            "at the time" have to stay different answers.
+          example: -10
         created_at: { type: string, format: date-time }
 
     RecoveryCodes:
