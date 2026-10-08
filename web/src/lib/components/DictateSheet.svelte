@@ -40,6 +40,15 @@
 	 * og uden pointer-events frem for skjult.
 	 */
 	function start() {
+		// `inert` fjernes med hånden her, og det er ikke sjusk. Attributten sættes
+		// reaktivt af `inert={!open}` nedenfor, så den er der stadig i det øjeblik,
+		// klikket kører — Sveltes opdateringer er asynkrone. Og et inert element kan
+		// ikke fokuseres, så `focusField()` ville ramme ingenting, og iOS ville ikke
+		// åbne tastaturet.
+		//
+		// Den findes, fordi alternativet er værre: uden den kan skuffens knapper
+		// tabbes til, mens den er usynlig, på hver eneste side.
+		sheet?.removeAttribute('inert');
 		open = true;
 		box?.focusField();
 	}
@@ -81,7 +90,6 @@
 	class:open
 	aria-hidden="true"
 	onclick={close}
-	onkeydown={null}
 	role="presentation"
 ></div>
 
@@ -93,13 +101,14 @@
 	aria-modal="false"
 	aria-label={t('task.speak')}
 	aria-hidden={!open}
+	inert={!open}
 >
 	<div class="grab" aria-hidden="true"></div>
 	<p class="hint">{t('task.speakHint')}</p>
 	<!-- `marked={false}`: den her må ikke være den, type-anywhere-genvejen finder.
 	     Se kommentaren ved `marked` i QuickAdd. -->
 	<QuickAdd bind:this={box} marked={false} label={t('task.speak')} onadded={close} />
-	<button class="done" onclick={close} tabindex={open ? 0 : -1}>{t('detail.close')}</button>
+	<button class="done" onclick={close}>{t('detail.close')}</button>
 </div>
 
 <style>
