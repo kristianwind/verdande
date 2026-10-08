@@ -730,8 +730,10 @@
 			const note = await api.createNote({ body: '' });
 			notes = [note, ...notes];
 			// Svaret er hele noten, så den skal ikke hentes igen — se open().
+			// Markøren sættes af editoren selv, når noten er tom — se
+			// placeCaretInTitle i NoteEditor. Her stod en focus() på
+			// `.editor textarea`, og editoren har ingen textarea.
 			await open(note, { whole: true });
-			document.querySelector('.editor textarea')?.focus();
 		} catch (e) {
 			app.toast(humanMessage(e));
 		}
