@@ -821,23 +821,54 @@
 	 * the caret in another heading in most browsers, and a note where every line is
 	 * a title is a note with no title at all.
 	 */
-	function keepTitleFirst() {
-		const block = currentBlock();
-		if (!block) return;
+	function keepTitleFirst(split) {
+		if (!editor) return;
 
-		// A heading that is not the first line becomes body.
-		if (block.tagName === 'H1' && block !== editor.firstElementChild) {
-			document.execCommand('formatBlock', false, 'p');
-			return;
-		}
+		// Der hvor markøren står, gør execCommand det, for det er den, der lægger
+		// ændringen i browserens egen fortryd-historik — ⌘Z skal tage afsnittet tilbage,
+		// ligesom den tager et ord tilbage.
+		const caret = currentBlock();
+		if (caret && stray(caret)) document.execCommand('formatBlock', false, 'p');
 
-		// And the browser's own container becomes a paragraph. Chromium answers Enter
-		// with a bare <div>, which reads as body but is not styled as one — so the
-		// spacing between paragraphs quietly disappears the moment somebody presses
-		// return rather than choosing Brødtekst from the menu.
-		if (block.tagName === 'DIV') {
-			document.execCommand('formatBlock', false, 'p');
-		}
+		// Retur for enden af en overskrift efterlader endnu en overskrift i de fleste
+		// browsere, og markøren kan være løbet videre, inden rettelsen når frem. Kun den
+		// blok, delingen lige skabte: en <h1> andre steder i noten kan være en linje,
+		// nogen har valgt Titel til i menuen, og den er deres at beholde.
+		const lavet = split?.nextElementSibling;
+		if (lavet && lavet !== currentBlock() && stray(lavet)) swapTag(lavet, 'p');
+
+		// Og hver <div>, rettelsen ikke nåede.
+		//
+		// Den er udskudt ét hak, fordi der før delingen ikke er nogen ny blok at rette.
+		// Men et hak er nok: skriver man hurtigt, når næste retur igennem først, og så
+		// står markøren i den NÆSTE blok. Så rettede den den — to gange — og lod den
+		// blok, rettelsen var ment for, stå tilbage. Målt på en CI-runner, hvor "linje
+		// et" blev en <div> mens "linje to" og "linje tre" blev <p>: brødtekst uden
+		// afstand, hos netop de brugere der skriver hurtigst.
+		//
+		// Den spørger noten frem for et håndtag. Et håndtag holder ikke: når den første
+		// udskudte rettelse bytter tagget på en blok, peger den næstes håndtag på en
+		// node, der ikke længere sidder i dokumentet, og så bliver blokken midt i
+		// kæden aldrig rettet. En <div> er altid browserens egen beholder og aldrig
+		// nogens valg, så den kan fejes op hvor som helst uden at tage noget fra nogen.
+		const her = currentBlock();
+		for (const block of [...editor.children])
+			if (block !== her && block.tagName === 'DIV') swapTag(block, 'p');
+	}
+
+	/**
+	 * En blok, der ikke må stå, som den står.
+	 *
+	 * Browserens egen beholder: Chromium svarer på retur med en bar <div>, som læses
+	 * som brødtekst og ikke er formateret som en, så afstanden mellem afsnit stille
+	 * forsvinder. Eller en overskrift, der ikke er den første linje — en note, hvor
+	 * hver linje er en titel, er en note uden titel.
+	 */
+	function stray(block) {
+		if (block.parentNode !== editor) return false;
+		return (
+			block.tagName === 'DIV' || (block.tagName === 'H1' && block !== editor.firstElementChild)
+		);
 	}
 
 	/**
@@ -912,9 +943,10 @@
 				changed();
 				return;
 			}
-			// After the split, not before it.
+			// After the split, not before it — and with the block the split started from,
+			// because by the time this runs the caret may be two blocks further on.
 			setTimeout(() => {
-				keepTitleFirst();
+				keepTitleFirst(block);
 				changed();
 			}, 0);
 			return;
