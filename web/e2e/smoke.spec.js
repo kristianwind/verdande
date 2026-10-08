@@ -5103,6 +5103,85 @@ test('flere markerede afsnit bliver til én monotypeblok', async ({ page }) => {
 });
 
 /**
+ * Blokke, som retur efterlod som <div>, bliver brødtekst — også bagefter.
+ *
+ * Chromium svarer på retur med en bar <div>. Den læses som brødtekst og er ikke
+ * formateret som en, så afstanden mellem afsnit forsvinder stille. Rettelsen er
+ * udskudt ét hak — før delingen er der ingen ny blok at rette — og den spørger,
+ * hvor markøren står. Skriver man hurtigt, når næste retur igennem først, og så
+ * retter den den næste blok to gange og lader denne stå.
+ *
+ * Det er målt frem for gættet: på en CI-runner faldt "flere markerede afsnit
+ * bliver til én monotypeblok" med tre linjer rigtigt skrevet, hvor "linje et" var
+ * en <div> og "linje to" og "linje tre" var <p>.
+ *
+ * Racet selv kan ikke skrives som en pålidelig prøve — det afhænger af, hvornår
+ * runneren når sine timere. Derfor planter denne den tilstand, racet efterlader,
+ * og holder på invarianten i stedet: ingen blok i en note er browserens egen
+ * beholder, uanset hvor markøren har været i mellemtiden.
+ */
+test('blokke retur efterlod som <div> bliver brødtekst alligevel', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+
+	const ed = await nyNote(page);
+	await page.keyboard.type('Overskrift');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('første afsnit');
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('andet afsnit');
+	await expect(ed.locator('p')).toHaveCount(2);
+
+	// Tilstanden racet efterlader: rettelserne løb, mens markøren stod et andet sted,
+	// så ingen af blokkene blev lavet om. To af dem, fordi én er for let: en rettelse,
+	// der holder fast i et håndtag til blokken, kan nå den første og mister den næste,
+	// når den første ombytning tager dens node ud af dokumentet.
+	await ed.evaluate((el) => {
+		for (const para of [...el.querySelectorAll('p')]) {
+			const div = document.createElement('div');
+			while (para.firstChild) div.appendChild(para.firstChild);
+			para.replaceWith(div);
+		}
+
+		// Markøren tilbage for enden af den sidste, hvor racet ville have efterladt den:
+		// brugeren skriver videre. At erstatte blokken kollapser markeringen til
+		// begyndelsen, og så bliver plantningen selv den fejl, prøven måler.
+		const range = document.createRange();
+		range.selectNodeContents(el.lastElementChild);
+		range.collapse(false);
+		const selection = window.getSelection();
+		selection.removeAllRanges();
+		selection.addRange(range);
+	});
+	await expect(ed.locator('p')).toHaveCount(0);
+	await expect(ed.locator('> div')).toHaveCount(2);
+
+	// Næste retur henter dem begge ind igen, sammen med den nye linje.
+	await page.keyboard.press('Enter');
+	await page.keyboard.type('tredje afsnit');
+
+	await expect(ed.locator('> div')).toHaveCount(0);
+	await expect(ed.locator('p')).toHaveCount(3);
+	await expect(ed.locator('h1')).toHaveCount(1);
+
+	// Og teksten er den samme hele vejen — en rettelse, der taber et ord, er ingen
+	// rettelse. Den skal også overleve en gemning.
+	const gemt = noteGemt(page);
+	await ed.blur();
+	await gemt;
+	await page.reload();
+	await page.getByRole('button', { name: /Overskrift/ }).click();
+
+	await expect(ed.locator('> div')).toHaveCount(0);
+	await expect(ed.locator('p')).toHaveCount(3);
+	expect(await ed.locator('p').nth(0).textContent()).toBe('første afsnit');
+	expect(await ed.locator('p').nth(1).textContent()).toBe('andet afsnit');
+	expect(await ed.locator('p').nth(2).textContent()).toBe('tredje afsnit');
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * Hele kontoens opgaver kan hentes i én omgang.
  *
  * Eksporten pr. projekt virkede og var ubrugelig ved enhver størrelse: femten
