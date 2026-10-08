@@ -86,9 +86,26 @@ class AppState {
 	urdFace = $state(false);
 
 	enterUrd() {
-		this.urdFace = true;
+		this.setDoor('urd');
+	}
+
+	leaveUrd() {
+		this.setDoor('verdande');
+	}
+
+	/**
+	 * Hvilken dør dette vindue sidst kom ind ad.
+	 *
+	 * Symmetrisk med vilje: `/` er også en dør. Uden den halvdel bliver en fane,
+	 * der ÉN gang har set /urd, ved med at hedde urd — også på opgavesiderne, også
+	 * efter et link til forsiden. I den installerede app sker det aldrig, for dens
+	 * start_url er /urd og den anden apps er /; i en browserfane sker det hele
+	 * tiden.
+	 */
+	setDoor(door) {
+		this.urdFace = door === 'urd';
 		try {
-			sessionStorage.setItem('verdande:door', 'urd');
+			sessionStorage.setItem('verdande:door', door);
 		} catch (e) {
 			// Privat browsing kan nægte. Ansigtet holder så vinduet ud alligevel,
 			// fordi det står i $state ovenfor — det er kun genindlæsningen, der

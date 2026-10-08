@@ -267,6 +267,11 @@ export const da = {
 	'task.pastedAdd': 'Opret {n} opgaver',
 	'task.pastedCancel': 'Fortryd',
 	'task.new': 'Ny opgave',
+	// Diktat, ikke tale: programmet laver ingen talegenkendelse, det stiller
+	// feltet frem, så tastaturets egen mikrofon kan bruges. Hjælpelinjen siger
+	// det, fordi en knap med en mikrofon på lover noget andet.
+	'task.speak': 'Tal en opgave ind',
+	'task.speakHint': 'Tryk mikrofonen på tastaturet, og sig hvad der skal gøres.',
 	'task.syntaxProject': 'projekt',
 	'task.syntaxSection': 'sektion',
 	'task.syntaxLabel': 'etiket',

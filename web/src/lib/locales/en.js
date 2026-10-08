@@ -264,6 +264,8 @@ export const en = {
 	'task.pastedAdd': 'Add {n} tasks',
 	'task.pastedCancel': 'Cancel',
 	'task.new': 'New task',
+	'task.speak': 'Speak a task',
+	'task.speakHint': 'Tap the microphone on your keyboard and say what needs doing.',
 	'task.syntaxProject': 'project',
 	'task.syntaxSection': 'section',
 	'task.syntaxLabel': 'label',
