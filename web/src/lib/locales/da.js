@@ -270,6 +270,8 @@ export const da = {
 	// Diktat, ikke tale: programmet laver ingen talegenkendelse, det stiller
 	// feltet frem, så tastaturets egen mikrofon kan bruges. Hjælpelinjen siger
 	// det, fordi en knap med en mikrofon på lover noget andet.
+	'task.alarmNeedsATime':
+		'Opgaven er oprettet. Alarmen er ikke — "en time før" skal have et klokkeslæt at regne tilbage fra.',
 	'task.speak': 'Tal en opgave ind',
 	'task.speakHint': 'Tryk mikrofonen på tastaturet, og sig hvad der skal gøres.',
 	'task.syntaxProject': 'projekt',
@@ -402,6 +404,18 @@ export const da = {
 	'account.totpEnabled': 'Slået til.',
 	'account.recoveryLeftOne': '{n} gendannelseskode tilbage.',
 	'account.recoveryLeftMany': '{n} gendannelseskoder tilbage.',
+
+	// --- settings: alarm as standard -----------------------------------------------
+	'alarm.title': 'Alarm som standard',
+	'alarm.hint':
+		'Opgaver med bu00e5de en dato og et klokkeslu00e6t fu00e5r en alarm, uden at du beder om den. En opgave uden klokkeslu00e6t fu00e5r ingen — der er intet tidspunkt at ringe pu00e5. Skriv "ingen alarm" i linjen for at springe en enkelt over, eller "mind mig en time fu00f8r" for at give den sin egen.',
+	'alarm.on': 'Giv opgaver med et klokkeslu00e6t en alarm',
+	'alarm.when': 'Hvornu00e5r',
+	'alarm.atDue': 'Pu00e5 tidspunktet',
+	'alarm.minBefore': '{n} min. fu00f8r',
+	'alarm.hourBefore': '1 time fu00f8r',
+	'alarm.hoursBefore': '{n} timer fu00f8r',
+	'alarm.dayBefore': 'Dagen fu00f8r',
 
 	// --- settings: notifications ---------------------------------------------------
 	'push.title': 'Notifikationer på enheden',
@@ -762,6 +776,14 @@ export const da = {
 	'detail.newSubtask': 'Ny undertask',
 	'detail.files': 'Filer',
 	'detail.delete': 'Slet',
+	'detail.remindAtDue': 'På tidspunktet',
+	'detail.remindBefore': '{when} før',
+	'detail.remindAfter': '{when} efter',
+	'when.minuteMany': '{n} min.',
+	'when.hourOne': '1 time',
+	'when.hourMany': '{n} timer',
+	'when.dayOne': '1 dag',
+	'when.dayMany': '{n} dage',
 	'detail.reminders': 'Påmindelser',
 	'detail.newReminder': 'Ny påmindelse',
 	'detail.sent': 'sendt',

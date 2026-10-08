@@ -243,6 +243,10 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	// The store wrote the labels; the struct it was handed does not know that, and
 	// the response has to describe the task that now exists.
 	t.Labels = req.Labels
+	if err := s.applyDefaultReminder(r.Context(), t, user); err != nil {
+		s.internal(w, r, "default reminder", err)
+		return
+	}
 	s.activity(r, t.ProjectID, t.ID, "task.created", map[string]any{"content": t.Content})
 	s.publish(t.ProjectID, "task.created", toTaskJSON(*t))
 	// Lavet til en anden med det samme. Det er den samme besked som at blive
@@ -335,6 +339,12 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	t, err := s.db.GetTask(r.Context(), taskID, user.ID)
 	if err != nil {
 		s.storeError(w, r, "get task", err)
+		return
+	}
+	// Et klokkeslu00e6t kan ogsu00e5 komme til EFTER at opgaven er lavet, og det er den
+	// halvdel, der ellers mangler i et lu00f8fte om "alle opgaver med en dato og tid".
+	if err := s.applyDefaultReminder(r.Context(), t, user); err != nil {
+		s.internal(w, r, "default reminder", err)
 		return
 	}
 	s.activity(r, t.ProjectID, t.ID, "task.updated", nil)
@@ -620,14 +630,55 @@ func (s *Server) handleQuickAdd(w http.ResponseWriter, r *http.Request) {
 	s.activity(r, t.ProjectID, t.ID, "task.created", map[string]any{"content": t.Content})
 	s.publish(t.ProjectID, "task.created", toTaskJSON(*t))
 
-	if unknownProject != "" || unknownSection != "" {
+	// The alarm the line asked for, after the task because a reminder needs its id.
+	//
+	// Set when the line asked to be reminded and the task has nothing to count back
+	// from. An offset is relative to the due moment, and DueReminders selects the
+	// offset form only `AND t.due_datetime IS NOT NULL` — so on a task with a day
+	// but no clock there is nothing to be an hour before, and the row would sit in
+	// the table forever without firing. Reported the same way an unknown project
+	// is: the task is created either way, and the caller is told what could not be
+	// honoured. An alarm that silently never rings is the one way a reminder must
+	// not fail, because nothing afterwards reveals it.
+	reminderNotSet := ""
+	switch {
+	case len(parsed.ReminderAt) == len("2006-01-02T15:04"):
+		day, clock := parsed.ReminderAt[:10], parsed.ReminderAt[11:]
+		if _, when, err := resolveDue(day, clock, user.Timezone); err == nil && when != nil {
+			if _, err := s.db.CreateReminder(r.Context(), t.ID, user.ID, when, nil); err != nil {
+				s.internal(w, r, "create reminder", err)
+				return
+			}
+		}
+	case parsed.ReminderOffsetMin != nil:
+		if t.DueDatetime == nil {
+			reminderNotSet = "no due time to count back from"
+		} else if _, err := s.db.CreateReminder(r.Context(), t.ID, user.ID, nil, parsed.ReminderOffsetMin); err != nil {
+			s.internal(w, r, "create reminder", err)
+			return
+		}
+	}
+
+	// Standarden til sidst, og efter den udtrykkelige: "mind mig en time fu00f8r" har
+	// allerede lagt sin, og applyDefaultReminder lu00e6gger ikke en oven pu00e5. "ingen
+	// alarm" er den anden vej ud u2014 den eneste mu00e5de at sige nej til standarden,
+	// mens man skriver opgaven, frem for at u00e5bne den bagefter og slette alarmen.
+	if !parsed.NoReminder {
+		if err := s.applyDefaultReminder(r.Context(), t, user); err != nil {
+			s.internal(w, r, "default reminder", err)
+			return
+		}
+	}
+
+	if unknownProject != "" || unknownSection != "" || reminderNotSet != "" {
 		// Alongside the task rather than instead of it: the task was created, and
 		// this says what could not be honoured while creating it.
 		writeJSON(w, http.StatusCreated, struct {
 			taskJSON
 			UnknownProject string `json:"unknown_project,omitempty"`
 			UnknownSection string `json:"unknown_section,omitempty"`
-		}{toTaskJSON(*t), unknownProject, unknownSection})
+			ReminderNotSet string `json:"reminder_not_set,omitempty"`
+		}{toTaskJSON(*t), unknownProject, unknownSection, reminderNotSet})
 		return
 	}
 	writeJSON(w, http.StatusCreated, toTaskJSON(*t))
@@ -803,4 +854,39 @@ func (s *Server) handleSnoozeTask(w http.ResponseWriter, r *http.Request) {
 	s.activity(r, t.ProjectID, t.ID, verb, nil)
 	s.publish(t.ProjectID, "task.updated", toTaskJSON(*t))
 	writeJSON(w, http.StatusOK, toTaskJSON(*t))
+}
+
+// applyDefaultReminder gives a task the alarm the account asks for without being
+// asked each time.
+//
+// Three things make it a no-op, and each of them is the point rather than a guard:
+//
+//   - The account has the default off. That is where every account starts, and it
+//     stays there until somebody turns it on: switching it on in a migration would
+//     have given every existing user alarms they never asked for, on tasks already
+//     lying there, in software other people run themselves.
+//   - The task has no clock. A task due "tomorrow" has no moment to ring at, and
+//     DueReminders selects the offset form only `AND t.due_datetime IS NOT NULL` —
+//     so the row would sit there and never fire.
+//   - The task already has a reminder. The line may have asked for one itself, or
+//     the task may be being edited for the second time; either way the default is
+//     a default and must not stack a second alarm on top of a stated one.
+//
+// Called on every path a task can gain a clock — created, edited, or quick-added —
+// because a default that only applies to one of them is a setting that is true on
+// Tuesdays. CalDAV is deliberately not one of them: a task arriving from Apple
+// Reminders brings its own alarm, and two alarms for one task is worse than none.
+func (s *Server) applyDefaultReminder(ctx context.Context, t *store.Task, user *store.User) error {
+	if user.DefaultReminderMin == nil || t == nil || t.DueDatetime == nil {
+		return nil
+	}
+	existing, err := s.db.ListReminders(ctx, t.ID)
+	if err != nil {
+		return err
+	}
+	if len(existing) > 0 {
+		return nil
+	}
+	_, err = s.db.CreateReminder(ctx, t.ID, user.ID, nil, user.DefaultReminderMin)
+	return err
 }

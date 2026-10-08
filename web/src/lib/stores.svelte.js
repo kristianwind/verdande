@@ -687,6 +687,10 @@ class AppState {
 		try {
 			const task = await api.quickAdd(text, projectId, sectionId, parentId);
 			this.upsert(task);
+			// Sagt højt frem for tabt. En alarm, der ikke kunne sættes, er den eneste
+			// slags påmindelse, hvis fejl intet bagefter afslører — der står ingen
+			// række at savne, og man opdager den først, da den ikke ringede.
+			if (task?.reminder_not_set) this.toast(t('task.alarmNeedsATime'));
 			return task;
 		} catch (e) {
 			this.toast(humanMessage(e));

@@ -46,7 +46,22 @@ type User struct {
 	// NavOrder is the order this person wants the fixed views in, by key. Empty
 	// means the order the program ships with. Unknown keys are ignored and missing
 	// ones are appended, so adding a view later is not a migration.
-	NavOrder  []string
+	NavOrder []string
+
+	// DefaultReminderMin gives every task that has a clock an alarm without being
+	// asked, as minutes relative to the due moment: negative for before it, zero
+	// for at it. Nil is off, which is what every account starts as.
+	//
+	// The same sign convention as reminders.offset_min, because this is the column
+	// the value ends up in — the store ADDS it to the due time. Two sign rules for
+	// one idea is the kind of difference that only shows up as an alarm going off
+	// at the wrong moment.
+	//
+	// Only tasks with a clock. A task due "tomorrow" with no time has no moment to
+	// ring at, and DueReminders selects the offset form only when due_datetime is
+	// set, so an alarm there would be a row that never fires.
+	DefaultReminderMin *int
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -136,7 +151,8 @@ func (db *DB) UserByID(ctx context.Context, id string) (*User, error) {
 }
 
 const userColumns = `id, email, name, password_hash, totp_secret, totp_enabled,
-	avatar_color, timezone, locale, is_admin, sidebar_collapsed, nav_order, created_at, updated_at`
+	avatar_color, timezone, locale, is_admin, sidebar_collapsed, nav_order,
+	default_reminder_min, created_at, updated_at`
 
 func (db *DB) scanUser(ctx context.Context, query string, args ...any) (*User, error) {
 	var u User
@@ -145,10 +161,12 @@ func (db *DB) scanUser(ctx context.Context, query string, args ...any) (*User, e
 	var created, updated int64
 
 	var collapsed, navOrder string
+	var defaultReminder sql.NullInt64
 
 	err := db.QueryRowContext(ctx, query, args...).Scan(
 		&u.ID, &u.Email, &u.Name, &u.PasswordHash, &secret, &totpEnabled,
-		&u.AvatarColor, &u.Timezone, &u.Locale, &isAdmin, &collapsed, &navOrder, &created, &updated)
+		&u.AvatarColor, &u.Timezone, &u.Locale, &isAdmin, &collapsed, &navOrder,
+		&defaultReminder, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -172,6 +190,10 @@ func (db *DB) scanUser(ctx context.Context, query string, args ...any) (*User, e
 	_ = json.Unmarshal([]byte(collapsed), &u.SidebarCollapsed)
 	u.NavOrder = []string{}
 	_ = json.Unmarshal([]byte(navOrder), &u.NavOrder)
+	if defaultReminder.Valid {
+		v := int(defaultReminder.Int64)
+		u.DefaultReminderMin = &v
+	}
 	u.CreatedAt = time.Unix(created, 0).UTC()
 	u.UpdatedAt = time.Unix(updated, 0).UTC()
 	return &u, nil
@@ -690,4 +712,23 @@ func (db *DB) UserByICSToken(ctx context.Context, token string) (*User, error) {
 		return nil, ErrNotFound
 	}
 	return db.scanUser(ctx, `SELECT `+userColumns+` FROM users WHERE ics_token = ?`, token)
+}
+
+// SetDefaultReminder records whether tasks with a clock get an alarm unasked, and
+// how far ahead of the due moment it rings. Nil turns it off.
+func (db *DB) SetDefaultReminder(ctx context.Context, userID string, minutes *int) error {
+	var value any
+	if minutes != nil {
+		value = *minutes
+	}
+	res, err := db.ExecContext(ctx,
+		`UPDATE users SET default_reminder_min = ?, updated_at = ? WHERE id = ?`,
+		value, time.Now().Unix(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

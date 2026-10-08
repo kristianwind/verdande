@@ -241,6 +241,9 @@ export const api = {
 	// a save button, and this writes on every click of a chevron.
 	setNavOrder: (order) => put('/auth/nav-order', { order }),
 	setSidebarSections: (sections) => put('/auth/sidebar-sections', { sections }),
+	// null slu00e5r den fra. Minutter i forhold til forfaldstiden, negativt for fu00f8r —
+	// samme fortegn som reminders.offset_min, fordi det er den kolonne, den ender i.
+	setDefaultReminder: (minutes) => put('/auth/default-reminder', { minutes }),
 	signup: (data) => post('/auth/signup', data),
 	forgotPassword: (email) => post('/auth/password/forgot', { email }),
 	resetPassword: (token, password) => post('/auth/password/reset', { token, password }),

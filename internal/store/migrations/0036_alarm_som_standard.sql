@@ -1,0 +1,23 @@
+-- Alarm som standard på opgaver med et klokkeslæt.
+--
+-- Påmindelser har virket længe og skulle sættes én ad gangen: en opgave med
+-- "i morgen kl 9" fik en tid og ingen alarm, for intet skaber en påmindelse af sig
+-- selv. Det er den rigtige standard for en opgave UDEN klokkeslæt — der er intet
+-- tidspunkt at ringe på — men for en med et er det en omvej, man går hver gang.
+--
+-- Minutter i forhold til forfaldstiden, og NULL betyder slået fra. Én nullable
+-- kolonne frem for et flueben plus et tal, så tilstanden "slået til uden
+-- forskydning" ikke findes og derfor ikke kan blive uenig med sig selv.
+--
+-- Fortegnet er det samme som i reminders.offset_min, fordi det er den kolonne,
+-- værdien ender i: lageret LÆGGER tallet til forfaldstiden, så en alarm FØR er
+-- negativ og 0 er præcis på tidspunktet. To forskellige fortegnsregler for det
+-- samme begreb er den slags forskel, der kun viser sig som en alarm, der ringer
+-- på det forkerte tidspunkt.
+--
+-- NULL for alle, der findes i dag, og det er med vilje. At slå den til i en
+-- migrering ville give hver eksisterende bruger alarmer, de ikke har bedt om, på
+-- opgaver de har liggende — og det her er software, andre selv driver. En
+-- indstilling, man selv slår til, er en anden sag end en notifikation, der
+-- pludselig kommer.
+ALTER TABLE users ADD COLUMN default_reminder_min INTEGER;

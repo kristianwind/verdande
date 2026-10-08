@@ -87,6 +87,31 @@ async function nyNote(side) {
 }
 
 /**
+ * Som `nyNote`, men UDEN klikket i feltet.
+ *
+ * Klikket er netop det, markør-prøverne ikke må gøre: de måler, at markøren
+ * står i overskriften, uden at nogen har sat den. Ventetiden skal de til
+ * gengæld have, og manglen på den kostede to røde CI-kørsler.
+ *
+ * `click()` på "Ny note" vender tilbage, så snart klikket er sendt, mens noten
+ * først skal oprettes på serveren og tegnes bagefter. Uden ventetiden går det,
+ * der tastes, ind i den FORRIGE note eller ingen steder — og så er der heller
+ * ingen gemning at vente på, så en `waitForResponse` løber tørt i stedet. Det
+ * er to forskellige påstande, der fejler, med én årsag. Se kommentaren over
+ * `nyNote`: faren var skrevet ned, med sin løsning, før prøverne blev skrevet.
+ *
+ * Overskriften er værnet frem for bare det tomme felt: <h1> skrives af samme
+ * effekt, der sætter markøren, så når den er der, er markøren sat.
+ */
+async function nyTomNote(side) {
+	await side.getByRole('button', { name: 'Ny note' }).click();
+	const felt = side.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(felt).toHaveText('');
+	await expect(side.locator('.editor h1')).toHaveCount(1);
+	return felt;
+}
+
+/**
  * Kommendes liste kan se længere frem end en uge.
  *
  * Syv dage er stadig det, den åbner på — det er den vandring, der er værd at gå om
@@ -5721,9 +5746,19 @@ async function caretBlock(page) {
 test('en ny note åbner med markøren i overskriften', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 	await page.goto('/noter');
-	await page.getByRole('button', { name: 'Ny note' }).click();
+	await nyTomNote(page);
 
-	expect(await caretBlock(page), 'markøren skal stå i h1').toBe('h1');
+	// `expect.poll` og ikke én læsning: `click()` vender tilbage, så snart klikket er
+	// sendt, mens markøren sættes efter en netværksrundtur OG en gentegning. Lokalt
+	// er rundturen under et millisekund, så ét snapshot ramte altid — på en runner
+	// ramte det `null`, og prøven bestod på main ved held frem for ved regel.
+	//
+	// Kontrollen nedenfor (`stjæler ikke markøren`) må IKKE laves om til en poll:
+	// den forventer null, så en poll ville bestå på første læsning, uanset hvad
+	// koden gjorde. Den ankrer sig i stedet på overskriftens tekst først.
+	await expect
+		.poll(() => caretBlock(page), { message: 'markøren skal stå i h1' })
+		.toBe('h1');
 
 	// Og den står et sted, man kan skrive: det, der tastes, bliver titlen, og
 	// titlen er det, listen kalder noten.
@@ -5742,10 +5777,18 @@ test('en note med indhold stjæler ikke markøren', async ({ page }) => {
 	// overskriften og skubbe det, man var i gang med.
 	const trouble = watchForTrouble(page);
 	await page.goto('/noter');
-	await page.getByRole('button', { name: 'Ny note' }).click();
+	await nyTomNote(page);
+
+	// Lyt FØR der skrives. Her stod `waitForTimeout(1200)`, og kommentaren over
+	// `gemt` i toppen af filen nævner præcis det tal: et fast ophold er et gæt om,
+	// hvor hurtig maskinen er, og gættet holder indtil CI er travl. Det holdt indtil
+	// CI var travl — gemningen var ikke nået, genindlæsningen smed det skrevne væk,
+	// og prøven faldt på at noten ikke fandtes frem for på markøren, som er det den
+	// måler. Svaret på PATCH'en er det eneste, der beviser, at serveren har hørt om
+	// det.
+	const gemt = noteGemt(page);
 	await page.keyboard.type('Allerede skrevet');
-	// Vent til den er gemt, så den er en note med indhold næste gang den åbnes.
-	await page.waitForTimeout(1200);
+	await gemt;
 
 	await page.reload();
 	await page.getByRole('button', { name: /Allerede skrevet/ }).first().click();
@@ -5762,9 +5805,11 @@ test('urd-døren opfører sig ens: ny note, markør i overskriften', async ({ pa
 	const trouble = watchForTrouble(page);
 	await page.goto('/urd');
 	await expect(page).toHaveURL(/\/noter$/);
-	await page.getByRole('button', { name: 'Ny note' }).click();
+	await nyTomNote(page);
 
-	expect(await caretBlock(page), 'markøren skal stå i h1 også i urd').toBe('h1');
+	await expect
+		.poll(() => caretBlock(page), { message: 'markøren skal stå i h1 også i urd' })
+		.toBe('h1');
 	expect(trouble).toEqual([]);
 });
 
@@ -5787,7 +5832,9 @@ test('en note oprettet fra et projekt åbner også med markøren i overskriften'
 	await page.getByRole('button', { name: 'Ny note', exact: true }).click();
 	await expect(page).toHaveURL(/\/noter\?note=/);
 
-	expect(await caretBlock(page), 'markøren skal stå i h1 efter navigationen').toBe('h1');
+	await expect
+		.poll(() => caretBlock(page), { message: 'markøren skal stå i h1 efter navigationen' })
+		.toBe('h1');
 	await page.keyboard.type('Dæk og kort');
 	await expect(page.locator('.editor h1').first()).toHaveText('Dæk og kort');
 
@@ -5845,6 +5892,84 @@ test('den runde knap sætter markøren i feltet, så tastaturet kan diktere', as
 	await expect(page.getByText('ring til tandlægen').first()).toBeVisible();
 	// Og skuffen lukker sig selv, så man ikke står med tastaturet oppe bagefter.
 	await expect(page.locator('.sheet.open')).toHaveCount(0);
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * En talt opgave kan sætte sin egen alarm.
+ *
+ * Det var omvejen: en dikteret "i morgen kl 9" fik en tid og INGEN alarm, for
+ * ingenting skaber en påmindelse af sig selv — `CreateReminder` blev kun kaldt fra
+ * sit eget endepunkt. Så skulle man bagefter åbne opgaven, finde Påmindelser og
+ * vælge et klokkeslæt, og den omvej er længere end at skrive opgaven.
+ *
+ * Nu siger sætningen det selv, og det gælder uanset hvor stemmen kommer ind:
+ * tastaturets diktering, en genvej eller noget tredje ender som tekst gennem den
+ * samme parser.
+ *
+ * Prøven går hele vejen til skærmbilledet frem for at stoppe ved svaret, fordi
+ * forskydningen er negativ i lageret — det lægger den til forfaldstiden — og
+ * "-60 min." på skærmen er et fortegn, læseren selv skal oversætte.
+ */
+test('en talt opgave kan sætte sin egen alarm', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.setViewportSize(PHONE);
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Tal en opgave ind' }).click();
+	const felt = page.locator('.sheet input[type="text"]');
+
+	// Set, før den sendes: alarmen lyser op som et forstået felt, ved siden af
+	// datoen. Det er hele pointen med fremvisningen — en parser, man ikke kan se
+	// arbejde, holder man op med at stole på, første gang den tager fejl.
+	await felt.fill('booke tandrens hos Lisa i morgen kl 9 mind mig en time før');
+	await expect(page.locator(".sheet mark[data-kind='reminder']")).toHaveText('mind mig en time før');
+
+	await felt.press('Enter');
+	await expect(page.locator('.sheet.open')).toHaveCount(0);
+
+	// Opgaven er i morgen, så den står ikke på I dag — se de andre prøver her.
+	// Et navn ingen anden prøve bruger, og det er ikke pynt: suiten kører med én
+	// arbejder mod ÉN database, så "ring til tandlægen" findes fire steder i denne
+	// fil, når denne prøve kommer til. `.first()` ramte en af de andres opgave, som
+	// ikke har nogen alarm — og kørt alene bestod prøven, fordi der kun var én.
+	await page.goto('/upcoming');
+	await page.getByText('booke tandrens hos Lisa').click();
+
+	// Og alarmen står der, skrevet som ord og ikke som et fortegn.
+	await expect(page.getByText('1 time før')).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * En alarm, der ikke kan ringe, bliver sagt højt.
+ *
+ * "mind mig en time før" på en opgave med en dag men ingen klokketid har intet at
+ * være en time før: `DueReminders` vælger forskydningsformen kun
+ * `AND t.due_datetime IS NOT NULL`, så rækken ville stå i tabellen og aldrig fyre.
+ *
+ * Det er den ene slags påmindelse, hvis fejl intet bagefter afslører — der står
+ * ingen række at savne, og man opdager den først, da den ikke ringede. Derfor
+ * bliver opgaven oprettet og beskeden sagt, i stedet for at alarmen tabes i
+ * stilhed.
+ */
+test('en alarm uden klokkeslæt at regne tilbage fra bliver sagt højt', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.setViewportSize(PHONE);
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Tal en opgave ind' }).click();
+	const felt = page.locator('.sheet input[type="text"]');
+	await felt.fill('hente pakken på posthuset i morgen mind mig en time før');
+	await felt.press('Enter');
+
+	await expect(page.getByText(/Alarmen er ikke/)).toBeVisible();
+
+	// Opgaven er lavet alligevel. Et forkert ord må ikke koste tanken.
+	await page.goto('/upcoming');
+	await expect(page.getByText('hente pakken på posthuset')).toBeVisible();
+
 	expect(trouble).toEqual([]);
 });
 
