@@ -5699,3 +5699,96 @@ test('the verdande door is unaffected by the urd one', async ({ page }) => {
 
 	expect(trouble).toEqual([]);
 });
+
+/**
+ * Tal en opgave ind.
+ *
+ * The button does not do speech recognition and is not meant to: it puts the
+ * quick-add field in front of the thumb so the keyboard's own dictation can be
+ * used. So what there is to test is the field — that it is reachable, that it ends
+ * up with the caret in it, and that what lands there becomes a task.
+ *
+ * What a browser cannot be asked: whether iOS opened its keyboard. That happens
+ * only when focus() is called inside the user gesture, and no test can see the
+ * difference. What a test CAN see is the precondition — that the field is already
+ * in the document before the button is pressed — and that is asserted below,
+ * because it is exactly what a well-meaning `{#if open}` would take away.
+ */
+const PHONE = { width: 390, height: 844 };
+
+test('den runde knap sætter markøren i feltet, så tastaturet kan diktere', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.setViewportSize(PHONE);
+	await page.goto('/');
+
+	const knap = page.getByRole('button', { name: 'Tal en opgave ind' });
+	await expect(knap).toBeVisible();
+
+	// Feltet findes FØR klikket. Det er forudsætningen for at fokus kan sættes
+	// synkront, og den eneste del af iOS-kravet en prøve kan se.
+	//
+	// `toHaveCount` og ikke `count()`: den første venter, den anden er et
+	// øjebliksbillede taget med det samme — og en SPA har ikke tegnet endnu, når
+	// `goto` vender tilbage, så den ville tælle nul uanset hvad koden gjorde.
+	await expect(page.locator('.sheet input[type="text"]')).toHaveCount(1);
+
+	await knap.click();
+
+	// Markøren er i skuffens felt — ikke i sidens eget.
+	const fokusIskuffen = await page.evaluate(
+		() => !!document.activeElement?.closest('.sheet')
+	);
+	expect(fokusIskuffen, 'markøren skal stå i skuffens felt efter trykket').toBe(true);
+
+	// Og det, der dikteres, bliver læst af den samme parser som alt andet.
+	const felt = page.locator('.sheet input[type="text"]');
+	await felt.fill('ring til tandlægen i dag p1');
+	await felt.press('Enter');
+
+	// "i dag", af samme grund som de andre prøver her siger det: dette er
+	// I dag-visningen, og en opgave uden dato eller med "i morgen" er korrekt
+	// fraværende fra den — hvilket ville ligne, at tilføjelsen var fejlet.
+	await expect(page.getByText('ring til tandlægen').first()).toBeVisible();
+	// Og skuffen lukker sig selv, så man ikke står med tastaturet oppe bagefter.
+	await expect(page.locator('.sheet.open')).toHaveCount(0);
+	expect(trouble).toEqual([]);
+});
+
+test('skuffens felt stjæler ikke skriv-hvor-som-helst-genvejen', async ({ page }) => {
+	// Genvejen finder feltet med querySelector('[data-quickadd]'), som returnerer
+	// FØRSTE match i dokumentet. Skuffens felt må derfor ikke bære mærket — ellers
+	// begynder et tastetryk at skrive i en kasse, ingen kan se.
+	await page.setViewportSize(PHONE);
+	await page.goto('/');
+
+	await expect(page.getByRole('navigation', { name: 'Hovedmenu' })).toBeVisible();
+	await expect(page.locator('[data-quickadd]'), 'kun ét mærket felt').toHaveCount(1);
+	const mærketErIskuffen = await page.evaluate(
+		() => !!document.querySelector('[data-quickadd]')?.closest('.sheet')
+	);
+	expect(mærketErIskuffen, 'mærket skal sidde på sidens felt, ikke skuffens').toBe(false);
+
+	await page.keyboard.press('k');
+	await expect(page.locator('[data-quickadd]')).toHaveValue('k');
+});
+
+test('knappen findes ikke på en skrivebordsskærm', async ({ page }) => {
+	// Der er feltet fremme hele tiden og et tastatur at skrive på. En rund knap i
+	// bunden er til tommelfingeren.
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Tal en opgave ind' })).toBeHidden();
+});
+
+test('knappen findes ikke i urd-ansigtet', async ({ page }) => {
+	// Der er ingen opgaver at lægge noget i. Målt gennem døren frem for ved at
+	// skrue på en variabel, så det er den vej en bruger faktisk kommer.
+	await page.setViewportSize(PHONE);
+	await page.goto('/urd');
+	await expect(page.getByRole('navigation', { name: /Hovedmenu|Main menu/ })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Tal en opgave ind' })).toHaveCount(0);
+
+	// Kontrollen: samme telefon, den anden dør, og så er den der.
+	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Tal en opgave ind' })).toBeVisible();
+});
