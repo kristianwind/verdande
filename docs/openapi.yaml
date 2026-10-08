@@ -273,6 +273,50 @@ paths:
         "204": { description: Saved. }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /api/v1/auth/default-reminder:
+    put:
+      tags: [auth]
+      summary: The account's standing alarm on tasks that have a clock.
+      description: |
+        Reminders have always had to be set one at a time: a task written as
+        "i morgen kl 9" got a time and no alarm, because nothing creates a reminder
+        by itself. That is the right default for a task with no clock — there is no
+        moment to ring at — and an errand you walk every time for a task with one.
+
+        `minutes` is relative to the due moment and **negative for before it**, the
+        same convention `reminders.offset_min` uses because that is the column the
+        value ends up in: the store adds it to the due time. `0` is exactly at the
+        due moment. `null` turns the default off, which is where every account
+        starts — switching it on for everybody in a migration would have meant
+        alarms nobody asked for, on tasks already lying there.
+
+        A positive number is refused. An alarm after the thing it is warning about
+        is not a reminder, and accepting one here would make the single mistake this
+        value can make — a sign the wrong way round — look like a choice.
+
+        The default never stacks on an alarm the task already has, and a task can
+        opt out as it is written with "ingen alarm" in the quick-add line.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                minutes:
+                  type: integer
+                  nullable: true
+                  maximum: 0
+                  minimum: -10080
+                  description: |
+                    Minutes relative to the due moment, negative for before it.
+                    Null is off.
+                  example: -10
+      responses:
+        "204": { description: Saved. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/Validation" }
+
   /api/v1/auth/nav-order:
     put:
       tags: [auth]
@@ -4800,6 +4844,17 @@ components:
             The sidebar headings this person has folded away. Always an array,
             never null: a client that has to check for both an absent array and an
             empty one will one day check for only one of them.
+        default_reminder_min:
+          type: integer
+          nullable: true
+          description: |
+            The account's standing alarm on tasks that have a clock, as minutes
+            relative to the due moment and negative for before it. Null is off,
+            which is where every account starts.
+
+            Nullable rather than a number with a sentinel, because zero is a real
+            setting here — an alarm exactly at the due moment — so "off" and "at
+            the time" have to stay different answers.
           example: ["labels"]
         created_at: { type: string, format: date-time }
 
@@ -4991,6 +5046,21 @@ components:
                 task is still created, in the Inbox — a thought is not thrown away
                 over a typo — but the caller is told, because the alternative is
                 that the name vanishes from the title and nothing says why.
+            unknown_section:
+              type: string
+              description: |
+                The same, for a `/section` that no section of the project the task
+                landed in answers to. The task is created without a section.
+            reminder_not_set:
+              type: string
+              description: |
+                Present when the line asked to be reminded and the task has
+                nothing to count back from — "mind mig en time før" on a task with
+                a day but no clock. The offset form of a reminder fires relative to
+                the due moment, so without one the row would sit in the table and
+                never go off. The task is created; the alarm is not, and this says
+                so. An alarm that silently never rings is the one way a reminder
+                must not fail, because nothing afterwards reveals it.
 
     ParsedTask:
       type: object
@@ -5002,6 +5072,28 @@ components:
         due_date: { type: string, format: date }
         due_datetime: { type: string, format: date-time }
         recurrence: { type: string }
+        reminder_offset_min:
+          type: integer
+          description: |
+            When to be told, as minutes relative to the due moment: negative for
+            before it, zero for at it. Absent when the line asked for no alarm.
+            Relative rather than absolute, so moving the task moves its alarm with
+            it. Mind the sign — the store adds this to the due time, so "an hour
+            before" is -60.
+        no_reminder:
+          type: boolean
+          description: |
+            The line said it wants no alarm on this one — "ingen alarm". It exists
+            because of the account-wide default: with alarms on for everything that
+            has a clock, there has to be a way to say "not this one" in the same
+            breath as writing it, rather than creating the task, opening it and
+            deleting the alarm just made.
+        reminder_at:
+          type: string
+          description: |
+            An absolute alarm, `YYYY-MM-DDTHH:MM`, set when the line gave the
+            reminder a clock of its own. It takes the day the task is due: "mind
+            mig kl 8" about something due Friday means Friday at eight.
         labels:
           type: array
           items: { type: string }

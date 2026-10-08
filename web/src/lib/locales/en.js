@@ -264,6 +264,8 @@ export const en = {
 	'task.pastedAdd': 'Add {n} tasks',
 	'task.pastedCancel': 'Cancel',
 	'task.new': 'New task',
+	'task.alarmNeedsATime':
+		'The task is created. The alarm is not — "an hour before" needs a time to count back from.',
 	'task.speak': 'Speak a task',
 	'task.speakHint': 'Tap the microphone on your keyboard and say what needs doing.',
 	'task.syntaxProject': 'project',
@@ -396,6 +398,18 @@ export const en = {
 	'account.totpEnabled': 'On.',
 	'account.recoveryLeftOne': '{n} recovery code left.',
 	'account.recoveryLeftMany': '{n} recovery codes left.',
+
+	// --- settings: alarm as standard -----------------------------------------------
+	'alarm.title': 'Alarms by default',
+	'alarm.hint':
+		'Tasks with both a date and a time get an alarm without being asked. A task with no time gets none — there is no moment to ring at. Write "no alarm" in the line to skip a single one, or "remind me an hour before" to give it its own.',
+	'alarm.on': 'Give tasks with a time an alarm',
+	'alarm.when': 'When',
+	'alarm.atDue': 'At the time',
+	'alarm.minBefore': '{n} min before',
+	'alarm.hourBefore': '1 hour before',
+	'alarm.hoursBefore': '{n} hours before',
+	'alarm.dayBefore': 'The day before',
 
 	// --- settings: notifications ---------------------------------------------------
 	'push.title': 'Notifications on this device',
@@ -756,6 +770,14 @@ export const en = {
 	'detail.newSubtask': 'New sub-task',
 	'detail.files': 'Files',
 	'detail.delete': 'Delete',
+	'detail.remindAtDue': 'At the time',
+	'detail.remindBefore': '{when} before',
+	'detail.remindAfter': '{when} after',
+	'when.minuteMany': '{n} min',
+	'when.hourOne': '1 hour',
+	'when.hourMany': '{n} hours',
+	'when.dayOne': '1 day',
+	'when.dayMany': '{n} days',
 	'detail.reminders': 'Reminders',
 	'detail.newReminder': 'New reminder',
 	'detail.sent': 'sent',

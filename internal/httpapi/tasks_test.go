@@ -2080,3 +2080,390 @@ func TestSnoozeSinksAndWakes(t *testing.T) {
 		t.Errorf("woken task did not return: order = %v", got)
 	}
 }
+
+// --- alarms written into the line ---------------------------------------------
+
+// A dictated sentence sets its own alarm, and the alarm actually goes off.
+//
+// The assertion is on DueReminders rather than on a row existing, and the
+// difference is the whole test: a reminder row with the offset the wrong way round
+// exists just as convincingly and rings an hour LATE. So the question asked here is
+// "would this fire, and when" — one minute before it is due it must not be in the
+// list, one minute after it must.
+func TestQuickAddSetsTheAlarmTheLineAskedFor(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ctx := t.Context()
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "ring til tandlægen i morgen kl 9 mind mig en time før",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, body)
+	}
+	if body["content"] != "ring til tandlægen" {
+		t.Errorf("content = %v, want %q", body["content"], "ring til tandlægen")
+	}
+	if body["reminder_not_set"] != nil {
+		t.Errorf("reminder_not_set = %v, want absent — the task has a clock", body["reminder_not_set"])
+	}
+
+	taskID, _ := body["id"].(string)
+	rems, err := ts.db.ListReminders(ctx, taskID)
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 1 {
+		t.Fatalf("got %d reminders, want 1", len(rems))
+	}
+	if rems[0].OffsetMin == nil {
+		t.Fatalf("reminder has no offset; it should not be absolute")
+	}
+	if *rems[0].OffsetMin != -60 {
+		t.Errorf("offset = %d, want -60 — the store ADDS this to the due time, so a "+
+			"positive number is an alarm an hour late", *rems[0].OffsetMin)
+	}
+
+	due, err := time.Parse(time.RFC3339, body["due_datetime"].(string))
+	if err != nil {
+		t.Fatalf("parse due_datetime %v: %v", body["due_datetime"], err)
+	}
+
+	early, err := ts.db.DueReminders(ctx, due.Add(-61*time.Minute))
+	if err != nil {
+		t.Fatalf("due reminders (early): %v", err)
+	}
+	if len(early) != 0 {
+		t.Errorf("61 minutes before it is due, %d reminders are already due", len(early))
+	}
+
+	ripe, err := ts.db.DueReminders(ctx, due.Add(-59*time.Minute))
+	if err != nil {
+		t.Fatalf("due reminders (ripe): %v", err)
+	}
+	if len(ripe) != 1 {
+		t.Fatalf("59 minutes before it is due, got %d reminders, want 1", len(ripe))
+	}
+	if ripe[0].TaskContent != "ring til tandlægen" {
+		t.Errorf("the reminder that came due is for %q", ripe[0].TaskContent)
+	}
+}
+
+// An alarm with nothing to count back from is refused out loud.
+//
+// "mind mig en time før" on a task with a day but no clock has no moment to be an
+// hour before, and DueReminders selects the offset form only when the task has a
+// due_datetime — so the row would sit there and never fire. The task is created and
+// the caller is told, the same way an unknown #project is reported. An alarm that
+// silently never rings is the one way a reminder must not fail.
+func TestQuickAddSaysWhenTheAlarmCannotFire(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ctx := t.Context()
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "køb mælk i morgen mind mig en time før",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, body)
+	}
+	if body["content"] != "køb mælk" {
+		t.Errorf("content = %v, want %q", body["content"], "køb mælk")
+	}
+	if body["reminder_not_set"] == nil {
+		t.Errorf("reminder_not_set is absent; the alarm could not be set and nothing says so")
+	}
+
+	taskID, _ := body["id"].(string)
+	rems, err := ts.db.ListReminders(ctx, taskID)
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 0 {
+		t.Errorf("got %d reminders, want 0 — a reminder that can never fire is worse "+
+			"than none, because nothing afterwards reveals it", len(rems))
+	}
+}
+
+// A reminder given a clock of its own is kept as an absolute moment.
+func TestQuickAddSetsAnAbsoluteAlarm(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ctx := t.Context()
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "ring til tandlægen i morgen kl 9 mind mig kl 8",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, body)
+	}
+
+	taskID, _ := body["id"].(string)
+	rems, err := ts.db.ListReminders(ctx, taskID)
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 1 {
+		t.Fatalf("got %d reminders, want 1", len(rems))
+	}
+	if rems[0].OffsetMin != nil {
+		t.Errorf("offset = %d, want none — a clock was written, so it is absolute", *rems[0].OffsetMin)
+	}
+
+	due, err := time.Parse(time.RFC3339, body["due_datetime"].(string))
+	if err != nil {
+		t.Fatalf("parse due_datetime %v: %v", body["due_datetime"], err)
+	}
+	// Due at nine, reminded at eight: one hour earlier, on the task's own day.
+	if want := due.Add(-time.Hour); !rems[0].RemindAt.Equal(want) {
+		t.Errorf("RemindAt = %v, want %v", rems[0].RemindAt, want)
+	}
+}
+
+// --- the account's standing alarm --------------------------------------------
+
+// turnOnDefaultAlarm switches the account's standing alarm on, so many minutes
+// before the due moment.
+func turnOnDefaultAlarm(t *testing.T, ts *testServer, minutes int) {
+	t.Helper()
+	resp, body := ts.do(t, "PUT", "/api/v1/auth/default-reminder", map[string]any{"minutes": minutes})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("set default reminder: %d %v", resp.StatusCode, body)
+	}
+}
+
+// With the setting on, a task that has a clock gets its alarm without being asked.
+func TestDefaultAlarmAppliesToATaskWithAClock(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ctx := t.Context()
+	turnOnDefaultAlarm(t, ts, -10)
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "hente cyklen i morgen kl 16",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, body)
+	}
+
+	rems, err := ts.db.ListReminders(ctx, body["id"].(string))
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 1 {
+		t.Fatalf("got %d reminders, want 1", len(rems))
+	}
+	if rems[0].OffsetMin == nil || *rems[0].OffsetMin != -10 {
+		t.Errorf("offset = %v, want -10", rems[0].OffsetMin)
+	}
+}
+
+// And off is where every account starts. This is the control for the test above:
+// without it, an alarm appearing for any reason at all reads as the setting working.
+func TestNoDefaultAlarmUntilItIsTurnedOn(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ctx := t.Context()
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "hente cyklen i morgen kl 16",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, body)
+	}
+
+	rems, err := ts.db.ListReminders(ctx, body["id"].(string))
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 0 {
+		t.Errorf("got %d reminders on a fresh account, want 0 — turning a notification "+
+			"on for everybody is not a default anybody chose", len(rems))
+	}
+}
+
+// A task with a day but no clock gets nothing, because there is no moment to ring
+// at: DueReminders selects the offset form only when due_datetime is set, so the
+// row would be one that never fires.
+func TestDefaultAlarmNeedsAClockNotJustADay(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ctx := t.Context()
+	turnOnDefaultAlarm(t, ts, -10)
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "hente cyklen i morgen",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, body)
+	}
+
+	rems, err := ts.db.ListReminders(ctx, body["id"].(string))
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 0 {
+		t.Errorf("got %d reminders, want 0 — there is no clock to count back from", len(rems))
+	}
+}
+
+// The default does not stack on top of an alarm the line asked for.
+func TestDefaultAlarmDoesNotStackOnAStatedOne(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ctx := t.Context()
+	turnOnDefaultAlarm(t, ts, -10)
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "hente cyklen i morgen kl 16 mind mig en time før",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, body)
+	}
+
+	rems, err := ts.db.ListReminders(ctx, body["id"].(string))
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 1 {
+		t.Fatalf("got %d reminders, want 1 — the stated alarm, and no default on top", len(rems))
+	}
+	if rems[0].OffsetMin == nil || *rems[0].OffsetMin != -60 {
+		t.Errorf("offset = %v, want -60 — what the line said, not the default", rems[0].OffsetMin)
+	}
+}
+
+// "ingen alarm" is the way out of the default while writing the task.
+//
+// Without it the only way to have a timed task that does not ring is to create it,
+// open it, and delete the alarm that was just made — which is the omission a
+// default quietly creates.
+func TestNoAlarmInTheLineBeatsTheDefault(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ctx := t.Context()
+	turnOnDefaultAlarm(t, ts, -10)
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "hente cyklen i morgen kl 16 ingen alarm",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, body)
+	}
+	if body["content"] != "hente cyklen" {
+		t.Errorf("content = %v, want %q — the refusal should leave the title", body["content"], "hente cyklen")
+	}
+
+	rems, err := ts.db.ListReminders(ctx, body["id"].(string))
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 0 {
+		t.Errorf("got %d reminders, want 0 — the line said no alarm", len(rems))
+	}
+}
+
+// A clock added later gets the alarm too.
+//
+// This is the half a promise about "every task with a date and time" loses if the
+// default is only applied where tasks are created: a task written now and given a
+// time this afternoon is the same task.
+func TestDefaultAlarmAppliesWhenTheClockComesLater(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ctx := t.Context()
+	turnOnDefaultAlarm(t, ts, -10)
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "hente cyklen",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, body)
+	}
+	taskID := body["id"].(string)
+
+	rems, err := ts.db.ListReminders(ctx, taskID)
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 0 {
+		t.Fatalf("got %d reminders before there was a clock, want 0", len(rems))
+	}
+
+	resp, body = ts.do(t, "PATCH", "/api/v1/tasks/"+taskID, map[string]any{
+		"due_date": time.Now().AddDate(0, 0, 1).Format("2006-01-02"),
+		"due_time": "16:00",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch task: %d %v", resp.StatusCode, body)
+	}
+
+	rems, err = ts.db.ListReminders(ctx, taskID)
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 1 {
+		t.Fatalf("got %d reminders after the clock was added, want 1", len(rems))
+	}
+	if rems[0].OffsetMin == nil || *rems[0].OffsetMin != -10 {
+		t.Errorf("offset = %v, want -10", rems[0].OffsetMin)
+	}
+}
+
+// A positive offset is refused. An alarm after the thing it warns about is not a
+// reminder, and accepting one here would make the single mistake this value can
+// make — a sign the wrong way round — look like a choice somebody made.
+func TestDefaultAlarmRefusesAnOffsetAfterTheDueTime(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	resp, body := ts.do(t, "PUT", "/api/v1/auth/default-reminder", map[string]any{"minutes": 10})
+	if resp.StatusCode != http.StatusUnprocessableEntity && resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("set default reminder with +10: %d %v, want a refusal", resp.StatusCode, body)
+	}
+}
+
+// Null turns it off again, and the alarms already made are left alone: a default is
+// what happens to the NEXT task, not a statement about the ones already written.
+func TestDefaultAlarmCanBeTurnedOffAgain(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+	ctx := t.Context()
+	turnOnDefaultAlarm(t, ts, -10)
+
+	resp, body := ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "hente cyklen i morgen kl 16",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, body)
+	}
+	kept := body["id"].(string)
+
+	resp, body = ts.do(t, "PUT", "/api/v1/auth/default-reminder", map[string]any{"minutes": nil})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("turn off: %d %v", resp.StatusCode, body)
+	}
+
+	resp, body = ts.do(t, "POST", "/api/v1/tasks/quick-add", map[string]any{
+		"text": "hente bilen i morgen kl 17",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quick add: %d %v", resp.StatusCode, body)
+	}
+	rems, err := ts.db.ListReminders(ctx, body["id"].(string))
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 0 {
+		t.Errorf("got %d reminders after turning the default off, want 0", len(rems))
+	}
+
+	rems, err = ts.db.ListReminders(ctx, kept)
+	if err != nil {
+		t.Fatalf("list reminders: %v", err)
+	}
+	if len(rems) != 1 {
+		t.Errorf("the alarm made while it was on is gone; turning a default off is not " +
+			"a statement about the tasks already written")
+	}
+}

@@ -14,7 +14,7 @@
 	import { app, projectName, clockOf } from '$lib/stores.svelte.js';
 	import { focusOnMount } from '$lib/focus.js';
 	import { t, tag } from '$lib/i18n.svelte.js';
-	import { REPEATS } from '$lib/when.js';
+	import { REPEATS, reminderOffsetLabel } from '$lib/when.js';
 	import { readList } from '$lib/pastelist.js';
 
 	let { task, onclose } = $props();
@@ -757,7 +757,9 @@
 
 			{#each reminders as reminder (reminder.id)}
 				<div class="reminder">
-					<span>{reminder.remind_at ? stamp(reminder.remind_at) : `${reminder.offset_min} min.`}</span>
+					<span>{reminder.remind_at
+							? stamp(reminder.remind_at)
+							: reminderOffsetLabel(reminder.offset_min)}</span>
 					{#if reminder.sent}<span class="sent">{t('detail.sent')}</span>{/if}
 					<button class="remove" onclick={() => removeReminder(reminder)} aria-label={t('detail.delete')}>
 						×

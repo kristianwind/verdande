@@ -37,6 +37,7 @@ const (
 	KindSection  Kind = "section"
 	KindLabel    Kind = "label"
 	KindRepeat   Kind = "repeat"
+	KindReminder Kind = "reminder"
 )
 
 // Span is a byte range of the input that was consumed, and what it was read as.
@@ -70,7 +71,28 @@ type Result struct {
 	Recurrence string `json:"recurrence_rule,omitempty"`
 	// RecurrenceText is that rule written back out in Danish, for the preview.
 	RecurrenceText string `json:"recurrence_text,omitempty"`
-	Spans          []Span `json:"spans,omitempty"`
+	// ReminderOffsetMin is when to be told, as minutes relative to the task's due
+	// moment: negative for before it, zero for at it. Nil when the line asked for
+	// no reminder.
+	//
+	// Relative rather than absolute, so that moving the task moves its alarm with
+	// it. Mind the sign: the store ADDS this to the due time
+	// (`due_datetime + offset_min * 60`), so "an hour before" is -60. Getting that
+	// backwards gives an alarm an hour late, which is the one direction a reminder
+	// must never be wrong in.
+	ReminderOffsetMin *int `json:"reminder_offset_min,omitempty"`
+	// ReminderAt is an absolute reminder, "YYYY-MM-DDTHH:MM", set when the line
+	// gave the reminder a clock of its own. It takes the day the task is due:
+	// "mind mig kl 8" about something due Friday means Friday at eight, not today.
+	ReminderAt string `json:"reminder_at,omitempty"`
+	// NoReminder is the line saying it wants no alarm on this one — "ingen alarm".
+	//
+	// It exists because of the account-wide default: with alarms on for everything
+	// that has a clock, there has to be a way to say "not this one" in the same
+	// breath as writing it. Without that the only way out is to create the task,
+	// open it, and delete the alarm that was just made.
+	NoReminder bool   `json:"no_reminder,omitempty"`
+	Spans      []Span `json:"spans,omitempty"`
 }
 
 // Parse reads input as of the moment `now`, which is also the timezone dates are
@@ -95,6 +117,20 @@ func Parse(input string, now time.Time, locale string) Result {
 	// a time and — to a date parser reading the raw line — the 10th of December.
 	// mask keeps byte offsets intact, so spans still point into the original input.
 	masked := mask(input, spans)
+
+	// Reminders before the clock and the calendar, and that order is the whole
+	// trick: "mind mig en time før" has a duration in it and "mind mig kl 8" has a
+	// clock, and either one read by the time parser first becomes the task's own
+	// due time instead of its alarm. The phrase is anchored on a keyword the way a
+	// project is anchored on '#', so consuming it this early cannot take anything
+	// that was not offered to it.
+	// "No alarm" before "alarm", or the refusal leaves the very word the stage
+	// below is looking for standing in the line.
+	res.NoReminder, spans = extractNoReminder(masked, spans)
+	masked = mask(masked, spans)
+
+	rem, spans := extractReminder(masked, spans)
+	masked = mask(masked, spans)
 
 	// Recurrence before the date parser, and this order is load-bearing: "hver
 	// mandag" contains a weekday, and a date parser reading it first would claim
@@ -135,6 +171,21 @@ func Parse(input string, now time.Time, locale string) Result {
 	}
 	if hasTime {
 		res.DueTime = pad2(hour) + ":" + pad2(minute)
+	}
+
+	// The reminder is resolved last, because an absolute one needs the due date the
+	// stages above just worked out.
+	if rem.found {
+		if rem.hasClock {
+			day := res.DueDate
+			if day == "" {
+				day = now.Format("2006-01-02")
+			}
+			res.ReminderAt = day + "T" + pad2(rem.hour) + ":" + pad2(rem.min)
+		} else {
+			off := rem.offsetMin
+			res.ReminderOffsetMin = &off
+		}
 	}
 
 	sort.Slice(spans, func(i, j int) bool { return spans[i].Start < spans[j].Start })
@@ -686,4 +737,132 @@ func extractRecurrence(input string, spans []Span) (string, []Span) {
 		}
 	}
 	return "", spans
+}
+
+// --- reminders ----------------------------------------------------------------
+
+// reReminderLead finds the words that introduce an alarm. A reminder is anchored
+// on a keyword the way a project is anchored on '#': nothing becomes an alarm by
+// standing near a clock, because "ring til tandlægen kl 9" asks for a task at nine
+// and not to be woken before it.
+//
+// The trailing \b is load-bearing. Without it the pattern matches the first six
+// letters of "alarmen" and of "mind migrationen", takes them out of the title, and
+// sets an alarm nobody asked for.
+var reReminderLead = regexp.MustCompile(
+	`(?i)(?:^|\s)(mind\s+mig(?:\s+om\s+det)?|påmind(?:\s+mig)?|paamind(?:\s+mig)?` +
+		`|remind\s+me(?:\s+about\s+it)?|med\s+alarm)\b`)
+
+// reReminderOffset reads the tail as "this long before": "en time før", "10 min
+// før", "et kvarter før", "dagen før", "two days before".
+var reReminderOffset = regexp.MustCompile(
+	`(?i)^[\s,]*(?:om\s+)?(\d+|en|et|a|an|to|two|tre|three)?\s*` +
+		`(halv\s+time|halvtime|kvarter|minutter|minut|minutes|minute|min\.?` +
+		`|timer|time|hours|hour|dage|dagen|dag|days|day)\s*` +
+		`(?:før|foer|inden|before)`)
+
+// reReminderClock reads the tail as a clock of its own: "kl 8", "kl. 7.30", "at 7:30".
+var reReminderClock = regexp.MustCompile(`(?i)^[\s,]*(?:kl\.?|klokken|at)\s*(\d{1,2})(?:[.:](\d{2}))?`)
+
+// reminder is what the phrase said. OffsetMin is minutes relative to the due
+// moment and negative for "before"; zero means at the due moment, which is what a
+// bare "mind mig" asks for.
+type reminder struct {
+	found     bool
+	offsetMin int
+	hour, min int
+	hasClock  bool
+}
+
+// extractReminder reads the alarm out of the line.
+//
+// The lead-in is matched first and the tail interpreted afterwards, rather than in
+// one pattern, for the same reason the recurrence stage does it: a single
+// expression able to express all three endings — a duration, a clock, or nothing
+// at all — matches far more than the three things it is for.
+func extractReminder(input string, spans []Span) (reminder, []Span) {
+	m := reReminderLead.FindStringSubmatchIndex(input)
+	if m == nil {
+		return reminder{}, spans
+	}
+
+	rem := reminder{found: true}
+	start, end := m[2], m[3]
+	tail := input[end:]
+
+	if t := reReminderOffset.FindStringSubmatchIndex(tail); t != nil {
+		n := 1
+		if t[2] >= 0 {
+			n = spokenNumber(tail[t[2]:t[3]])
+		}
+		rem.offsetMin = -n * unitMinutes(tail[t[4]:t[5]])
+		end += t[1]
+	} else if t := reReminderClock.FindStringSubmatchIndex(tail); t != nil {
+		hour := atoi(tail, t[2], t[3])
+		minute := 0
+		if t[4] >= 0 {
+			minute = atoi(tail, t[4], t[5])
+		}
+		// An impossible clock is not a reminder. Saying nothing is better than
+		// setting one for 25:00, which the store would happily keep and never fire.
+		if !valid(hour, minute) {
+			return reminder{}, spans
+		}
+		rem.hour, rem.min, rem.hasClock = hour, minute, true
+		end += t[1]
+	}
+
+	return rem, append(spans, Span{Start: start, End: end, Kind: KindReminder})
+}
+
+// spokenNumber reads the count in front of a unit. People dictating say the word
+// rather than the digit, and "mind mig en time før" is the commonest form there is.
+func spokenNumber(w string) int {
+	switch strings.ToLower(w) {
+	case "en", "et", "a", "an":
+		return 1
+	case "to", "two":
+		return 2
+	case "tre", "three":
+		return 3
+	}
+	if n, err := strconv.Atoi(w); err == nil {
+		return n
+	}
+	return 1
+}
+
+// unitMinutes turns the unit into minutes. "halv time" and "kvarter" carry their
+// own count, so they come first: with a leading "en" they multiply by one and come
+// out as themselves.
+func unitMinutes(unit string) int {
+	u := strings.ToLower(strings.Join(strings.Fields(unit), " "))
+	switch {
+	case strings.HasPrefix(u, "halv"):
+		return 30
+	case strings.HasPrefix(u, "kvarter"):
+		return 15
+	case strings.HasPrefix(u, "min"):
+		return 1
+	case strings.HasPrefix(u, "time"), strings.HasPrefix(u, "hour"):
+		return 60
+	case strings.HasPrefix(u, "dag"), strings.HasPrefix(u, "day"):
+		return 1440
+	}
+	return 0
+}
+
+// reNoReminder finds the line asking not to be reminded. The account-wide default
+// gives every task with a clock an alarm, and this is how one task opts out while
+// it is being written rather than afterwards.
+var reNoReminder = regexp.MustCompile(
+	`(?i)(?:^|\s)(ingen\s+(?:alarm|påmindelse|paamindelse)|uden\s+alarm` +
+		`|no\s+alarm|no\s+reminder|without\s+an?\s+alarm)\b`)
+
+func extractNoReminder(input string, spans []Span) (bool, []Span) {
+	m := reNoReminder.FindStringSubmatchIndex(input)
+	if m == nil {
+		return false, spans
+	}
+	return true, append(spans, Span{Start: m[2], End: m[3], Kind: KindReminder})
 }

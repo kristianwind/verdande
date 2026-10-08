@@ -33,7 +33,14 @@ type userJSON struct {
 	// opposite case and stays in localStorage.
 	SidebarCollapsed []string `json:"sidebar_collapsed"`
 	NavOrder         []string `json:"nav_order"`
-	CreatedAt        string   `json:"created_at"`
+	// DefaultReminderMin is the account's standing alarm on tasks that have a
+	// clock, as minutes relative to the due moment and negative for before it.
+	// Null is off, which is where every account starts.
+	//
+	// A pointer rather than a number with a sentinel, so that "off" and "at the
+	// due moment" stay different answers: zero is a real setting here.
+	DefaultReminderMin *int   `json:"default_reminder_min"`
+	CreatedAt          string `json:"created_at"`
 }
 
 func toUserJSON(u *store.User) userJSON {
@@ -51,7 +58,8 @@ func toUserJSON(u *store.User) userJSON {
 		ID: u.ID, Email: u.Email, Name: u.Name, AvatarColor: u.AvatarColor,
 		Timezone: u.Timezone, Locale: u.Locale, IsAdmin: u.IsAdmin,
 		TOTPEnabled: u.TOTPEnabled, SidebarCollapsed: collapsed, NavOrder: order,
-		CreatedAt: u.CreatedAt.Format(time.RFC3339),
+		DefaultReminderMin: u.DefaultReminderMin,
+		CreatedAt:          u.CreatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -107,6 +115,40 @@ func (s *Server) handleSetNavOrder(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r.Context())
 	if err := s.db.SetNavOrder(r.Context(), user.ID, req.Order); err != nil {
 		s.storeError(w, r, "set nav order", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleSetDefaultReminder turns the account's standing alarm on or off.
+//
+// `minutes` is relative to the due moment and negative for before it, which is the
+// convention reminders.offset_min uses because that is the column it lands in. Null
+// is off. A positive number is refused: an alarm AFTER the thing it is warning
+// about is not a reminder, and allowing it here would make the one mistake this
+// value can make — a sign the wrong way round — look like a choice.
+func (s *Server) handleSetDefaultReminder(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Minutes *int `json:"minutes"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	if req.Minutes != nil {
+		switch {
+		case *req.Minutes > 0:
+			writeFieldErrors(w, map[string]string{"minutes": "must be zero or negative — an alarm comes before"})
+			return
+		// A week is the outer edge of "remind me ahead of this"; beyond it the
+		// number is far more likely to be a unit mistake than an intention.
+		case *req.Minutes < -7*24*60:
+			writeFieldErrors(w, map[string]string{"minutes": "must be within a week of the due time"})
+			return
+		}
+	}
+	user := userFrom(r.Context())
+	if err := s.db.SetDefaultReminder(r.Context(), user.ID, req.Minutes); err != nil {
+		s.storeError(w, r, "set default reminder", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -38,6 +38,7 @@ export const SETTINGS = [
 	// Notifikationer
 	{ path: '/indstillinger/notifikationer', anchor: 'dagens-plan', key: 'ai.plan', tab: 'settings.tab.notifications', words: 'plan morgen daily' },
 	{ path: '/indstillinger/notifikationer', anchor: 'push', key: 'push.title', tab: 'settings.tab.notifications', words: 'push besked notification badge' },
+	{ path: '/indstillinger/notifikationer', anchor: 'standard-alarm', key: 'alarm.title', tab: 'settings.tab.notifications', words: 'alarm pu00e5mindelse standard reminder default klokkeslu00e6t' },
 	{ path: '/indstillinger/notifikationer', anchor: 'seneste', key: 'push.recent', tab: 'settings.tab.notifications', words: 'log historik' },
 	{ path: '/indstillinger/notifikationer', anchor: 'version', key: 'push.version', tab: 'settings.tab.notifications', words: 'opdatering update version', admin: true },
 

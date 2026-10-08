@@ -5,6 +5,39 @@
 	import * as push from '$lib/push.js';
 	import { t, plural } from '$lib/i18n.svelte.js';
 
+	// --- alarm som standard -------------------------------------------------------
+
+	// Minutter i forhold til forfaldstiden, negativt for fu00f8r. Samme fortegn som
+	// reminders.offset_min, fordi det er den kolonne, vu00e6rdien ender i — to
+	// fortegnsregler for det samme begreb viser sig kun som en alarm pu00e5 et forkert
+	// tidspunkt.
+	const ALARM_CHOICES = [0, -5, -10, -15, -30, -60, -120, -1440];
+
+	// Valgt, nu00e5r indstillingen slu00e5s til igen. Pu00e5 tidspunktet er sju00e6ldent det, man
+	// mener med en alarm: der er ingen varsel i at blive mindet om noget, mens det
+	// sker.
+	const ALARM_DEFAULT = -10;
+
+	function alarmLabel(minutes) {
+		if (minutes === 0) return t('alarm.atDue');
+		const n = Math.abs(minutes);
+		if (n === 1440) return t('alarm.dayBefore');
+		if (n === 60) return t('alarm.hourBefore');
+		if (n % 60 === 0) return t('alarm.hoursBefore', { n: n / 60 });
+		return t('alarm.minBefore', { n });
+	}
+
+	async function saveAlarm(minutes) {
+		try {
+			await api.setDefaultReminder(minutes);
+			// Kontoen genlu00e6ses frem for at blive gu00e6ttet lokalt: serveren er den, der
+			// afviser et positivt tal, su00e5 det, der vises, skal vu00e6re det, der blev gemt.
+			app.user = await api.me();
+		} catch (e) {
+			app.toast(humanMessage(e));
+		}
+	}
+
 	// --- web push ----------------------------------------------------------------
 
 	let pushState = $state('loading');
@@ -251,6 +284,37 @@
 				{t('ai.planNow')}
 			</button>
 		{/if}
+	{/if}
+</section>
+
+<section class="panel" id="standard-alarm">
+	<header>
+		<h2>{t('alarm.title')}</h2>
+		<p class="hint">{t('alarm.hint')}</p>
+	</header>
+
+	<label class="check">
+		<input
+			type="checkbox"
+			checked={app.user?.default_reminder_min != null}
+			onchange={(e) => saveAlarm(e.currentTarget.checked ? ALARM_DEFAULT : null)}
+		/>
+		<span>{t('alarm.on')}</span>
+	</label>
+
+	{#if app.user?.default_reminder_min != null}
+		<div class="field">
+			<label for="alarmwhen">{t('alarm.when')}</label>
+			<select
+				id="alarmwhen"
+				value={app.user.default_reminder_min}
+				onchange={(e) => saveAlarm(Number(e.currentTarget.value))}
+			>
+				{#each ALARM_CHOICES as minutes (minutes)}
+					<option value={minutes}>{alarmLabel(minutes)}</option>
+				{/each}
+			</select>
+		</div>
 	{/if}
 </section>
 

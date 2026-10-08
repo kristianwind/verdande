@@ -5848,6 +5848,84 @@ test('den runde knap sætter markøren i feltet, så tastaturet kan diktere', as
 	expect(trouble).toEqual([]);
 });
 
+/**
+ * En talt opgave kan sætte sin egen alarm.
+ *
+ * Det var omvejen: en dikteret "i morgen kl 9" fik en tid og INGEN alarm, for
+ * ingenting skaber en påmindelse af sig selv — `CreateReminder` blev kun kaldt fra
+ * sit eget endepunkt. Så skulle man bagefter åbne opgaven, finde Påmindelser og
+ * vælge et klokkeslæt, og den omvej er længere end at skrive opgaven.
+ *
+ * Nu siger sætningen det selv, og det gælder uanset hvor stemmen kommer ind:
+ * tastaturets diktering, en genvej eller noget tredje ender som tekst gennem den
+ * samme parser.
+ *
+ * Prøven går hele vejen til skærmbilledet frem for at stoppe ved svaret, fordi
+ * forskydningen er negativ i lageret — det lægger den til forfaldstiden — og
+ * "-60 min." på skærmen er et fortegn, læseren selv skal oversætte.
+ */
+test('en talt opgave kan sætte sin egen alarm', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.setViewportSize(PHONE);
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Tal en opgave ind' }).click();
+	const felt = page.locator('.sheet input[type="text"]');
+
+	// Set, før den sendes: alarmen lyser op som et forstået felt, ved siden af
+	// datoen. Det er hele pointen med fremvisningen — en parser, man ikke kan se
+	// arbejde, holder man op med at stole på, første gang den tager fejl.
+	await felt.fill('booke tandrens hos Lisa i morgen kl 9 mind mig en time før');
+	await expect(page.locator(".sheet mark[data-kind='reminder']")).toHaveText('mind mig en time før');
+
+	await felt.press('Enter');
+	await expect(page.locator('.sheet.open')).toHaveCount(0);
+
+	// Opgaven er i morgen, så den står ikke på I dag — se de andre prøver her.
+	// Et navn ingen anden prøve bruger, og det er ikke pynt: suiten kører med én
+	// arbejder mod ÉN database, så "ring til tandlægen" findes fire steder i denne
+	// fil, når denne prøve kommer til. `.first()` ramte en af de andres opgave, som
+	// ikke har nogen alarm — og kørt alene bestod prøven, fordi der kun var én.
+	await page.goto('/upcoming');
+	await page.getByText('booke tandrens hos Lisa').click();
+
+	// Og alarmen står der, skrevet som ord og ikke som et fortegn.
+	await expect(page.getByText('1 time før')).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
+/**
+ * En alarm, der ikke kan ringe, bliver sagt højt.
+ *
+ * "mind mig en time før" på en opgave med en dag men ingen klokketid har intet at
+ * være en time før: `DueReminders` vælger forskydningsformen kun
+ * `AND t.due_datetime IS NOT NULL`, så rækken ville stå i tabellen og aldrig fyre.
+ *
+ * Det er den ene slags påmindelse, hvis fejl intet bagefter afslører — der står
+ * ingen række at savne, og man opdager den først, da den ikke ringede. Derfor
+ * bliver opgaven oprettet og beskeden sagt, i stedet for at alarmen tabes i
+ * stilhed.
+ */
+test('en alarm uden klokkeslæt at regne tilbage fra bliver sagt højt', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.setViewportSize(PHONE);
+	await page.goto('/');
+
+	await page.getByRole('button', { name: 'Tal en opgave ind' }).click();
+	const felt = page.locator('.sheet input[type="text"]');
+	await felt.fill('hente pakken på posthuset i morgen mind mig en time før');
+	await felt.press('Enter');
+
+	await expect(page.getByText(/Alarmen er ikke/)).toBeVisible();
+
+	// Opgaven er lavet alligevel. Et forkert ord må ikke koste tanken.
+	await page.goto('/upcoming');
+	await expect(page.getByText('hente pakken på posthuset')).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
 test('skuffens felt stjæler ikke skriv-hvor-som-helst-genvejen', async ({ page }) => {
 	// Genvejen finder feltet med querySelector('[data-quickadd]'), som returnerer
 	// FØRSTE match i dokumentet. Skuffens felt må derfor ikke bære mærket — ellers

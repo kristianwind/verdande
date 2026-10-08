@@ -184,3 +184,37 @@ function every(interval, unit) {
 	if (interval === 2) return t(`repeat.everyOther.${unit}`);
 	return t(`repeat.everyN.${unit}`, { n: interval });
 }
+
+/**
+ * En påmindelses forskydning, skrevet som ord.
+ *
+ * Lageret LÆGGER tallet til forfaldstiden (`due_datetime + offset_min * 60`), så
+ * en alarm før er negativ. Rå blev det vist som "-60 min.": et fortegn, læseren
+ * selv skal oversætte, på netop den oplysning man skal kunne stole på uden at
+ * regne — og en alarm, man har misforstået, opdager man først, da den ringede på
+ * det forkerte tidspunkt.
+ *
+ * Retningen er skilt fra varigheden, så der kun er ét sæt enheder at vedligeholde.
+ * En positiv forskydning kan ikke laves hverken i hurtig tilføjelse eller i
+ * skærmbilledet — kun gennem API'et — men den har et ord her frem for at falde
+ * tilbage på et tal, for det er den slags gren, der står urørt indtil den en dag
+ * ikke gør.
+ */
+export function reminderOffsetLabel(minutes) {
+	if (minutes === 0) return t('detail.remindAtDue');
+	const span = durationLabel(Math.abs(minutes));
+	return minutes < 0 ? t('detail.remindBefore', { when: span }) : t('detail.remindAfter', { when: span });
+}
+
+/** Minutter som hele dage, hele timer eller minutter — den største, der går op. */
+function durationLabel(minutes) {
+	if (minutes % 1440 === 0) {
+		const days = minutes / 1440;
+		return days === 1 ? t('when.dayOne') : t('when.dayMany', { n: days });
+	}
+	if (minutes % 60 === 0) {
+		const hours = minutes / 60;
+		return hours === 1 ? t('when.hourOne') : t('when.hourMany', { n: hours });
+	}
+	return t('when.minuteMany', { n: minutes });
+}

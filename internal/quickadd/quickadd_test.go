@@ -636,3 +636,151 @@ func TestEveryOtherWeekdayIsARepetition(t *testing.T) {
 		}
 	}
 }
+
+// --- reminders ----------------------------------------------------------------
+
+// A dictated sentence can set its own alarm.
+//
+// The offset is negative because the store ADDS it to the due moment
+// (`due_datetime + offset_min * 60`). A positive number there is an alarm after
+// the thing it was meant to warn about, which is the one direction a reminder must
+// never be wrong in — so the sign is asserted here and not assumed.
+func TestParseReminderOffset(t *testing.T) {
+	now := ref(t)
+	cases := []struct {
+		in   string
+		want int
+	}{
+		{"ring til tandlægen i morgen kl 9 mind mig en time før", -60},
+		{"ring til tandlægen i morgen kl 9 mind mig 10 min før", -10},
+		{"ring til tandlægen i morgen kl 9 mind mig 10 minutter før", -10},
+		{"ring til tandlægen i morgen kl 9 mind mig et kvarter før", -15},
+		{"ring til tandlægen i morgen kl 9 mind mig en halv time før", -30},
+		{"møde i morgen kl 9 mind mig dagen før", -1440},
+		{"møde i morgen kl 9 mind mig to dage før", -2880},
+		{"møde i morgen kl 9 mind mig 2 timer før", -120},
+		// Det er talt ind, så kommaet hører til sætningen og ikke til syntaksen.
+		{"ring til tandlægen i morgen kl 9, mind mig en time før", -60},
+		{"ring til tandlægen i morgen kl 9, påmind mig en time før", -60},
+		{"ring til tandlægen i morgen kl 9, mind mig om det en time før", -60},
+		// Engelsk i samme linje, som resten af parseren gør det.
+		{"call the dentist tomorrow at 9 remind me an hour before", -60},
+		{"call the dentist tomorrow at 9 remind me 15 minutes before", -15},
+		{"call the dentist tomorrow at 9 remind me two days before", -2880},
+		// En bar påmindelse er på selve forfaldstidspunktet.
+		{"ring til tandlægen i morgen kl 9 mind mig", 0},
+		{"ring til tandlægen i morgen kl 9 med alarm", 0},
+	}
+	for _, c := range cases {
+		got := Parse(c.in, now, "da")
+		if got.ReminderOffsetMin == nil {
+			t.Errorf("Parse(%q): ReminderOffsetMin = nil, want %d", c.in, c.want)
+			continue
+		}
+		if *got.ReminderOffsetMin != c.want {
+			t.Errorf("Parse(%q): ReminderOffsetMin = %d, want %d", c.in, *got.ReminderOffsetMin, c.want)
+		}
+	}
+}
+
+// A reminder with a clock of its own takes the day the task is due.
+//
+// "mind mig kl 8" about something due Friday means Friday at eight. Resolving it
+// against today instead would fire the alarm days early, silently.
+func TestParseReminderClockTakesTheDueDay(t *testing.T) {
+	now := ref(t)
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"ring til tandlægen i morgen kl 9 mind mig kl 8", "2026-03-11T08:00"},
+		{"ring til tandlægen i morgen kl 9 mind mig kl. 7.30", "2026-03-11T07:30"},
+		{"ring til tandlægen i morgen kl 9, påmind kl 7:15", "2026-03-11T07:15"},
+		{"call the dentist tomorrow at 9 remind me at 8", "2026-03-11T08:00"},
+		// Ingen dato i linjen: så er det i dag, som en bar klokketid også er.
+		{"ring til tandlægen mind mig kl 23", "2026-03-10T23:00"},
+	}
+	for _, c := range cases {
+		got := Parse(c.in, now, "da")
+		if got.ReminderAt != c.want {
+			t.Errorf("Parse(%q): ReminderAt = %q, want %q", c.in, got.ReminderAt, c.want)
+		}
+		if got.ReminderOffsetMin != nil {
+			t.Errorf("Parse(%q): also set an offset (%d); a reminder is one or the other",
+				c.in, *got.ReminderOffsetMin)
+		}
+	}
+}
+
+// The alarm does not eat the task's own time, and the task's time does not eat the
+// alarm. This is the ordering the stage exists for.
+func TestReminderDoesNotTakeTheTasksOwnTime(t *testing.T) {
+	got := Parse("ring til tandlægen i morgen kl 9 mind mig kl 8", ref(t), "da")
+
+	if got.DueTime != "09:00" {
+		t.Errorf("DueTime = %q, want 09:00 — the reminder took the task's clock", got.DueTime)
+	}
+	if got.DueDate != "2026-03-11" {
+		t.Errorf("DueDate = %q, want 2026-03-11", got.DueDate)
+	}
+	if got.ReminderAt != "2026-03-11T08:00" {
+		t.Errorf("ReminderAt = %q, want 2026-03-11T08:00", got.ReminderAt)
+	}
+	if got.Content != "ring til tandlægen" {
+		t.Errorf("Content = %q, want %q", got.Content, "ring til tandlægen")
+	}
+}
+
+// Nothing becomes an alarm by standing near a clock.
+func TestNoReminderWhereNoneWasAskedFor(t *testing.T) {
+	now := ref(t)
+	for _, in := range []string{
+		"ring til tandlægen i morgen kl 9",
+		"betal moms i morgen kl 10 p1 #Firma @regnskab",
+		// The \b cases: these words merely begin with the keywords.
+		"skift batteri i alarmen",
+		"mind migrationen om at køre",
+		"vand planterne hver mandag kl 9",
+	} {
+		got := Parse(in, now, "da")
+		if got.ReminderOffsetMin != nil {
+			t.Errorf("Parse(%q): ReminderOffsetMin = %d, want none", in, *got.ReminderOffsetMin)
+		}
+		if got.ReminderAt != "" {
+			t.Errorf("Parse(%q): ReminderAt = %q, want none", in, got.ReminderAt)
+		}
+	}
+}
+
+// The phrase is highlighted, like every other thing the parser claims — see the
+// package comment: a parser you cannot see working is one you stop trusting.
+func TestReminderIsHighlighted(t *testing.T) {
+	in := "ring til tandlægen i morgen kl 9 mind mig en time før"
+	got := Parse(in, ref(t), "da")
+
+	var span *Span
+	for i := range got.Spans {
+		if got.Spans[i].Kind == KindReminder {
+			span = &got.Spans[i]
+		}
+	}
+	if span == nil {
+		t.Fatalf("no %q span in %v", KindReminder, got.Spans)
+	}
+	if marked := in[span.Start:span.End]; marked != "mind mig en time før" {
+		t.Errorf("highlighted %q, want %q", marked, "mind mig en time før")
+	}
+}
+
+// An impossible clock is not a reminder: the store would keep 25:00 and never fire
+// it, so saying nothing is the honest answer.
+func TestImpossibleReminderClockIsNotKept(t *testing.T) {
+	got := Parse("ring til tandlægen i morgen kl 9 mind mig kl 25", ref(t), "da")
+
+	if got.ReminderAt != "" {
+		t.Errorf("ReminderAt = %q, want none", got.ReminderAt)
+	}
+	if got.ReminderOffsetMin != nil {
+		t.Errorf("ReminderOffsetMin = %d, want none", *got.ReminderOffsetMin)
+	}
+}
