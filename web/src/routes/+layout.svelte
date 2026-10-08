@@ -6,6 +6,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import Sidebar from '$lib/components/Sidebar.svelte';
+	import DictateSheet from '$lib/components/DictateSheet.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import SignIn from '$lib/components/SignIn.svelte';
 	import NoConnection from '$lib/components/NoConnection.svelte';
@@ -55,6 +56,25 @@
 
 	$effect(() => {
 		app.load();
+	});
+
+	/**
+	 * Hvilken dør dette vindue er inde ad.
+	 *
+	 * To døre, og reglen er én sætning: den, du sidst kom ind ad, bestemmer
+	 * ansigtet. `/urd` sætter urd, `/` sætter verdande, og alt derimellem rører
+	 * det ikke — så et klik videre til en note eller en opgave beholder det navn,
+	 * vinduet åbnede med.
+	 *
+	 * Symmetrien er det, der gør det forudsigeligt. Uden `/`-halvdelen ville en
+	 * fane, der én gang havde set /urd, blive ved med at hedde urd, også på
+	 * opgavesiderne. I de installerede apps sker det aldrig — deres start_url er
+	 * hver sin dør — men en browserfane springer mellem dem hele tiden.
+	 */
+	$effect(() => {
+		const here = $page.url.pathname;
+		if (here === '/urd') app.enterUrd();
+		else if (here === '/') app.leaveUrd();
 	});
 
 	/**
@@ -295,6 +315,15 @@
 				tabindex="-1"
 			></button>
 		{/if}
+
+		<!-- Tal en opgave ind. Kun på telefonen, og kun hvor der er opgaver — se
+		     komponenten.
+
+		     UBETINGET monteret, og det er ikke en forglemmelse: feltet inde i den
+		     skal kunne få fokus i samme hug som klikket, ellers åbner iOS ikke
+		     tastaturet. Et `{#if}` her ville tage feltet ud af DOM'en og gøre det
+		     umuligt. Menuen dækker den i stedet, fordi den har højere z-index. -->
+		<DictateSheet />
 	</div>
 
 	<CommandPalette bind:open={paletteOpen} />

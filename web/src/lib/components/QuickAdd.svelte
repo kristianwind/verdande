@@ -16,13 +16,52 @@
 	import { app } from '$lib/stores.svelte.js';
 	import { t } from '$lib/i18n.svelte.js';
 	import { readList } from '$lib/pastelist.js';
-	let { projectId = undefined, onadded = undefined, autofocus = false } = $props();
+	let {
+		projectId = undefined,
+		onadded = undefined,
+		autofocus = false,
+		/**
+		 * Whether this box carries the `data-quickadd` marker.
+		 *
+		 * The layout's type-anywhere shortcut finds the field with
+		 * `document.querySelector('[data-quickadd]')`, which returns the FIRST match
+		 * in the document. So a second box on the page — the dictate sheet's — has
+		 * to stay unmarked, or the shortcut starts typing into a box nobody can see.
+		 */
+		marked = true,
+		/**
+		 * The field's accessible name.
+		 *
+		 * A prop because the dictate sheet puts a second one of these on the page,
+		 * and two fields answering to "Ny opgave" is a screen reader reading the
+		 * same name twice with no way to tell which is which. They are different
+		 * affordances — one is the box on the page, the other is the thing the
+		 * round button opens — so they say different names.
+		 */
+		label = undefined
+	} = $props();
+
+	let fieldLabel = $derived(label ?? t('task.new'));
 
 	let text = $state('');
 	let spans = $state([]);
 	let submitting = $state(false);
 	let input;
+	let mirror;
 	let focused = $state(false);
+
+	/**
+	 * Keeps the tint under the right characters when the line is longer than the
+	 * field.
+	 *
+	 * The input scrolls horizontally and the mirror has to scroll with it. Done on
+	 * both `scroll` and `input` because typing at the end of a long line moves the
+	 * caret — and therefore the scroll — without ever firing a scroll event in some
+	 * browsers.
+	 */
+	function syncScroll() {
+		if (mirror && input) mirror.scrollLeft = input.scrollLeft;
+	}
 
 	// Kept beside the parser's own vocabulary on purpose: a legend that promises
 	// something internal/quickadd cannot read is worse than no legend. These four
@@ -71,6 +110,20 @@
 	$effect(() => {
 		if (autofocus && input) input.focus();
 	});
+
+	/**
+	 * Focus the field from outside, synchronously.
+	 *
+	 * This exists because of iOS and nothing else. Safari opens the on-screen
+	 * keyboard only when `focus()` is called INSIDE the user gesture that asked for
+	 * it — so the `autofocus` effect above, which runs after the click handler has
+	 * returned, gives the field a caret and no keyboard. For the dictate button that
+	 * is the whole feature failing quietly: the sheet opens, nothing to dictate
+	 * into, and there is no error anywhere.
+	 */
+	export function focusField() {
+		input?.focus();
+	}
 
 	/** Splits the raw text into highlighted and plain runs, by byte offset. */
 	let segments = $derived.by(() => {
@@ -197,7 +250,7 @@
 		<!-- The mirror sits behind the input and must match it exactly: same font,
 		     same padding, same wrapping. Any difference shows up as highlighting
 		     that drifts out of alignment as the line grows. -->
-		<div class="mirror" aria-hidden="true">
+		<div class="mirror" aria-hidden="true" bind:this={mirror}>
 			{#each segments as segment}
 				{#if segment.kind}
 					<mark data-kind={segment.kind}>{segment.text}</mark>
@@ -211,12 +264,14 @@
 			bind:this={input}
 			bind:value={text}
 			{onkeydown}
+			onscroll={syncScroll}
+			oninput={syncScroll}
 			onfocus={() => (focused = true)}
 			onblur={() => (focused = false)}
 			type="text"
-			data-quickadd
+			data-quickadd={marked ? '' : undefined}
 			placeholder={t('task.placeholder')}
-			aria-label={t('task.new')}
+			aria-label={fieldLabel}
 			autocomplete="off"
 			spellcheck="false"
 			{onpaste}
@@ -385,8 +440,16 @@
 		letter-spacing: normal;
 		padding: 0;
 		border: 0;
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
+		/* `pre`, not `pre-wrap`, and that is the whole alignment.
+		   
+		   An <input type="text"> is single-line by specification and cannot wrap
+		   whatever CSS says. So a wrapping mirror behind a non-wrapping input does
+		   not drift a little — it puts the tint on a second line that the input does
+		   not have, and the highlight ends up under empty space. Rare on a wide
+		   desktop field, constant in the dictate sheet on a 390px phone, where a
+		   spoken sentence overflows immediately. */
+		white-space: pre;
+		overflow-wrap: normal;
 	}
 
 	.mirror {
@@ -394,6 +457,10 @@
 		inset: 0;
 		pointer-events: none;
 		color: transparent;
+		/* Scrolled in step with the input by hand — see `syncScroll`. The overflow
+		   has to be hidden rather than visible, or the long tail of a line paints
+		   out past the field's edge. */
+		overflow: hidden;
 	}
 
 	/* The tint is behind the glyphs, not on them: colouring the text itself would
