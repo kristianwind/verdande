@@ -87,6 +87,31 @@ async function nyNote(side) {
 }
 
 /**
+ * Som `nyNote`, men UDEN klikket i feltet.
+ *
+ * Klikket er netop det, markør-prøverne ikke må gøre: de måler, at markøren
+ * står i overskriften, uden at nogen har sat den. Ventetiden skal de til
+ * gengæld have, og manglen på den kostede to røde CI-kørsler.
+ *
+ * `click()` på "Ny note" vender tilbage, så snart klikket er sendt, mens noten
+ * først skal oprettes på serveren og tegnes bagefter. Uden ventetiden går det,
+ * der tastes, ind i den FORRIGE note eller ingen steder — og så er der heller
+ * ingen gemning at vente på, så en `waitForResponse` løber tørt i stedet. Det
+ * er to forskellige påstande, der fejler, med én årsag. Se kommentaren over
+ * `nyNote`: faren var skrevet ned, med sin løsning, før prøverne blev skrevet.
+ *
+ * Overskriften er værnet frem for bare det tomme felt: <h1> skrives af samme
+ * effekt, der sætter markøren, så når den er der, er markøren sat.
+ */
+async function nyTomNote(side) {
+	await side.getByRole('button', { name: 'Ny note' }).click();
+	const felt = side.getByRole('textbox', { name: 'Notens tekst' });
+	await expect(felt).toHaveText('');
+	await expect(side.locator('.editor h1')).toHaveCount(1);
+	return felt;
+}
+
+/**
  * Kommendes liste kan se længere frem end en uge.
  *
  * Syv dage er stadig det, den åbner på — det er den vandring, der er værd at gå om
@@ -5721,7 +5746,7 @@ async function caretBlock(page) {
 test('en ny note åbner med markøren i overskriften', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 	await page.goto('/noter');
-	await page.getByRole('button', { name: 'Ny note' }).click();
+	await nyTomNote(page);
 
 	// `expect.poll` og ikke én læsning: `click()` vender tilbage, så snart klikket er
 	// sendt, mens markøren sættes efter en netværksrundtur OG en gentegning. Lokalt
@@ -5752,7 +5777,7 @@ test('en note med indhold stjæler ikke markøren', async ({ page }) => {
 	// overskriften og skubbe det, man var i gang med.
 	const trouble = watchForTrouble(page);
 	await page.goto('/noter');
-	await page.getByRole('button', { name: 'Ny note' }).click();
+	await nyTomNote(page);
 
 	// Lyt FØR der skrives. Her stod `waitForTimeout(1200)`, og kommentaren over
 	// `gemt` i toppen af filen nævner præcis det tal: et fast ophold er et gæt om,
@@ -5780,7 +5805,7 @@ test('urd-døren opfører sig ens: ny note, markør i overskriften', async ({ pa
 	const trouble = watchForTrouble(page);
 	await page.goto('/urd');
 	await expect(page).toHaveURL(/\/noter$/);
-	await page.getByRole('button', { name: 'Ny note' }).click();
+	await nyTomNote(page);
 
 	await expect
 		.poll(() => caretBlock(page), { message: 'markøren skal stå i h1 også i urd' })
