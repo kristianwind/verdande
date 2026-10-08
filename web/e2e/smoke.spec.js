@@ -5620,3 +5620,97 @@ test('the verdande door is unaffected by the urd one', async ({ page }) => {
 
 	expect(trouble).toEqual([]);
 });
+
+/**
+ * En ny note åbner med markøren i sin titel.
+ *
+ * Titlen er første linje, som i Apple Notes — der er ikke et selvstændigt felt,
+ * så "sæt markøren i overskriften" betyder et område placeret inde i <h1> i et
+ * contenteditable. Derfor måles der på markeringen og ikke på hvad der har fokus:
+ * editoren kan have fokus med markøren stående et helt andet sted.
+ */
+async function caretBlock(page) {
+	return page.evaluate(() => {
+		const s = window.getSelection();
+		if (!s || !s.anchorNode) return null;
+		const node = s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement;
+		const block = node?.closest('h1, h2, h3, p, li, pre');
+		return block ? block.tagName.toLowerCase() : null;
+	});
+}
+
+test('en ny note åbner med markøren i overskriften', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+	await page.getByRole('button', { name: 'Ny note' }).click();
+
+	expect(await caretBlock(page), 'markøren skal stå i h1').toBe('h1');
+
+	// Og den står et sted, man kan skrive: det, der tastes, bliver titlen, og
+	// titlen er det, listen kalder noten.
+	await page.keyboard.type('Pakkeliste til Island');
+	await expect(page.locator('.editor h1').first()).toHaveText('Pakkeliste til Island');
+	await expect(page.locator('.notes button.row strong').first()).toHaveText(
+		/^Pakkeliste til Island$/
+	);
+
+	expect(trouble).toEqual([]);
+});
+
+test('en note med indhold stjæler ikke markøren', async ({ page }) => {
+	// Kontrollen, og den halvdel der gør det til en regel frem for en vane: åbner
+	// man en note, man har skrevet i forvejen, skal markøren IKKE hoppe op i
+	// overskriften og skubbe det, man var i gang med.
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	await page.keyboard.type('Allerede skrevet');
+	// Vent til den er gemt, så den er en note med indhold næste gang den åbnes.
+	await page.waitForTimeout(1200);
+
+	await page.reload();
+	await page.getByRole('button', { name: /Allerede skrevet/ }).first().click();
+	await expect(page.locator('.editor h1').first()).toHaveText('Allerede skrevet');
+	expect(await caretBlock(page), 'ingen markør skal være sat').toBe(null);
+
+	expect(trouble).toEqual([]);
+});
+
+test('urd-døren opfører sig ens: ny note, markør i overskriften', async ({ page }) => {
+	// Han bad om "Urd og noter". Det er samme side, men målt gennem døren, fordi
+	// det er den vej en bruger af urd-appen kommer — og fordi en regel, der kun er
+	// prøvet ad én vej, er prøvet ét sted.
+	const trouble = watchForTrouble(page);
+	await page.goto('/urd');
+	await expect(page).toHaveURL(/\/noter$/);
+	await page.getByRole('button', { name: 'Ny note' }).click();
+
+	expect(await caretBlock(page), 'markøren skal stå i h1 også i urd').toBe('h1');
+	expect(trouble).toEqual([]);
+});
+
+test('en note oprettet fra et projekt åbner også med markøren i overskriften', async ({ page }) => {
+	// Den anden vej ind, og den blev påstået dækket før den blev målt: projektets
+	// "Ny note" opretter noten og sender videre med ?note=<id>, så markøren
+	// placeres af editoren på den anden side af en navigation frem for i samme
+	// hug. Reglen sidder i editoren netop for at dække begge — det er værdiløst
+	// uden en prøve, der går den anden vej.
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByLabel('Nyt projekt').click();
+	await sidebar.getByLabel('Projektnavn').fill('Islandsturen');
+	await sidebar.getByLabel('Projektnavn').press('Enter');
+	await sidebar.getByRole('link', { name: 'Islandsturen' }).click();
+	await expect(page.getByRole('heading', { name: 'Islandsturen' })).toBeVisible();
+
+	await page.getByRole('button', { name: 'Ny note', exact: true }).click();
+	await expect(page).toHaveURL(/\/noter\?note=/);
+
+	expect(await caretBlock(page), 'markøren skal stå i h1 efter navigationen').toBe('h1');
+	await page.keyboard.type('Dæk og kort');
+	await expect(page.locator('.editor h1').first()).toHaveText('Dæk og kort');
+
+	expect(trouble).toEqual([]);
+});

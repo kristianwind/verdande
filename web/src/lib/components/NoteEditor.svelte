@@ -81,11 +81,54 @@
 			// fired.
 			editor.innerHTML = body.trim() ? markdownToHtml(body) : '<h1><br></h1>';
 			colourCode();
+			// Og markøren sættes DER.
+			//
+			// Indtil nu lavede linjen ovenfor kun titelblokken, så sætningen i
+			// kommentaren — "opens on its title" — handlede om, hvad der blev tegnet,
+			// ikke om hvor man kunne skrive. Noter-siden prøvede at råde bod på det
+			// med `document.querySelector('.editor textarea')?.focus()`, og der er
+			// ingen textarea: editoren er et contenteditable. Det kald har ramt
+			// ingenting, stille, siden editoren blev lavet om, og `?.` sørgede for,
+			// at det aldrig kastede.
+			//
+			// Her frem for på siden, så begge veje ind er dækket: noter-sidens egen
+			// opret-knap, og projektsidens, der sender videre med ?note=<id>.
+			if (!body.trim()) placeCaretInTitle();
 		} catch (e) {
 			editor.textContent = body;
 			console.error('verdande: noten kunne ikke tegnes', note.id, e);
 		}
 	});
+
+	/**
+	 * Sætter markøren i titlen på en tom note.
+	 *
+	 * En contenteditable har ikke et felt at fokusere — den har en markør, og den
+	 * skal placeres. `focus()` alene giver elementet tastaturfokus og lader
+	 * markøren stå, hvor browseren synes, hvilket for et tomt element er starten
+	 * på dokumentet frem for inde i overskriften.
+	 *
+	 * Fokus FØRST og så området: at fokusere et contenteditable kan nulstille
+	 * markeringen, så den omvendte rækkefølge sætter et område, der straks bliver
+	 * kasseret igen.
+	 *
+	 * Hvad den IKKE kan, sagt her frem for opdaget på en telefon: åbne tastaturet
+	 * på iOS. Det sker kun, når focus() kaldes inde i den brugerhandling, der bad
+	 * om det — og en ny note skal først oprettes på serveren, så der ligger et
+	 * `await` imellem. Markøren står rigtigt; på en telefon skal man stadig trykke
+	 * én gang for at få tastaturet frem.
+	 */
+	function placeCaretInTitle() {
+		const heading = editor?.querySelector('h1');
+		if (!heading) return;
+		editor.focus();
+		const range = document.createRange();
+		range.selectNodeContents(heading);
+		range.collapse(true);
+		const selection = window.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+	}
 
 	const SYNTAX = [
 		{ mark: '#', what: 'notes.syntaxProject' },
