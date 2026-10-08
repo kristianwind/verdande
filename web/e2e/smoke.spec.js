@@ -5753,9 +5753,17 @@ test('en note med indhold stjæler ikke markøren', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 	await page.goto('/noter');
 	await page.getByRole('button', { name: 'Ny note' }).click();
+
+	// Lyt FØR der skrives. Her stod `waitForTimeout(1200)`, og kommentaren over
+	// `gemt` i toppen af filen nævner præcis det tal: et fast ophold er et gæt om,
+	// hvor hurtig maskinen er, og gættet holder indtil CI er travl. Det holdt indtil
+	// CI var travl — gemningen var ikke nået, genindlæsningen smed det skrevne væk,
+	// og prøven faldt på at noten ikke fandtes frem for på markøren, som er det den
+	// måler. Svaret på PATCH'en er det eneste, der beviser, at serveren har hørt om
+	// det.
+	const gemt = noteGemt(page);
 	await page.keyboard.type('Allerede skrevet');
-	// Vent til den er gemt, så den er en note med indhold næste gang den åbnes.
-	await page.waitForTimeout(1200);
+	await gemt;
 
 	await page.reload();
 	await page.getByRole('button', { name: /Allerede skrevet/ }).first().click();
