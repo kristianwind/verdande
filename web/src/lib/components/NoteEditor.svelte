@@ -13,6 +13,7 @@
 	 * unforgivable. When the replacement (the EditContext API) is everywhere, this
 	 * is the file to change.
 	 */
+	import { tick } from 'svelte';
 	import { markdownToHtml, htmlToMarkdown, blockText } from '$lib/richtext.js';
 	import { highlight, guessLanguage } from '$lib/highlight.js';
 	import { t } from '$lib/i18n.svelte.js';
@@ -756,6 +757,8 @@
 		if (image) {
 			event.preventDefault();
 			showing = { src: image.currentSrc || image.src, alt: image.alt ?? '' };
+			zoomed = false;
+			natural = null;
 			copied = false;
 			copyError = '';
 			return;
@@ -768,6 +771,49 @@
 	let showing = $state(null);
 	let copied = $state(false);
 	let copyError = $state('');
+
+	// Ruden viste billedet med `max-width`/`max-height` og intet andet, så det kunne
+	// blive mindre, men aldrig større. Det var mindre end i noten, det kom fra: et
+	// skærmbillede fra en telefon på en skærm i bredformat stod 701 pixels bredt i
+	// arket og 357 i ruden, og et lille billede blev slet ikke forstørret. Nu fylder
+	// det skærmen — også når det skal forstørres for at gøre det — og et klik på
+	// billedet viser det i sin egen størrelse, til at rulle rundt i.
+	let zoomed = $state(false);
+	/** @type {{ w: number, h: number } | null} */
+	let natural = $state(null);
+	/** @type {HTMLDivElement | null} */
+	let lightbox = $state(null);
+
+	/** @param {Event & { currentTarget: HTMLImageElement }} event */
+	function measured(event) {
+		const img = event.currentTarget;
+		natural = { w: img.naturalWidth, h: img.naturalHeight };
+	}
+
+	/**
+	 * Skift mellem "hele skærmen" og "fuld størrelse".
+	 *
+	 * Fra et klik på billedet rulles der hen til det sted, man klikkede, så man
+	 * ikke lander i øverste venstre hjørne og skal lede efter det, man ville se.
+	 *
+	 * @param {MouseEvent} [event]
+	 */
+	async function toggleZoom(event) {
+		const img = lightbox?.querySelector('.shot');
+		let fx = 0.5;
+		let fy = 0.5;
+		if (event?.clientX !== undefined && event.detail > 0 && img) {
+			const r = img.getBoundingClientRect();
+			fx = (event.clientX - r.left) / r.width;
+			fy = (event.clientY - r.top) / r.height;
+		}
+		zoomed = !zoomed;
+		await tick();
+		if (!zoomed || !img || !lightbox) return;
+		const r = img.getBoundingClientRect();
+		lightbox.scrollLeft += r.left + r.width * fx - lightbox.clientWidth / 2;
+		lightbox.scrollTop += r.top + r.height * fy - lightbox.clientHeight / 2;
+	}
 
 	function closeImage() {
 		showing = null;
@@ -1293,15 +1339,35 @@
      af netop det ark, det skal lægge sig over. -->
 {#if showing}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-	<div class="lightbox" onclick={closeImage} role="dialog" aria-modal="true" aria-label={t('notes.imageTitle')}>
+	<div
+		class="lightbox"
+		class:zoomed
+		bind:this={lightbox}
+		onclick={closeImage}
+		role="dialog"
+		aria-modal="true"
+		aria-label={t('notes.imageTitle')}
+		style:--w={natural?.w}
+		style:--h={natural?.h}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+		<img
+			class="shot"
+			class:sized={natural}
+			src={showing.src}
+			alt={showing.alt}
+			onload={measured}
+			onclick={(e) => {
+				e.stopPropagation();
+				toggleZoom(e);
+			}}
+		/>
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-		<div class="shot" onclick={(e) => e.stopPropagation()}>
-			<img src={showing.src} alt={showing.alt} />
-			<div class="tools">
-				<button onclick={copyImage}>{copied ? t('notes.imageCopied') : t('notes.imageCopy')}</button>
-				<a href={showing.src} target="_blank" rel="noopener">{t('notes.imageOpen')}</a>
-				<button class="shut" onclick={closeImage}>{t('detail.close')}</button>
-			</div>
+		<div class="tools" onclick={(e) => e.stopPropagation()}>
+			<button onclick={copyImage}>{copied ? t('notes.imageCopied') : t('notes.imageCopy')}</button>
+			<button onclick={toggleZoom}>{zoomed ? t('notes.imageZoomOut') : t('notes.imageZoomIn')}</button>
+			<a href={showing.src} target="_blank" rel="noopener">{t('notes.imageOpen')}</a>
+			<button class="shut" onclick={closeImage}>{t('detail.close')}</button>
 			{#if copyError}<p class="bad">{copyError}</p>{/if}
 		</div>
 	</div>
@@ -1318,43 +1384,77 @@
 
 <style>
 	/* Over alt andet og midt på skærmen. Baggrunden er mørk nok til at billedet
-	   står alene — det er hele grunden til at åbne det. */
+	   står alene — det er hele grunden til at åbne det.
+
+	   Centreret med `margin: auto` på billedet og ikke med `justify-content`: i
+	   fuld størrelse er billedet større end ruden, og et flex-element, der er
+	   centreret og for stort, stikker lige meget ud til begge sider — den venstre og
+	   den øverste del kan man så ikke rulle hen til. */
 	.lightbox {
+		--pad: var(--s4);
+		--bar: 4rem;
 		position: fixed;
 		inset: 0;
 		z-index: 100;
-		background: rgb(0 0 0 / 0.8);
+		background: rgb(0 0 0 / 0.85);
 		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: var(--s4);
+		padding: var(--pad) var(--pad) calc(var(--bar) + var(--pad));
+		overflow: auto;
+		overscroll-behavior: contain;
+	}
+
+	/* På en telefon bryder de fire knapper over i to rækker. */
+	@media (max-width: 600px) {
+		.lightbox {
+			--pad: var(--s2);
+			--bar: 6.5rem;
+		}
 	}
 
 	.shot {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--s3);
-		max-width: 100%;
-		max-height: 100%;
-	}
-
-	/* `min-height: 0` hører med: uden den nægter et flex-element at blive lavere
-	   end sit indhold, og et højt billede vokser ud over skærmen i stedet for at
-	   passe sig ind i den. */
-	.shot img {
-		min-height: 0;
-		max-width: 100%;
-		max-height: calc(100vh - 8rem);
-		object-fit: contain;
+		margin: auto;
+		flex: none;
+		max-width: calc(100vw - 2 * var(--pad));
+		max-height: calc(100dvh - 2 * var(--pad) - var(--bar));
 		border-radius: var(--radius);
+		cursor: zoom-in;
 	}
 
+	/* Så snart billedets egne mål kendes, fylder det skærmen: den største bredde,
+	   der både er inden for skærmens bredde og — ved billedets form — inden for dens
+	   højde. Det forstørrer et lille billede, hvad `max-width` alene aldrig gjorde. */
+	.shot.sized {
+		max-width: none;
+		max-height: none;
+		width: min(
+			calc(100vw - 2 * var(--pad)),
+			calc((100dvh - 2 * var(--pad) - var(--bar)) * var(--w) / var(--h))
+		);
+		height: auto;
+	}
+
+	/* Fuld størrelse: billedets egne pixels, og ruden ruller. Aldrig smallere end
+	   skærmen — et lille billede ville ellers blive MINDRE af at blive forstørret, og
+	   et højt skærmbillede fra en telefon skal kunne læses i hele skærmens bredde. */
+	.zoomed .shot.sized {
+		width: max(calc(var(--w) * 1px), calc(100vw - 2 * var(--pad)));
+		cursor: zoom-out;
+	}
+
+	/* Knapperne ligger fast nederst, så de er der, uanset hvor man har rullet hen
+	   i et billede i fuld størrelse. */
 	.tools {
+		position: fixed;
+		left: 50%;
+		bottom: var(--s3);
+		transform: translateX(-50%);
 		display: flex;
 		gap: var(--s2);
 		align-items: center;
+		justify-content: center;
 		flex-wrap: wrap;
+		width: max-content;
+		max-width: calc(100vw - 2 * var(--s3));
 	}
 
 	.tools button,
@@ -1374,6 +1474,8 @@
 	}
 
 	.bad {
+		flex-basis: 100%;
+		text-align: center;
 		margin: 0;
 		font-size: var(--text-sm);
 		color: var(--danger);

@@ -174,6 +174,8 @@ export const en = {
 	'notes.imageCopy': 'Copy the image',
 	'notes.imageCopied': 'Copied',
 	'notes.imageOpen': 'Open in a new tab',
+	'notes.imageZoomIn': 'Full size',
+	'notes.imageZoomOut': 'Fit the screen',
 	'notes.strike': 'Strikethrough',
 	'notes.code': 'Code',
 	'notes.showSource': 'Show the source (Markdown)',
