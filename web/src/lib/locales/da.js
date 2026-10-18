@@ -177,6 +177,8 @@ export const da = {
 	'notes.imageCopy': 'Kopiér billedet',
 	'notes.imageCopied': 'Kopieret',
 	'notes.imageOpen': 'Åbn i nyt faneblad',
+	'notes.imageZoomIn': 'Fuld størrelse',
+	'notes.imageZoomOut': 'Tilpas skærmen',
 	'notes.strike': 'Gennemstreget',
 	'notes.code': 'Kode',
 	'notes.showSource': 'Vis kilden (Markdown)',

@@ -5441,6 +5441,84 @@ test('et indsat billede kan åbnes stort og kopieres', async ({ page, context })
 	expect(trouble).toEqual([]);
 });
 /**
+ * Et billede bliver større af at blive åbnet — ikke mindre.
+ *
+ * Rapporteret som "billederne er meget små, når man klikker på dem". Ruden havde
+ * kun `max-width` og `max-height`, så den kunne gøre et billede mindre og aldrig
+ * større. Målt i den rigtige app: et lille billede (600×400) stod 600 pixels bredt
+ * i noten og 600 i ruden, og et højt skærmbillede fra en telefon stod 701 bredt i
+ * noten og 357 i ruden. At klikke for at se billedet bedre gav et dårligere billede.
+ *
+ * Målt på kasserne, med tal: "billedet er synligt" var sandt hele tiden.
+ */
+test('et åbnet billede fylder skærmen og kan ses i fuld størrelse', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/noter');
+	await page.getByRole('button', { name: 'Ny note' }).click();
+	const body = page.getByLabel('Notens tekst');
+	await body.fill('Billednote med mål');
+
+	const paste = (w, h) =>
+		body.evaluate(async (el, [w, h]) => {
+			const c = document.createElement('canvas');
+			c.width = w;
+			c.height = h;
+			const g = c.getContext('2d');
+			g.fillStyle = '#c33';
+			g.fillRect(0, 0, w, h);
+			const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+			const data = new DataTransfer();
+			data.items.add(new File([blob], 'skud.png', { type: 'image/png' }));
+			el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+		}, [w, h]);
+
+	const viewport = page.viewportSize();
+	const shot = page.getByRole('dialog', { name: 'Billede' });
+	const big = shot.locator('img');
+
+	// Et lille billede: ruden forstørrer det, til det fylder skærmen i den ene led.
+	await paste(600, 400);
+	const small = page.locator('[aria-label="Notens tekst"] img').last();
+	await expect(small).toHaveJSProperty('complete', true);
+	const inNote = await small.boundingBox();
+	await small.click();
+	await expect(big).toHaveClass(/sized/);
+	const fit = await big.boundingBox();
+	expect(fit.width).toBeGreaterThan(inNote.width * 1.5);
+	expect(fit.width).toBeLessThanOrEqual(viewport.width);
+	expect(fit.y + fit.height).toBeLessThanOrEqual(viewport.height);
+
+	// Fuld størrelse er aldrig mindre end det, man kom fra.
+	await shot.getByRole('button', { name: 'Fuld størrelse' }).click();
+	const full = await big.boundingBox();
+	expect(full.width).toBeGreaterThanOrEqual(fit.width);
+	await shot.getByRole('button', { name: 'Tilpas skærmen' }).click();
+	await page.keyboard.press('Escape');
+	await expect(shot).toHaveCount(0);
+
+	// Et højt skærmbillede fra en telefon: i fuld størrelse er det mindst lige så
+	// bredt som i noten, og ruden ruller, så hele billedet kan nås.
+	await paste(1170, 2532);
+	const tall = page.locator('[aria-label="Notens tekst"] img').last();
+	await expect(tall).toHaveJSProperty('complete', true);
+	const tallInNote = await tall.boundingBox();
+	await tall.click();
+	await expect(big).toHaveClass(/sized/);
+	await big.click();
+	const tallFull = await big.boundingBox();
+	expect(tallFull.width).toBeGreaterThanOrEqual(tallInNote.width);
+	expect(tallFull.width).toBeGreaterThanOrEqual(1170);
+	const scroll = await shot.evaluate((d) => d.scrollHeight - d.clientHeight);
+	expect(scroll).toBeGreaterThan(1000);
+	// Et klik på billedet igen bringer det tilbage til skærmens mål.
+	await big.click();
+	const back = await big.boundingBox();
+	expect(back.y + back.height).toBeLessThanOrEqual(viewport.height);
+
+	expect(trouble).toEqual([]);
+});
+
+/**
  * En opgaves tekst kan læses færdig, også på en telefon.
  *
  * Rapporteret fra en telefon, med et billede af en beskrivelse, der manglede sit
