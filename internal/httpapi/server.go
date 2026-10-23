@@ -60,6 +60,10 @@ type Server struct {
 	// instance should not be unreachable because one of them cannot be offered.
 	passkeys *auth.WebAuthn
 
+	// One-use tickets for opening the live-sync socket without a cookie — see
+	// app_handlers.go.
+	wsTickets *wsTickets
+
 	// Password guessing is the attack this application is actually exposed to, so
 	// the endpoints that check a secret are limited separately and more tightly
 	// than the rest of the API.
@@ -115,6 +119,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 		// their own code gets it right on the first or second try; ten in an hour is
 		// generous for a person and hopeless for a search through a million.
 		totpLimiter: newLimiter(10, time.Hour),
+		wsTickets:   newWSTickets(),
 	}
 	// Before the CSP, deliberately: the policy has to describe the bytes that go
 	// out, and in the notes edition those are the renamed ones.
@@ -273,11 +278,15 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	}
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// Before the CSRF lock, so a preflight is answered and never reaches it.
+		r.Use(appCORS)
 		r.Use(s.requireCSRF)
 
-		r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-		})
+		r.Get("/ping", s.handlePing)
+
+		// The live-sync socket checks its own credential: a ticket, or the
+		// session as everywhere else. See handleWebSocketEntry.
+		r.Get("/ws", s.handleWebSocketEntry)
 
 		// The beacon's receiving end, and the number it produces. Both without a
 		// session, because the caller is a stranger's installation — that is the
@@ -378,7 +387,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 			full := !s.cfg.NotesOnly()
 			r.Use(s.requireAuth)
 
-			r.Get("/ws", s.handleWebSocket)
+			r.Post("/ws-ticket", s.handleWSTicket)
 
 			// The MCP endpoint. Reachable with a personal API token, so a connector
 			// sees exactly what its owner sees.

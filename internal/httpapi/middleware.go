@@ -18,6 +18,8 @@ type ctxKey int
 const (
 	ctxUser ctxKey = iota
 	ctxSession
+	// ctxTicket marks a socket opened with a one-use ticket rather than a cookie.
+	ctxTicket
 )
 
 // sessionCookie is prefixed with __Host- when served over HTTPS. That prefix is
