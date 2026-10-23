@@ -51,6 +51,40 @@ jobs:
       - name: Build
         run: CGO_ENABLED=0 go build ./...
 
+  # The iOS app's shell: the interface built the way the app carries it, and
+  # copied into the Xcode project. No Xcode here — that build happens on a Mac —
+  # but a config the CLI cannot read, a webDir that moved, or an app build that
+  # stopped compiling all fail at this step rather than on the day somebody sits
+  # down to ship.
+  app:
+    name: iOS app shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install
+        run: |
+          (cd web && npm ci)
+          (cd app && npm ci)
+
+      - name: Build and sync
+        working-directory: app
+        run: npm run sync
+
+      # The app build must not register the service worker — WKWebView has none
+      # for the app's own scheme. The browser build registers it from index.html.
+      - name: No service worker in the app build
+        run: |
+          if grep -qF 'serviceWorker.register' web/build/index.html; then
+            echo "The app build registers a service worker in index.html."
+            exit 1
+          fi
+          test -f app/ios/App/App/public/index.html
+          echo "App build in the Xcode project: $(find app/ios/App/App/public -type f | wc -l) files."
+
   spec:
     name: OpenAPI is valid
     runs-on: ubuntu-latest

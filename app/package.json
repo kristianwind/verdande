@@ -1,0 +1,22 @@
+{
+  "name": "verdande-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The iOS app: the web interface bundled into a native shell.",
+  "type": "module",
+  "scripts": {
+    "build": "cd ../web && VERDANDE_TARGET=app npm run build",
+    "sync": "npm run build && cap sync ios",
+    "open": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}
