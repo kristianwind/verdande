@@ -120,6 +120,19 @@ paths:
               properties:
                 email: { type: string, format: email }
                 password: { type: string }
+                client:
+                  type: string
+                  enum: [web, app]
+                  description: |
+                    `app` for the iOS app. Its session comes back as
+                    `session_token` instead of a cookie and slides — every use
+                    moves its end forward, up to `VERDANDE_APP_SESSION_TTL`
+                    (180 days) unused. Left out, it is a browser login.
+                device_name:
+                  type: string
+                  maxLength: 100
+                  description: Required with `client: app`; shown in the list of sessions.
+                  example: Kristians iPhone
       responses:
         "200":
           description: |
@@ -132,7 +145,14 @@ paths:
                 properties:
                   user: { $ref: "#/components/schemas/User" }
                   totp_required: { type: boolean }
+                  session_token:
+                    type: string
+                    description: |
+                      An app login only, also while `totp_required` — the app
+                      sends it to `/auth/login/totp` too. Sent from then on as
+                      `Authorization: Bearer`. A browser never receives it.
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/Validation" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /api/v1/auth/login/totp:
@@ -4439,6 +4459,10 @@ components:
         A personal API token, `vrd_…`. Carries its owner's permissions exactly —
         there is no separate service identity — and is refused on `/tokens`.
 
+        Or the iOS app's session, the `session_token` from an app login. That
+        one is a session and reaches everything a browser session does. A
+        browser's own session is never accepted here.
+
   responses:
     BadRequest:
       description: The body could not be read.
@@ -4973,6 +4997,12 @@ components:
             it so anything the summary gets wrong is still visible.
           example: Chrome på macOS
         user_agent: { type: string }
+        client:
+          type: string
+          enum: [web, app]
+          description: |
+            `app` for the iOS app, whose `device` is the name it gave itself and
+            whose `expires_at` moves forward each time it is used.
         ip: { type: string }
         created_at: { type: string, format: date-time }
         last_seen_at: { type: string, format: date-time }

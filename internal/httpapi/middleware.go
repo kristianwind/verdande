@@ -126,9 +126,10 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 	})
 }
 
-// authenticate resolves a request to a user, by session cookie or by API token.
+// authenticate resolves a request to a user, by session cookie, by API token, or by
+// an app's session sent as a bearer token.
 //
-// Both are accepted everywhere. An API token belongs to a person and carries their
+// All are accepted everywhere. An API token belongs to a person and carries their
 // permissions exactly — there is no separate service identity to reason about, and
 // a script therefore cannot reach anything its owner could not.
 // errNoCredentials means the request carried nothing to authenticate with, as
@@ -143,6 +144,21 @@ func (s *Server) authenticate(r *http.Request) (*store.User, *store.Session, err
 			return nil, nil, err
 		}
 		return user, nil, nil
+	}
+
+	// Any other bearer is an app session (see loginResponse.SessionToken). It is
+	// accepted only for a session that was issued to the app: a browser's session
+	// never leaves its httpOnly cookie, and a cookie value found somewhere and
+	// replayed as a header must not become a second way to use it.
+	if token := bearerToken(r); token != "" {
+		session, user, err := s.db.SessionByToken(r.Context(), token)
+		if err != nil {
+			return nil, nil, err
+		}
+		if session.Client != "app" {
+			return nil, nil, store.ErrNotFound
+		}
+		return user, session, nil
 	}
 
 	cookie, err := r.Cookie(s.cookieName())
@@ -200,6 +216,14 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// The iOS app, before it has a token: its sign-in. A web page cannot send
+		// this Origin — the browser writes the header, not the page — and an app
+		// login sets no cookie, so there is no session here for a forged request
+		// to ride on.
+		if isAppOrigin(r.Header.Get("Origin")) {
+			next.ServeHTTP(w, r)
+			return
+		}
 
 		// Sec-Fetch-Site is set by the browser and cannot be forged by page script.
 		switch r.Header.Get("Sec-Fetch-Site") {
@@ -218,6 +242,20 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// appOrigins are where the iOS app's interface is served from. Capacitor loads
+// the bundled build on this scheme inside WKWebView, so every request the app
+// makes to a server arrives from here, whichever server it is.
+var appOrigins = []string{"capacitor://localhost"}
+
+func isAppOrigin(origin string) bool {
+	for _, o := range appOrigins {
+		if origin == o {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) isOwnOrigin(origin string) bool {

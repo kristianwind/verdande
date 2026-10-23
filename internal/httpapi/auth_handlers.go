@@ -159,16 +159,49 @@ func (s *Server) handleSetDefaultReminder(w http.ResponseWriter, r *http.Request
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	// Client is "app" when the iOS app signs in; empty is a browser. DeviceName is
+	// what the app calls itself, shown in the list of signed-in devices.
+	Client     string `json:"client"`
+	DeviceName string `json:"device_name"`
 }
 
 type loginResponse struct {
 	User         *userJSON `json:"user,omitempty"`
 	TOTPRequired bool      `json:"totp_required"`
+	// SessionToken is set for an app login only, and instead of the cookie: the
+	// app loads its interface from itself, so it never shares an origin with the
+	// server and a cookie would not come back. It is sent from then on as
+	// `Authorization: Bearer`. A browser never sees it — its session stays in an
+	// httpOnly cookie no script can read.
+	SessionToken string `json:"session_token,omitempty"`
+}
+
+// appClient reports whether a login asked for an app session, and refuses a value
+// it does not know rather than quietly giving it a browser session: a client that
+// asked for something else and got a cookie would look signed in until its next
+// request, and then not be.
+func appClient(w http.ResponseWriter, client, deviceName string) (app, ok bool) {
+	switch client {
+	case "", "web":
+		return false, true
+	case "app":
+		if strings.TrimSpace(deviceName) == "" {
+			writeFieldErrors(w, map[string]string{"device_name": "an app names the device it signs in from"})
+			return false, false
+		}
+		return true, true
+	}
+	writeFieldErrors(w, map[string]string{"client": `must be "app" or left out`})
+	return false, false
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	app, ok := appClient(w, req.Client, req.DeviceName)
+	if !ok {
 		return
 	}
 
@@ -215,22 +248,40 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// A session that still needs a code gets a short life of its own: long enough
 	// to fetch a phone, not long enough to be worth stealing.
 	ttl := s.cfg.SessionTTL
+	if app {
+		ttl = s.cfg.AppSessionTTL
+	}
 	if user.TOTPEnabled {
 		ttl = 10 * time.Minute
 	}
-	token, _, err := s.db.CreateSession(r.Context(), user.ID, r.UserAgent(), clientIP(r), ttl, user.TOTPEnabled)
+	token, session, err := s.db.CreateSession(r.Context(), user.ID, r.UserAgent(), clientIP(r), ttl, user.TOTPEnabled)
 	if err != nil {
 		s.internal(w, r, "create session", err)
 		return
 	}
-	s.setSessionCookie(w, token, ttl)
 
-	if user.TOTPEnabled {
-		writeJSON(w, http.StatusOK, loginResponse{TOTPRequired: true})
-		return
+	resp := loginResponse{TOTPRequired: user.TOTPEnabled}
+	if app {
+		// Sliding only once the login is finished; a pending one keeps its ten
+		// minutes and handleLoginTOTP turns it on.
+		idle := s.cfg.AppSessionTTL
+		if user.TOTPEnabled {
+			idle = 0
+		}
+		if err := s.db.MarkAppSession(r.Context(), session.ID, req.DeviceName, idle); err != nil {
+			s.internal(w, r, "mark app session", err)
+			return
+		}
+		resp.SessionToken = token
+	} else {
+		s.setSessionCookie(w, token, ttl)
 	}
-	uj := toUserJSON(user)
-	writeJSON(w, http.StatusOK, loginResponse{User: &uj})
+
+	if !user.TOTPEnabled {
+		uj := toUserJSON(user)
+		resp.User = &uj
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 type totpRequest struct {
@@ -305,7 +356,19 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 	s.loginLimiter.reset(clientIP(r))
 	s.totpLimiter.reset(user.ID)
 
-	if err := s.db.PromoteSession(r.Context(), session.ID, s.cfg.SessionTTL); err != nil {
+	// An app's session finishes as a sliding one; it already holds its token and
+	// gets no cookie.
+	if session.Client == "app" {
+		if err := s.db.PromoteSession(r.Context(), session.ID, s.cfg.AppSessionTTL, s.cfg.AppSessionTTL); err != nil {
+			s.internal(w, r, "promote session", err)
+			return
+		}
+		uj := toUserJSON(user)
+		writeJSON(w, http.StatusOK, loginResponse{User: &uj})
+		return
+	}
+
+	if err := s.db.PromoteSession(r.Context(), session.ID, s.cfg.SessionTTL, 0); err != nil {
 		s.internal(w, r, "promote session", err)
 		return
 	}
