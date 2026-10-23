@@ -45,6 +45,17 @@ export default {
 		 */
 		version: {
 			name: process.env.VERDANDE_VERSION ?? 'dev'
+		},
+
+		/**
+		 * Not in the iOS app. WKWebView does not run service workers for an app's
+		 * own scheme, and the offline cache it would keep belongs to an interface
+		 * served by the instance — the app carries its interface inside itself.
+		 * `VERDANDE_TARGET=app` is set by the app's build; the browser build is
+		 * unchanged.
+		 */
+		serviceWorker: {
+			register: process.env.VERDANDE_TARGET !== 'app'
 		}
 	}
 };

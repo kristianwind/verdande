@@ -37,10 +37,13 @@ straight off the internet is keyed on the address it really came from.
 | Variable | Default | What it does |
 |---|---|---|
 | `VERDANDE_SESSION_TTL` | `720h` | How long a login lasts. |
+| `VERDANDE_APP_SESSION_TTL` | `4320h` | How long a login from the iOS app may sit unused. It slides: every use moves the end forward, so a phone in daily use stays signed in. |
 | `VERDANDE_INVITE_TTL` | `168h` | How long an invite link stays valid. |
 | `VERDANDE_RESET_TTL` | `1h` | How long a password-reset link stays valid. |
 
 Any Go duration: `720h`, `30m`, `45s`.
+
+`VERDANDE_APP_ORIGINS` (comma-separated) counts further origins as the iOS app's own, beside `capacitor://localhost`. It exists for the end-to-end suite, which runs the interface from a second host name to test it the way the app does; an instance has no reason to set it.
 
 ## Mail
 

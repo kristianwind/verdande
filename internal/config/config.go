@@ -69,6 +69,12 @@ type Config struct {
 	// the deal its operator made by self-hosting.
 	UpdateCheck bool
 
+	// AppOrigins are origins treated like the iOS app's own, capacitor://localhost,
+	// which is always included. Set by the end-to-end suite, which serves the
+	// interface from a second host name to test it the way the app runs it. An
+	// operator has no reason to set it.
+	AppOrigins []string
+
 	// The Yggdrasil panel this instance runs under, so it can ask to be restarted
 	// from its own interface rather than from another browser tab.
 	//
@@ -164,6 +170,11 @@ func Load() (*Config, error) {
 		SecretKey:          env("VERDANDE_SECRET_KEY", ""),
 		Edition:            env("VERDANDE_EDITION", EditionFull),
 		UpdateCheck:        envBool("VERDANDE_UPDATE_CHECK", false),
+	}
+	for _, o := range strings.Split(env("VERDANDE_APP_ORIGINS", ""), ",") {
+		if o = strings.TrimRight(strings.TrimSpace(o), "/"); o != "" {
+			c.AppOrigins = append(c.AppOrigins, o)
+		}
 	}
 
 	var err error

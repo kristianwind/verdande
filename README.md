@@ -251,6 +251,7 @@ to put one that the operator would ever see.
 | `VERDANDE_ADDR` | `:8080` | Listen address. |
 | `VERDANDE_DATA_DIR` | `/data` | Database, uploaded files and backups. |
 | `VERDANDE_SESSION_TTL` | `720h` | How long a login lasts. |
+| `VERDANDE_APP_SESSION_TTL` | `4320h` | How long a login from the iOS app may sit unused. It slides: every use moves the end forward, so a phone in daily use stays signed in. |
 | `VERDANDE_INVITE_TTL` | `168h` | How long an invite link stays valid. |
 | `VERDANDE_RESET_TTL` | `1h` | How long a password-reset link stays valid. |
 | `VERDANDE_SMTP_HOST` | — | Blank disables outbound mail; invite links are shown in the app instead. |

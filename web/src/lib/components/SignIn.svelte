@@ -21,9 +21,56 @@
 	import { focusOnMount } from '$lib/focus.js';
 	import { t } from '$lib/i18n.svelte.js';
 	import { available, signIn } from '$lib/passkey.js';
+	import { appSession, isNativeApp, normaliseServer } from '$lib/platform.js';
 
-	// loading | login | setup | totp | forgot | sent | invite | reset | done
+	// loading | server | login | setup | totp | forgot | sent | invite | reset | done
 	let mode = $state('loading');
+
+	// --- which server (the iOS app only) ------------------------------------------
+
+	const native = isNativeApp();
+	let server = $state(native ? appSession.server() : '');
+	let serverHost = $derived(server ? server.replace(/^https?:\/\//, '') : '');
+
+	/**
+	 * The app has no server of its own. Before a password field is shown for an
+	 * address somebody typed, the address has to be a Verdande: asked with /ping,
+	 * which answers without a login and names the product. A router's login page,
+	 * a typo that lands on somebody's blog, a server that is down — each gets its
+	 * own sentence here instead of a sign-in form that cannot succeed.
+	 */
+	async function chooseServer() {
+		const url = normaliseServer(server);
+		if (!url) {
+			error = t('app.serverInvalid');
+			return;
+		}
+		let answer;
+		try {
+			const res = await fetch(`${url}/api/v1/ping`, { credentials: 'omit' });
+			answer = res.ok ? await res.json() : null;
+		} catch {
+			error = t('app.serverUnreachable', { host: url.replace(/^https?:\/\//, '') });
+			return;
+		}
+		if (answer?.product !== 'verdande') {
+			error = t('app.notVerdande');
+			return;
+		}
+		appSession.setServer(url);
+		server = url;
+		await enterServer();
+	}
+
+	/** Asks the chosen server what it wants: sign-in, or — in a browser — setup. */
+	async function enterServer() {
+		try {
+			const state = await api.setupState();
+			mode = state.needs_setup ? 'setup' : 'login';
+		} catch {
+			mode = 'login';
+		}
+	}
 	let email = $state('');
 	let password = $state('');
 	let name = $state('');
@@ -37,6 +84,9 @@
 	let passkeyReady = $state(false);
 
 	$effect(() => {
+		// Not in the app: a passkey is bound to the server's own domain, and the
+		// app's pages are not on it. Offered there it would fail every time.
+		if (native) return;
 		available().then((ok) => (passkeyReady = ok));
 	});
 
@@ -94,10 +144,11 @@
 			mode = linkMode;
 			return;
 		}
-		api
-			.setupState()
-			.then((state) => (mode = state.needs_setup ? 'setup' : 'login'))
-			.catch(() => (mode = 'login'));
+		if (native && !appSession.server()) {
+			mode = 'server';
+			return;
+		}
+		enterServer();
 	});
 
 	async function run(fn) {
@@ -120,6 +171,10 @@
 
 		run(async () => {
 			switch (mode) {
+				case 'server':
+					await chooseServer();
+					break;
+
 				case 'setup':
 					await api.setup({
 						email,
@@ -190,6 +245,34 @@
 
 		{#if mode === 'loading'}
 			<p class="lede">&nbsp;</p>
+		{:else if mode === 'server'}
+			<p class="lede">{t('app.serverPrompt')}</p>
+
+			<label>
+				{t('app.server')}
+				<input
+					bind:value={server}
+					use:focusOnMount
+					type="url"
+					inputmode="url"
+					autocapitalize="off"
+					autocorrect="off"
+					spellcheck="false"
+					placeholder="verdande.example.dk"
+					required
+				/>
+				<span class="hint">{t('app.serverHint')}</span>
+			</label>
+
+			<button type="submit" disabled={busy}>{t('app.connect')}</button>
+		{:else if mode === 'setup' && native}
+			<!-- The first account starts a browser session, and the app has no use
+			     for a cookie. An instance this new is being set up by whoever runs
+			     it, at a desk; they do it there, and the app signs in after. -->
+			<p class="lede">{t('app.setupInBrowser', { host: serverHost })}</p>
+			<button type="button" class="link" onclick={() => (mode = 'server')}>
+				{t('app.changeServer')}
+			</button>
 		{:else if mode === 'setup'}
 			<p class="lede">{t('auth.firstAccount')}</p>
 
@@ -302,6 +385,15 @@
 			<button type="button" class="link" onclick={() => (mode = 'login')}>{t('auth.back')}</button>
 		{:else}
 			<p class="lede">{t('auth.signInPrompt')}</p>
+
+			{#if native}
+				<p class="server-line">
+					<span class="mono">{serverHost}</span>
+					<button type="button" class="link" onclick={() => (mode = 'server')}>
+						{t('app.changeServer')}
+					</button>
+				</p>
+			{/if}
 
 			<label>
 				{t('auth.email')}
@@ -461,6 +553,23 @@
 
 	.link:hover {
 		color: var(--ink);
+	}
+
+	/* Which server the app is signing in to, and the way back to choosing. */
+	.server-line {
+		display: flex;
+		gap: var(--s2);
+		align-items: baseline;
+		justify-content: center;
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--ink-faint);
+	}
+
+	.server-line .mono {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.error {
