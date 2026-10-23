@@ -45,11 +45,15 @@ func (s *Server) publishToOwner(r *http.Request, event string, payload any) {
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r.Context())
 
+	ticketed, _ := r.Context().Value(ctxTicket).(bool)
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		// The socket is same-origin only. Without this, any page on the internet
 		// could open a socket carrying the user's cookie and watch their tasks —
 		// the same-origin policy does not apply to WebSocket handshakes.
 		OriginPatterns: s.allowedOrigins(),
+		// Except one opened with a ticket, which carries no cookie for a foreign
+		// page to borrow: see handleWebSocketEntry.
+		InsecureSkipVerify: ticketed,
 	})
 	if err != nil {
 		s.log.Debug("websocket handshake", "err", err)

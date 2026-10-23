@@ -4024,14 +4024,51 @@ paths:
         Events: `task.created`, `task.updated`, `task.completed`, `task.reopened`,
         `task.moved`, `task.deleted`, `comment.created`, `notification`,
         `reminder`.
+
+        A browser opens it with its session cookie and from the instance's own
+        origin. The iOS app cannot put a header on a handshake, so it asks
+        `/ws-ticket` first and opens `/ws?ticket=…`; a handshake from the app's
+        origin without one is refused.
+      parameters:
+        - name: ticket
+          in: query
+          required: false
+          schema: { type: string }
+          description: From `/ws-ticket`. Good for one connection, within 30 seconds.
       responses:
         "101": { description: Switching protocols. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/ws-ticket:
+    post:
+      tags: [integrations]
+      summary: A one-use ticket for opening the live-sync socket without a cookie.
+      description: |
+        For the iOS app, whose session is a bearer token that a WebSocket
+        handshake cannot carry. Putting the token itself in the URL would leave a
+        credential lasting months in every log the URL passes through; the ticket
+        lasts thirty seconds and opens one connection.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket: { type: string }
+                  expires_in: { type: integer, description: Seconds., example: 30 }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /api/v1/ping:
     get:
       tags: [integrations]
       summary: A liveness check that does not touch the database.
+      description: |
+        Also how the iOS app tells a Verdande from anything else at an address
+        somebody typed in, before anyone has signed in, and which half of the
+        interface to show. It carries no version: `/version` is behind a login on
+        purpose, and a public number is a list of the instances running an old one.
       security: []
       responses:
         "200":
@@ -4042,6 +4079,9 @@ paths:
                 type: object
                 properties:
                   status: { type: string, const: ok }
+                  product: { type: string, const: verdande }
+                  edition: { type: string, enum: [full, notes] }
+                  api: { type: integer, const: 1, description: Raised when /api/v1 changes in a way an older app cannot follow. }
 
   # --- data -----------------------------------------------------------------
 
