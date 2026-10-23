@@ -23,8 +23,11 @@ type sessionJSON struct {
 	// Device is a summary; UserAgent is what it was summarised from. Both, because
 	// the summary is what you read and the original is what settles the question
 	// when the summary is not enough.
-	Device     string `json:"device"`
-	UserAgent  string `json:"user_agent"`
+	Device    string `json:"device"`
+	UserAgent string `json:"user_agent"`
+	// Client is "web" or "app". An app session slides — its expires_at moves
+	// forward each time it is used — where a browser's is fixed.
+	Client     string `json:"client"`
 	IP         string `json:"ip"`
 	CreatedAt  string `json:"created_at"`
 	LastSeenAt string `json:"last_seen_at"`
@@ -47,11 +50,17 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]sessionJSON, 0, len(sessions))
 	for _, sess := range sessions {
+		// The app names itself; a browser is described from its user agent.
+		device := sess.DeviceName
+		if device == "" {
+			device = describeUserAgent(sess.UA)
+		}
 		out = append(out, sessionJSON{
 			ID:         sess.ID,
 			Current:    current != nil && sess.ID == current.ID,
-			Device:     describeUserAgent(sess.UA),
+			Device:     device,
 			UserAgent:  sess.UA,
+			Client:     sess.Client,
 			IP:         sess.IP,
 			CreatedAt:  sess.CreatedAt.Format(time.RFC3339),
 			LastSeenAt: sess.LastSeenAt.Format(time.RFC3339),

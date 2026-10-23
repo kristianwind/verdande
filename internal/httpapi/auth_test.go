@@ -51,12 +51,13 @@ func newTestServerWith(t *testing.T, configure func(*config.Config)) *testServer
 	cfg := &config.Config{
 		// `localhost`, not a loopback IP: passkeys refuse an IP address as a relying
 		// party id, and every browser makes the same exception for localhost.
-		BaseURL:    "http://localhost",
-		DataDir:    t.TempDir(),
-		SessionTTL: 24 * time.Hour,
-		InviteTTL:  7 * 24 * time.Hour,
-		ResetTTL:   time.Hour,
-		Dev:        true,
+		BaseURL:       "http://localhost",
+		DataDir:       t.TempDir(),
+		SessionTTL:    24 * time.Hour,
+		AppSessionTTL: 7 * 24 * time.Hour,
+		InviteTTL:     7 * 24 * time.Hour,
+		ResetTTL:      time.Hour,
+		Dev:           true,
 	}
 	if configure != nil {
 		configure(cfg)

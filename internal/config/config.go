@@ -24,8 +24,12 @@ type Config struct {
 	DataDir string
 
 	SessionTTL time.Duration
-	InviteTTL  time.Duration
-	ResetTTL   time.Duration
+	// AppSessionTTL is how long a session from the iOS app may sit unused before
+	// it ends. It slides: every use moves the end forward, so a phone in daily use
+	// stays signed in and one left in a drawer does not.
+	AppSessionTTL time.Duration
+	InviteTTL     time.Duration
+	ResetTTL      time.Duration
 
 	SMTP SMTP
 
@@ -164,6 +168,9 @@ func Load() (*Config, error) {
 
 	var err error
 	if c.SessionTTL, err = envDuration("VERDANDE_SESSION_TTL", 30*24*time.Hour); err != nil {
+		return nil, err
+	}
+	if c.AppSessionTTL, err = envDuration("VERDANDE_APP_SESSION_TTL", 180*24*time.Hour); err != nil {
 		return nil, err
 	}
 	if c.InviteTTL, err = envDuration("VERDANDE_INVITE_TTL", 7*24*time.Hour); err != nil {
