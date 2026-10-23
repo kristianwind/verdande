@@ -23,10 +23,10 @@ import (
 // something this header ever needs to unlock. Every other origin gets no CORS
 // headers at all, exactly as before — the browser then keeps a foreign page from
 // reading anything, which is the default this must not loosen.
-func appCORS(next http.Handler) http.Handler {
+func (s *Server) appCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if !isAppOrigin(origin) {
+		if !s.isAppOrigin(origin) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -129,7 +129,7 @@ func (s *Server) handleWebSocketEntry(w http.ResponseWriter, r *http.Request) {
 		// ticket is not the app. Refused here rather than left to the origin
 		// check, which compares host names only: capacitor://localhost and an
 		// instance served at http://localhost have the same one.
-		if isAppOrigin(r.Header.Get("Origin")) {
+		if s.isAppOrigin(r.Header.Get("Origin")) {
 			writeError(w, http.StatusUnauthorized, CodeUnauthorized, "the app opens this socket with a ticket")
 			return
 		}

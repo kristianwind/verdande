@@ -13,6 +13,23 @@
 
 import { api, ApiError, humanMessage } from './api.js';
 import { i18n, t } from './i18n.svelte.js';
+import { appSession, isNativeApp } from './platform.js';
+
+/**
+ * Where the live-sync socket is. A browser opens it on its own origin and the
+ * cookie goes with the handshake. The app cannot put its token on a handshake,
+ * so it asks for a one-use ticket first and opens the socket on its server with
+ * that.
+ */
+async function socketURL() {
+	if (!isNativeApp()) {
+		const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+		return `${scheme}://${location.host}/api/v1/ws`;
+	}
+	const { ticket } = await api.wsTicket();
+	const base = appSession.server().replace(/^http/, 'ws');
+	return `${base}/api/v1/ws?ticket=${encodeURIComponent(ticket)}`;
+}
 
 class AppState {
 	user = $state(null);
@@ -229,6 +246,14 @@ class AppState {
 	async load() {
 		this.loading = true;
 
+		// The app before it knows which server it belongs to: nothing to ask, and
+		// the sign-in screen is where the address is asked for.
+		if (isNativeApp() && !appSession.server()) {
+			this.user = null;
+			this.loading = false;
+			return;
+		}
+
 		// Døren, hvis dette vindue allerede er gået gennem den. Genindlæser nogen på
 		// /noter inde i urd-appen, kommer de ikke forbi /urd igen, og uden den her
 		// linje ville ansigtet falde af ved hvert F5.
@@ -281,10 +306,23 @@ class AppState {
 
 	// --- realtime ---------------------------------------------------------------
 
-	connect() {
+	async connect() {
 		if (this.#socket) return;
-		const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-		const socket = new WebSocket(`${scheme}://${location.host}/api/v1/ws`);
+		// Claimed before the await below, so two calls in the same moment cannot
+		// both open one.
+		this.#socket = 'opening';
+		let url;
+		try {
+			url = await socketURL();
+		} catch {
+			// No ticket — offline, or signed out. Try again the way a dropped
+			// socket does.
+			this.#socket = null;
+			setTimeout(() => this.connect(), this.#reconnectDelay);
+			this.#reconnectDelay = Math.min(this.#reconnectDelay * 2, 30000);
+			return;
+		}
+		const socket = new WebSocket(url);
 		this.#socket = socket;
 
 		socket.onopen = () => {

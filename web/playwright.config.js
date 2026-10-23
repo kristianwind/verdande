@@ -81,7 +81,8 @@ export default defineConfig({
 			// Alt undtagen noter-udgaven, som har sin egen server på sin egen port.
 			// Uden den her linje kørte den prøve også her — mod den FULDE udgave, hvor
 			// den naturligvis fejler, og hvor fejlen læser som om skakten ikke virker.
-			testIgnore: /edition\.spec\.js/,
+			// Og app-prøven, der kører fladen fra en anden origin med sin egen login.
+			testIgnore: /(edition|app)\.spec\.js/,
 			use: { ...devices['Desktop Chrome'], storageState: 'e2e/.auth/user.json' },
 			dependencies: ['setup']
 		},
@@ -118,6 +119,19 @@ export default defineConfig({
 			name: 'notes-edition',
 			testMatch: /edition\.spec\.js/,
 			use: { ...devices['Desktop Chrome'], baseURL: `http://127.0.0.1:${NOTES_PORT}` }
+		},
+
+		/**
+		 * Fladen, som iOS-appen kører den: fra en anden origin end serveren, uden
+		 * cookie, med sessionen som bearer. Se app.spec.js. Afhænger af `setup`,
+		 * fordi den logger ind på kontoen, opsætningen lavede — men låner ikke dens
+		 * cookie, for det er netop det, appen ikke har.
+		 */
+		{
+			name: 'app-origin',
+			testMatch: /app\.spec\.js/,
+			use: { ...devices['Desktop Chrome'] },
+			dependencies: ['setup']
 		},
 
 		{
@@ -164,7 +178,10 @@ export default defineConfig({
 				VERDANDE_BASE_URL: `http://localhost:${PORT}`,
 				VERDANDE_DATA_DIR: dataDir,
 				// Off: an update check would reach out to GitHub from a test run.
-				VERDANDE_UPDATE_CHECK: 'false'
+				VERDANDE_UPDATE_CHECK: 'false',
+				// Den origin, app-origin-projektet kører fladen fra, regnet som appens
+				// egen — som capacitor://localhost er det i den rigtige app.
+				VERDANDE_APP_ORIGINS: `http://app.localhost:${PORT}`
 			}
 		},
 

@@ -279,7 +279,7 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Before the CSRF lock, so a preflight is answered and never reaches it.
-		r.Use(appCORS)
+		r.Use(s.appCORS)
 		r.Use(s.requireCSRF)
 
 		r.Get("/ping", s.handlePing)

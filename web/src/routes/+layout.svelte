@@ -15,6 +15,7 @@
 	import { setBadge } from '$lib/badge.js';
 	import { open as openInChosenBrowser, stored as storedOpener } from '$lib/linkopen.js';
 	import BeaconNotice from '$lib/components/BeaconNotice.svelte';
+	import { installNativeMedia } from '$lib/nativemedia.js';
 
 	let { children } = $props();
 
@@ -56,6 +57,12 @@
 
 	$effect(() => {
 		app.load();
+	});
+
+	// Pictures and downloads from the server, in the iOS app. A no-op in a
+	// browser. See nativemedia.js.
+	$effect(() => {
+		installNativeMedia();
 	});
 
 	/**

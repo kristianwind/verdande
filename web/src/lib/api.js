@@ -24,6 +24,7 @@ export class ApiError extends Error {
 
 import { t } from './i18n.svelte.js';
 import { connectivity, sleepOrOnline } from './connectivity.svelte.js';
+import { apiURL, appSession, authorize, deviceName, isNativeApp } from './platform.js';
 
 /**
  * How long a request keeps retrying a network failure before giving up.
@@ -152,19 +153,21 @@ async function request(method, path, body, options = {}) {
 	const init = {
 		method,
 		headers: {},
-		// The session cookie is httpOnly and same-origin; nothing here handles a token.
-		credentials: 'same-origin',
 		signal: options.signal
 	};
 	if (body !== undefined) {
 		init.headers['Content-Type'] = 'application/json';
 		init.body = JSON.stringify(body);
 	}
+	// In a browser: the httpOnly session cookie, same-origin, and nothing here
+	// handles a token. In the iOS app: its session token as a bearer. See
+	// platform.js.
+	authorize(init);
 
 	// Retries a network failure for a few seconds so a short drop does not lose the
 	// call; `withRetry` turns an exhausted window into the same `offline` error the
 	// app already handles. `options.noRetry` opts a call out — used by nothing yet.
-	const res = await withRetry(() => fetch(`/api/v1${path}`, init), options.noRetry);
+	const res = await withRetry(() => fetch(apiURL(path), init), options.noRetry);
 
 	if (res.status === 204) return null;
 
@@ -205,7 +208,7 @@ async function upload(path, file, field = 'file') {
 	form.append(field, file);
 
 	const res = await withRetry(() =>
-		fetch(`/api/v1${path}`, { method: 'POST', body: form, credentials: 'same-origin' })
+		fetch(apiURL(path), authorize({ method: 'POST', body: form }))
 	);
 
 	const text = await res.text();
@@ -232,9 +235,30 @@ export const api = {
 	// --- auth
 	setupState: () => get('/auth/setup'),
 	setup: (data) => post('/auth/setup', data),
-	login: (email, password) => post('/auth/login', { email, password }),
+	login: async (email, password) => {
+		if (!isNativeApp()) return post('/auth/login', { email, password });
+		// The app gets its session in the answer instead of a cookie, and keeps
+		// it — also while a code is still owed, because the second step is sent
+		// with it.
+		const result = await post('/auth/login', {
+			email,
+			password,
+			client: 'app',
+			device_name: deviceName()
+		});
+		if (result?.session_token) appSession.setToken(result.session_token);
+		return result;
+	},
 	loginTOTP: (code) => post('/auth/login/totp', { code }),
-	logout: () => post('/auth/logout'),
+	logout: async () => {
+		try {
+			return await post('/auth/logout');
+		} finally {
+			// Gone from the phone whether or not the server heard: a sign-out that
+			// left the token behind because the network was down is not one.
+			if (isNativeApp()) appSession.signOut();
+		}
+	},
 	me: () => get('/auth/me'),
 	updateProfile: (data) => patch('/auth/me', data),
 	// Its own route rather than a field on the profile: that one backs a form with
@@ -420,6 +444,9 @@ export const api = {
 	createToken: (name, expiresInDays) =>
 		post('/tokens', { name, expires_in_days: expiresInDays ?? 0 }),
 	deleteToken: (id) => del(`/tokens/${id}`),
+
+	// --- live sync, for the app (see stores.svelte.js)
+	wsTicket: () => post('/ws-ticket'),
 
 	// --- notifications and push
 	listNotifications: () => get('/notifications'),

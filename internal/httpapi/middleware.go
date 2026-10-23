@@ -222,7 +222,7 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 		// this Origin — the browser writes the header, not the page — and an app
 		// login sets no cookie, so there is no session here for a forged request
 		// to ride on.
-		if isAppOrigin(r.Header.Get("Origin")) {
+		if s.isAppOrigin(r.Header.Get("Origin")) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -251,8 +251,16 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 // makes to a server arrives from here, whichever server it is.
 var appOrigins = []string{"capacitor://localhost"}
 
-func isAppOrigin(origin string) bool {
+func (s *Server) isAppOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
 	for _, o := range appOrigins {
+		if origin == o {
+			return true
+		}
+	}
+	for _, o := range s.cfg.AppOrigins {
 		if origin == o {
 			return true
 		}

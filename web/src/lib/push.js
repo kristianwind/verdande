@@ -9,12 +9,16 @@
 
 import { api } from './api.js';
 import { t } from './i18n.svelte.js';
+import { isNativeApp } from './platform.js';
 
 /** Whether this browser can do it at all. Safari before 16.4 cannot, and neither
  *  can any browser on a page served over plain HTTP from a non-localhost host. */
 export function supported() {
 	return (
 		typeof window !== 'undefined' &&
+		// The iOS app gets its notifications from APNs, not Web Push: a WKWebView
+		// has no push service, and a subscription made there would go nowhere.
+		!isNativeApp() &&
 		'serviceWorker' in navigator &&
 		'PushManager' in window &&
 		'Notification' in window

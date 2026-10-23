@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/kristianwind/verdande/internal/config"
 )
 
 func (ts *testServer) corsDo(t *testing.T, method, path, origin string, header map[string]string) *http.Response {
@@ -198,5 +200,25 @@ func TestACookieSocketStillChecksTheOrigin(t *testing.T) {
 	}
 	if err := dial("http://localhost"); err != nil {
 		t.Errorf("control: the instance's own origin: %v", err)
+	}
+}
+
+// The end-to-end suite runs the interface from a second host name and tells the
+// server to count it as the app's. That origin is then the app's in every
+// respect, and capacitor://localhost stays one too.
+func TestConfiguredAppOriginsCountAsTheApp(t *testing.T) {
+	ts := newTestServerWith(t, func(c *config.Config) {
+		c.AppOrigins = []string{"http://app.localhost:8097"}
+	})
+	for _, origin := range []string{"http://app.localhost:8097", "capacitor://localhost"} {
+		resp := ts.corsDo(t, "GET", "/api/v1/ping", origin, nil)
+		if got := resp.Header.Get("Access-Control-Allow-Origin"); got != origin {
+			t.Errorf("%s: Allow-Origin %q", origin, got)
+		}
+	}
+	// Not a prefix match: a neighbour on another port is nobody.
+	resp := ts.corsDo(t, "GET", "/api/v1/ping", "http://app.localhost:8098", nil)
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("a neighbouring origin was answered: %q", got)
 	}
 }

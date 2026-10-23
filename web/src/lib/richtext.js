@@ -267,7 +267,10 @@ function inlineToMarkdown(node) {
 		// — og den første gemning ville tage hvert billede ud af noten uden at
 		// nogen havde rørt det.
 		case 'IMG':
-			return `![${node.getAttribute('alt') ?? ''}](${node.getAttribute('src') ?? ''})`;
+			// data-src first: in the iOS app the shown source is a blob made on this
+			// device, and the path it was made from is what the note keeps. See
+			// nativemedia.js.
+			return `![${node.getAttribute('alt') ?? ''}](${node.dataset?.src || node.getAttribute('src') || ''})`;
 		case 'STRONG':
 		case 'B':
 			return inner ? `**${inner}**` : '';
