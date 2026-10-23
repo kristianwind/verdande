@@ -1,0 +1,9 @@
+{
+  "appId": "dk.nolimit.verdande",
+  "appName": "Verdande",
+  "webDir": "../web/build",
+  "ios": {
+    "contentInset": "never",
+    "scheme": "Verdande"
+  }
+}

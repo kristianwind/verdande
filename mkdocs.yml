@@ -56,6 +56,7 @@ nav:
       - Opening links: links.md
       - Filters: filters.md
       - Importing from Todoist: import.md
+      - The iOS app: ios.md
   - Connecting things:
       - Calendar: calendar.md
       - Feeds and CalDAV: caldav.md
