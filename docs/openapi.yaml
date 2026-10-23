@@ -131,7 +131,7 @@ paths:
                 device_name:
                   type: string
                   maxLength: 100
-                  description: Required with `client: app`; shown in the list of sessions.
+                  description: "Required with `client: app`; shown in the list of sessions."
                   example: Kristians iPhone
       responses:
         "200":
