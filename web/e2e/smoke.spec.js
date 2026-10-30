@@ -6155,8 +6155,16 @@ test('en titel, der rettes i opgaveruden, tager gentagelse, tid, projekt og alar
 	const after = await apiCall(page, 'GET', '/tasks/' + task.id);
 	expect(after.content).toBe('omskriv titel');
 	expect(after.project_id).toBe(project.id);
-	expect(new Date(after.due_datetime).getHours()).toBe(9);
-	expect(new Date(after.due_datetime).getDay()).toBe(1);
+	// I kontoens zone, ikke i den proces, prøven kører i: en CI-runner i UTC læser
+	// 09:00 i København som 08.
+	const local = new Intl.DateTimeFormat('en-GB', {
+		timeZone: 'Europe/Copenhagen',
+		weekday: 'short',
+		hour: '2-digit',
+		minute: '2-digit',
+		hourCycle: 'h23'
+	}).format(new Date(after.due_datetime));
+	expect(local).toBe('Mon 09:00');
 	const { reminders } = await apiCall(page, 'GET', `/tasks/${task.id}/reminders`);
 	expect(reminders.map((r) => r.offset_min)).toEqual([-60]);
 });
