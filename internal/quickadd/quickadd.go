@@ -304,22 +304,28 @@ func extractPriority(input string, spans []Span) (int, []Span) {
 var (
 	// An explicit marker: "kl 10", "kl. 10:30", "klokken 16", "at 9.15".
 	reTimeMarked = regexp.MustCompile(`(?i)(?:^|\s)(kl\.?|klokken|at)\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?(?:\s|$)`)
-	// A 12-hour suffix carries its own marker: "10am", "7:30 pm".
-	reTimeMeridiem = regexp.MustCompile(`(?i)(?:^|\s)(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?:\s|$)`)
+	// A 12-hour suffix carries its own marker: "10am", "7:30 pm" — and may still
+	// be written after one, "at 10am", "kl 7 pm". The marker is part of the time:
+	// left behind, "tomorrow at 10am" became the title "… at".
+	reTimeMeridiem = regexp.MustCompile(`(?i)(?:^|\s)((?:at|kl\.?|klokken)\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?:\s|$)`)
 	// A bare colon time: "16:30". Only ':' — never '.', because "15.3" is a date.
 	reTimeColon = regexp.MustCompile(`(?:^|\s)(\d{1,2}):(\d{2})(?:\s|$)`)
 )
 
 func extractTime(input string, spans []Span, locale string) (int, int, bool, []Span) {
 	if m := reTimeMeridiem.FindStringSubmatchIndex(input); m != nil {
-		hour := atoi(input, m[2], m[3])
+		hour := atoi(input, m[4], m[5])
 		minute := 0
-		if m[4] >= 0 {
-			minute = atoi(input, m[4], m[5])
+		if m[6] >= 0 {
+			minute = atoi(input, m[6], m[7])
 		}
-		hour = applyMeridiem(hour, strings.ToLower(input[m[6]:m[7]]))
+		hour = applyMeridiem(hour, strings.ToLower(input[m[8]:m[9]]))
 		if valid(hour, minute) {
-			return hour, minute, true, append(spans, Span{Start: m[2], End: m[7], Kind: KindTime})
+			start := m[4]
+			if m[2] >= 0 {
+				start = m[2]
+			}
+			return hour, minute, true, append(spans, Span{Start: start, End: m[9], Kind: KindTime})
 		}
 	}
 
@@ -429,6 +435,37 @@ var (
 	reNumeric = regexp.MustCompile(`(?:^|\s)(\d{1,2})[/.](\d{1,2})(?:[-/](\d{2,4}))?(?:\s|$)`)
 )
 
+// fractionUnits are the words that make "3/4" a quantity rather than a day.
+//
+// "køb 1/2 liter fløde" is half a litre, not the first of February — and it is
+// the ordinary shape of a shopping list or a recipe. Without a unit after it the
+// slash form stays a date: "3/4" alone, "møde 3/4 med Anders", and also
+// "3/4 kage", because nothing in "kage" tells the third of April from three
+// quarters, and a date quietly dropped is worse than one somebody removes.
+var fractionUnits = map[string]bool{
+	"l": true, "liter": true, "dl": true, "cl": true, "ml": true,
+	"kg": true, "g": true, "gram": true, "pund": true,
+	"tsk": true, "spsk": true, "kop": true, "kopper": true, "glas": true,
+	"stk": true, "stk.": true, "del": true, "dele": true, "pakke": true, "pakker": true,
+	"time": true, "timer": true, "km": true, "m": true, "cm": true,
+	"cup": true, "cups": true, "tsp": true, "tbsp": true, "lb": true, "oz": true,
+}
+
+// firstNumericDate is the first "d/m" in the input that is not a quantity — see
+// fractionUnits. A written year always makes it a date.
+func firstNumericDate(input string) []int {
+	for _, m := range reNumeric.FindAllStringSubmatchIndex(input, -1) {
+		if m[6] < 0 {
+			rest := strings.Fields(input[m[5]:])
+			if len(rest) > 0 && fractionUnits[strings.ToLower(rest[0])] {
+				continue
+			}
+		}
+		return m
+	}
+	return nil
+}
+
 func extractDate(input string, spans []Span, now time.Time) (time.Time, bool, []Span) {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
@@ -441,7 +478,7 @@ func extractDate(input string, spans []Span, now time.Time) (time.Time, bool, []
 		}
 	}
 
-	if m := reNumeric.FindStringSubmatchIndex(input); m != nil {
+	if m := firstNumericDate(input); m != nil {
 		day, mo := atoi(input, m[2], m[3]), atoi(input, m[4], m[5])
 		year := today.Year()
 		explicitYear := m[6] >= 0

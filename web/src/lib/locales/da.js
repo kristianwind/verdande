@@ -272,6 +272,9 @@ export const da = {
 	// Diktat, ikke tale: programmet laver ingen talegenkendelse, det stiller
 	// feltet frem, så tastaturets egen mikrofon kan bruges. Hjælpelinjen siger
 	// det, fordi en knap med en mikrofon på lover noget andet.
+	'task.unknownProject': 'Der er intet projekt, der hedder "{name}". Opgaven ligger i {where}.',
+	'task.unknownSection': 'Der er ingen sektion, der hedder "{name}" i {where}. Opgaven ligger uden sektion.',
+	'task.subtaskKeepsProject': 'En underopgave ligger i sin opgaves projekt, {where} — "{name}" blev ikke brugt.',
 	'task.alarmNeedsATime':
 		'Opgaven er oprettet. Alarmen er ikke — "en time før" skal have et klokkeslæt at regne tilbage fra.',
 	'task.speak': 'Tal en opgave ind',

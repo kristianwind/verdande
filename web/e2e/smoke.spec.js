@@ -6089,3 +6089,82 @@ test('knappen findes ikke i urd-ansigtet', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.getByRole('button', { name: 'Tal en opgave ind' })).toBeVisible();
 });
+
+/** Calls the API as the signed-in page does, and returns the parsed body. */
+async function apiCall(page, method, path, body) {
+	return page.evaluate(
+		async ({ method, path, body }) => {
+			const init = { method, credentials: 'include', headers: { 'Sec-Fetch-Site': 'same-origin' } };
+			if (body !== undefined) {
+				init.headers['Content-Type'] = 'application/json';
+				init.body = JSON.stringify(body);
+			}
+			const r = await fetch('/api/v1' + path, init);
+			return r.status === 204 ? null : r.json();
+		},
+		{ method, path, body }
+	);
+}
+
+/**
+ * Et "#navn", der ikke findes, er klippet ud af titlen af parseren og lagt et
+ * andet sted af serveren. Uden en besked forsvandt ordet bare.
+ */
+test('et ukendt projekt i hurtig tilføjelse bliver sagt højt', async ({ page }) => {
+	await page.goto('/');
+	const name = `Findesikke${Date.now()}`;
+	const box = page.getByLabel('Ny opgave');
+	await box.fill(`køb mælk i dag #${name}`);
+	await box.press('Enter');
+
+	await expect(page.locator('.toast').filter({ hasText: name })).toContainText(
+		'Der er intet projekt'
+	);
+	await expect(page.locator('.toast').filter({ hasText: name })).toContainText('Indbakke');
+});
+
+/**
+ * At skrive i en opgaves titel læses som hurtig tilføjelse læser: dato,
+ * klokkeslæt, gentagelse, projekt og alarm. Gentagelsen blev engang læst under
+ * et felt, der ikke findes, og forsvandt.
+ */
+test('en titel, der rettes i opgaveruden, tager gentagelse, tid, projekt og alarm med', async ({
+	page
+}) => {
+	await page.goto('/');
+	const project = await apiCall(page, 'POST', '/projects', { name: `Titelprojekt ${Date.now()}` });
+	const task = await apiCall(page, 'POST', '/tasks', { content: 'omskriv titel' });
+
+	await page.goto('/opgave/' + task.id);
+	const drawer = page.getByRole('complementary', { name: 'Opgave' });
+	const title = drawer.getByLabel('Opgavens tekst');
+	await expect(title).toHaveValue('omskriv titel');
+
+	const saved = opgaveGemt(page);
+	await title.fill(`omskriv titel hver mandag kl 9 #"${project.name}" mind mig en time før`);
+	await title.press('Enter');
+	await saved;
+
+	await expect(title).toHaveValue('omskriv titel');
+	await expect(page.locator('.toast').filter({ hasText: 'Læst som' })).toBeVisible();
+
+	// Målt på serveren, ikke på skærmen: det er dér, det skal stå.
+	await expect
+		.poll(async () => (await apiCall(page, 'GET', '/tasks/' + task.id)).recurrence_rule)
+		.toBe('FREQ=WEEKLY;BYDAY=MO');
+	const after = await apiCall(page, 'GET', '/tasks/' + task.id);
+	expect(after.content).toBe('omskriv titel');
+	expect(after.project_id).toBe(project.id);
+	// I kontoens zone, ikke i den proces, prøven kører i: en CI-runner i UTC læser
+	// 09:00 i København som 08.
+	const local = new Intl.DateTimeFormat('en-GB', {
+		timeZone: 'Europe/Copenhagen',
+		weekday: 'short',
+		hour: '2-digit',
+		minute: '2-digit',
+		hourCycle: 'h23'
+	}).format(new Date(after.due_datetime));
+	expect(local).toBe('Mon 09:00');
+	const { reminders } = await apiCall(page, 'GET', `/tasks/${task.id}/reminders`);
+	expect(reminders.map((r) => r.offset_min)).toEqual([-60]);
+});

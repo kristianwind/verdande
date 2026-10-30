@@ -729,6 +729,20 @@ class AppState {
 			// slags påmindelse, hvis fejl intet bagefter afslører — der står ingen
 			// række at savne, og man opdager den først, da den ikke ringede.
 			if (task?.reminder_not_set) this.toast(t('task.alarmNeedsATime'));
+			// Et "#navn" eller "/navn", der ikke ramte noget, er klippet ud af titlen
+			// af parseren og lagt et andet sted af serveren. Uden de her linjer
+			// forsvandt ordet bare, og opgaven lå et sted, ingen havde bedt om.
+			const where = projectName(this.projectById(task?.project_id));
+			if (task?.unknown_project) {
+				this.toast(
+					parentId
+						? t('task.subtaskKeepsProject', { name: task.unknown_project, where })
+						: t('task.unknownProject', { name: task.unknown_project, where })
+				);
+			}
+			if (task?.unknown_section) {
+				this.toast(t('task.unknownSection', { name: task.unknown_section, where }));
+			}
 			return task;
 		} catch (e) {
 			this.toast(humanMessage(e));

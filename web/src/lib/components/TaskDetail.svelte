@@ -14,7 +14,7 @@
 	import { app, projectName, clockOf } from '$lib/stores.svelte.js';
 	import { focusOnMount } from '$lib/focus.js';
 	import { t, tag } from '$lib/i18n.svelte.js';
-	import { REPEATS, reminderOffsetLabel } from '$lib/when.js';
+	import { REPEATS, reminderOffsetLabel, repeatLabel, shortDate } from '$lib/when.js';
 	import { readList } from '$lib/pastelist.js';
 
 	let { task, onclose } = $props();
@@ -215,23 +215,82 @@
 
 		const patch = { content: trimmed };
 		const took = [];
+		// Det, der ikke kan stå i en PATCH: alarmen er sin egen række.
+		let reminder = null;
 		if (parsed && parsed.content && parsed.content !== trimmed) {
 			patch.content = parsed.content;
+			// Samme felter som hurtig tilføjelse læser, og med de navne serveren
+			// sender dem under. Feltet hedder `recurrence_rule`; det læste en gang
+			// `parsed.recurrence`, som aldrig findes, så "hver mandag" i en titel
+			// forsvandt fra titlen og blev ingen steder.
 			if (parsed.due_date) {
 				patch.due_date = parsed.due_date;
-				took.push(parsed.due_date);
+				took.push(shortDate(parsed.due_date));
+			}
+			// Parseren fylder altid datoen ud, når den har læst et klokkeslæt, så
+			// due_date er sat ovenfor, når due_time er.
+			if (parsed.due_time) {
+				patch.due_time = parsed.due_time;
+				took.push(parsed.due_time);
 			}
 			if (parsed.priority && parsed.priority < 4) {
 				patch.priority = parsed.priority;
 				took.push(`P${parsed.priority}`);
 			}
-			if (parsed.recurrence) {
-				patch.recurrence_rule = parsed.recurrence;
-				took.push('gentagelse');
+			if (parsed.recurrence_rule) {
+				patch.recurrence_rule = parsed.recurrence_rule;
+				took.push(repeatLabel(parsed.recurrence_rule, parsed.recurrence_text));
 			}
 			if (parsed.labels?.length) {
 				patch.labels = [...new Set([...(task.labels ?? []), ...parsed.labels])];
 				took.push(parsed.labels.map((l) => `@${l}`).join(' '));
+			}
+			if (parsed.project) {
+				// Navnet slås op som hurtig tilføjelse gør: uden forskel på store og
+				// små bogstaver. Et navn, der ikke findes, siges højt — det er klippet
+				// ud af titlen, og uden en besked var ordet bare væk.
+				const wanted = parsed.project.toLowerCase();
+				const found = app.projects.find((p) => p.name.toLowerCase() === wanted);
+				if (!found) {
+					app.toast(
+						t('task.unknownProject', {
+							name: parsed.project,
+							where: projectName(app.projectById(task.project_id))
+						})
+					);
+				} else if (found.id !== task.project_id && !task.parent_id) {
+					patch.project_id = found.id;
+					took.push(`#${found.name}`);
+				}
+			}
+			if (parsed.reminder_at) {
+				// Vægurstid i læserens zone, ligesom feltet nedenfor giver den.
+				reminder = { remind_at: new Date(parsed.reminder_at).toISOString() };
+			} else if (parsed.reminder_offset_min !== undefined && parsed.reminder_offset_min !== null) {
+				// En forskydning regnes fra klokkeslættet. Uden et ville rækken aldrig
+				// ringe, og intet bagefter ville afsløre det.
+				if (patch.due_time || task.due_datetime) {
+					reminder = { offset_min: parsed.reminder_offset_min };
+				} else {
+					app.toast(t('task.alarmNeedsATime'));
+				}
+			}
+		}
+
+		// Alarmen før rettelsen: får opgaven sit klokkeslæt i samme gemning, lægger
+		// serveren standardalarmen på — medmindre opgaven allerede har en. Den,
+		// der blev skrevet, skal være den, og ikke stå oven på standarden.
+		if (reminder) {
+			try {
+				const created = await api.createReminder(task.id, reminder);
+				reminders = [...reminders, created];
+				took.push(
+					reminder.offset_min !== undefined
+						? reminderOffsetLabel(reminder.offset_min)
+						: parsed.reminder_at.slice(11)
+				);
+			} catch (e) {
+				app.toast(humanMessage(e));
 			}
 		}
 
@@ -244,6 +303,8 @@
 		if (took.length) {
 			content = patch.content;
 			if (patch.due_date) dueDate = patch.due_date;
+			if (patch.due_time) dueTime = patch.due_time;
+			if (patch.project_id) projectId = patch.project_id;
 			if (patch.priority) priority = patch.priority;
 			if (patch.recurrence_rule) recurrence = patch.recurrence_rule;
 			if (patch.labels) labels = patch.labels.join(', ');
