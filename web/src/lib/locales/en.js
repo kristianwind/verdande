@@ -266,6 +266,9 @@ export const en = {
 	'task.pastedAdd': 'Add {n} tasks',
 	'task.pastedCancel': 'Cancel',
 	'task.new': 'New task',
+	'task.unknownProject': 'There is no project called "{name}". The task is in {where}.',
+	'task.unknownSection': 'There is no section called "{name}" in {where}. The task has no section.',
+	'task.subtaskKeepsProject': 'A sub-task stays in its task\'s project, {where} — "{name}" was not used.',
 	'task.alarmNeedsATime':
 		'The task is created. The alarm is not — "an hour before" needs a time to count back from.',
 	'task.speak': 'Speak a task',

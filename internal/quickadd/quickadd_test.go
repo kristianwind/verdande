@@ -784,3 +784,50 @@ func TestImpossibleReminderClockIsNotKept(t *testing.T) {
 		t.Errorf("ReminderOffsetMin = %d, want none", *got.ReminderOffsetMin)
 	}
 }
+
+// A marker written before a 12-hour time belongs to the time. Left behind, it
+// became the end of the title: "file the VAT return tomorrow at 10am" was the
+// task "file the VAT return at".
+func TestMarkerBeforeAMeridiemTimeIsConsumed(t *testing.T) {
+	now := ref(t)
+	for _, tc := range []struct{ in, content, due, time string }{
+		{"file the VAT return tomorrow at 10am", "file the VAT return", "2026-03-11", "10:00"},
+		{"call at 7:30 pm", "call", "2026-03-10", "19:30"},
+		{"call the dentist tomorrow at 9am remind me an hour before", "call the dentist", "2026-03-11", "09:00"},
+		{"møde i morgen kl 7 pm", "møde", "2026-03-11", "19:00"},
+		// Control: a meridiem time with no marker still works, and "at" that is
+		// not in front of a time is a word.
+		{"standup tomorrow 9am", "standup", "2026-03-11", "09:00"},
+		{"look at the report tomorrow", "look at the report", "2026-03-11", ""},
+	} {
+		got := Parse(tc.in, now, "en")
+		if got.Content != tc.content || got.DueDate != tc.due || got.DueTime != tc.time {
+			t.Errorf("%q → %q %s %s, want %q %s %s", tc.in, got.Content, got.DueDate, got.DueTime,
+				tc.content, tc.due, tc.time)
+		}
+	}
+}
+
+// "1/2 liter" is half a litre. A day/month followed by a unit is a quantity and
+// stays in the title; without a unit it is still a date, because "3/4" alone and
+// "møde 3/4 med Anders" are the third of April.
+func TestAFractionWithAUnitIsNotADate(t *testing.T) {
+	now := ref(t)
+	for _, tc := range []struct{ in, content, due string }{
+		{"køb 1/2 liter fløde", "køb 1/2 liter fløde", ""},
+		{"tilsæt 3/4 dl mælk", "tilsæt 3/4 dl mælk", ""},
+		{"bag med 1/2 kg mel i morgen", "bag med 1/2 kg mel", "2026-03-11"},
+		// A quantity first, a real date after it: the date is still found.
+		{"køb 1/2 liter fløde 15/3", "køb 1/2 liter fløde", "2026-03-15"},
+		// Controls: no unit, or a year — a date.
+		{"møde 3/4", "møde", "2026-04-03"},
+		{"møde 3/4 med Anders", "møde med Anders", "2026-04-03"},
+		{"halvdelen 3/4 kage", "halvdelen kage", "2026-04-03"},
+		{"frist 1/2-2027 liter", "frist liter", "2027-02-01"},
+	} {
+		got := Parse(tc.in, now, "da")
+		if got.Content != tc.content || got.DueDate != tc.due {
+			t.Errorf("%q → %q %q, want %q %q", tc.in, got.Content, got.DueDate, tc.content, tc.due)
+		}
+	}
+}
