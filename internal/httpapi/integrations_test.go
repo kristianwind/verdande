@@ -1172,17 +1172,16 @@ func TestMailAddressPrefersTheConfiguredSender(t *testing.T) {
 // namespace, and a client probing it is asking a yes-or-no question.
 //
 // Claude asks /.well-known/oauth-authorization-server before connecting to an
-// MCP server. It read the shell as "there is an authorization server here" and
-// then failed trying to register with it, reporting a broken sign-in service on
-// a server that has none and needs none.
+// MCP server. Before that was a real route it read the shell as "there is an
+// authorization server here" and failed trying to register with it. The OAuth
+// paths are answered by oauth_test.go now; everything else must still be a 404.
 func TestWellKnownDoesNotAnswerWithTheAppShell(t *testing.T) {
 	ts := newTestServer(t)
 	ts.bootstrap(t)
 
 	for _, path := range []string{
-		"/.well-known/oauth-authorization-server",
-		"/.well-known/oauth-protected-resource",
 		"/.well-known/openid-configuration",
+		"/.well-known/oauth-protected-resource/somewhere-else",
 		"/.well-known/anything-at-all",
 	} {
 		resp, err := ts.client.Get(ts.URL + path)

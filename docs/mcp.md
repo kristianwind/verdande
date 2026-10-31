@@ -12,39 +12,70 @@ conversation.
 
 ## Connecting it
 
-**Make a token** under **Settings → API tokens**. The page then shows the
-connector address to go with it — token and all — which is the thing to copy:
+**Add the connector** in Claude with your instance's address followed by `/mcp`,
+and nothing else:
 
 ```
-https://todo.example.dk/mcp?key=vrd_…
+https://todo.example.dk/mcp
 ```
 
-**Add the connector** in Claude with that address, and nothing else. The dialog
-asks for a name and a URL; leave the OAuth fields empty.
+Claude sends you to verdande to sign in — the ordinary sign-in, passkey and
+second factor included — and then asks one question: *"Claude wants to connect
+to your account"*. Press **Allow** and you are connected. Leave the dialog's
+OAuth client fields empty; Claude registers itself.
 
-!!! note "Why the key is in the address"
-    The dialog has no field for a bearer token — only OAuth client credentials —
-    so a header cannot be configured from it. The address *is* the credential
-    here, exactly as it is for the [calendar feed](caldav.md#subscribing-to-a-feed).
-    Treat it like a password: anyone holding it reaches what you reach. The
-    server logs request paths without their query strings, so it does not end up
-    in the log.
+The approval screen shows two things: the name the program gave itself, and
+**where the access is sent**. Any program can call itself Claude; only Claude is
+answered at `claude.ai`. If that line says something you do not recognise, press
+**Deny**.
 
 !!! warning "It has to be reachable from the internet"
     Claude connects from Anthropic's side, not from your browser. An instance only
     reachable on your LAN or over a VPN cannot be used this way.
 
+### With a token in the address instead
+
+A client that cannot sign in can be given a token in the address. **Make a token**
+under **Settings → API tokens**; the page then shows the address to go with it:
+
+```
+https://todo.example.dk/mcp?key=vrd_…
+```
+
+Treat that address like a password: anyone holding it reaches what you reach. The
+server logs request paths without their query strings, so it does not end up in
+the log.
+
 ### With a header instead
 
-Anything that *can* send a header should, and use the API path:
+Anything that *can* send a header should:
 
 ```bash
 curl -H "Authorization: Bearer vrd_…" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
-  https://todo.example.dk/api/v1/mcp
+  https://todo.example.dk/mcp
 ```
 
-Both endpoints run the same server and reach the same things.
+`/api/v1/mcp` answers the same way. Both run the same server and reach the same
+things.
+
+### How the sign-in works
+
+verdande is its own OAuth authorization server, for MCP clients only — the shape
+the MCP specification asks for:
+
+- `/.well-known/oauth-protected-resource/mcp` and
+  `/.well-known/oauth-authorization-server` say where to sign in. An unsigned
+  request to `/mcp` is answered 401 with a `WWW-Authenticate` header pointing at
+  the first.
+- Clients register themselves at `/oauth/register`. Public clients only: a program
+  running somewhere else cannot keep a secret, so PKCE (S256) is the proof
+  instead. A registration nobody approves is removed after a day.
+- The code a client gets back is good for one minute and one exchange.
+- What it is exchanged for is an ordinary personal API token. No refresh token and
+  no expiry: it is listed under **Settings → API tokens** with the client's name,
+  marked *connected with your account*, and connecting the same client again
+  replaces it rather than adding another.
 
 ## What Claude can do
 
@@ -56,6 +87,9 @@ Both endpoints run the same server and reach the same things.
 | `update_task` | Change a title, priority, date or project. |
 | `complete_task` | Tick one off. |
 | `add_comment` | Comment on a task. |
+| `search_notes` | Find notes by text. |
+| `create_note` | Write a note, as Markdown. |
+| `update_note` | Change a note. |
 
 `create_task` prefers natural language, so *"add file the VAT return tomorrow at
 10am p1 #Accounts"* goes through the same parser the app uses — dates, priorities,
@@ -71,8 +105,10 @@ scope to configure.
 ## What it cannot do
 
 Delete projects, manage members, change settings or read another account. The tools
-are the six above; there is no general escape hatch.
+are the nine above; there is no general escape hatch.
 
 !!! note "Revoking it"
-    **Settings → API tokens**, delete the token. The connector stops working
-    immediately, and nothing else about your account is affected.
+    **Settings → API tokens**, delete the token — a connection made by signing in
+    is listed there under the program's name. The connector stops working
+    immediately, and asks you to sign in again the next time it is used. Nothing
+    else about your account is affected.

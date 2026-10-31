@@ -64,6 +64,10 @@ type Server struct {
 	// app_handlers.go.
 	wsTickets *wsTickets
 
+	// Authorization codes on their way to becoming an MCP client's token — see
+	// oauth_handlers.go.
+	oauthCodes *oauthCodes
+
 	// Password guessing is the attack this application is actually exposed to, so
 	// the endpoints that check a secret are limited separately and more tightly
 	// than the rest of the API.
@@ -73,6 +77,7 @@ type Server struct {
 	mailLimiter  *limiter
 	hookLimiter  *limiter
 	resetLimiter *limiter
+	oauthLimiter *limiter
 	// Second factors are counted against the *account*, not the address. An
 	// address bucket is defeated by anybody with more than one address, which is
 	// the ordinary case — and a six-digit code is only safe while guesses are
@@ -115,11 +120,16 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 		mailLimiter:  newLimiter(60, time.Minute),
 		hookLimiter:  newLimiter(60, time.Minute),
 		resetLimiter: newLimiter(5, time.Hour),
+		// Registration and the token exchange are open to anybody who can reach
+		// the instance. A real client does each once per connection; thirty an
+		// hour is a ceiling nobody connecting meets.
+		oauthLimiter: newLimiter(30, time.Hour),
 		// Tighter than the password bucket, and for a whole hour. Somebody typing
 		// their own code gets it right on the first or second try; ten in an hour is
 		// generous for a person and hopeless for a search through a million.
 		totpLimiter: newLimiter(10, time.Hour),
 		wsTickets:   newWSTickets(),
+		oauthCodes:  newOAuthCodes(),
 	}
 	// Before the CSP, deliberately: the policy has to describe the bytes that go
 	// out, and in the notes edition those are the renamed ones.
@@ -258,6 +268,22 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 	// cross-site request waiting to happen; handleMCPWithKey accepts the key and
 	// nothing else.
 	r.Post("/mcp", s.handleMCPWithKey)
+
+	// Signing in to MCP with the account: discovery, registration, approval and
+	// the token exchange. In both editions, like the MCP server itself. None of
+	// them reads a cookie — the approval does, and it lives in /api/v1 below,
+	// behind the session and the CSRF check like every other write a browser
+	// makes. See oauth_handlers.go.
+	r.Get("/.well-known/oauth-protected-resource", s.handleProtectedResourceMetadata)
+	r.Get("/.well-known/oauth-protected-resource/mcp", s.handleProtectedResourceMetadata)
+	r.Get("/.well-known/oauth-authorization-server", s.handleAuthorizationServerMetadata)
+	r.Get("/oauth/authorize", s.handleOAuthAuthorize)
+	r.Options("/oauth/register", handleOpenPreflight)
+	r.Options("/oauth/token", handleOpenPreflight)
+	r.Method(http.MethodPost, "/oauth/register",
+		s.rateLimit(s.oauthLimiter, http.HandlerFunc(s.handleOAuthRegister)))
+	r.Method(http.MethodPost, "/oauth/token",
+		s.rateLimit(s.oauthLimiter, http.HandlerFunc(s.handleOAuthToken)))
 
 	// Google sends the browser here after consent. Outside /api/v1 because it is a
 	// top-level navigation rather than a fetch, but still behind the session — the
@@ -456,6 +482,15 @@ func New(cfg *config.Config, db *store.DB, log *slog.Logger, web fs.FS) *Server 
 				r.Get("/", s.handleListAPITokens)
 				r.Post("/", s.handleCreateAPIToken)
 				r.Delete("/{tokenID}", s.handleDeleteAPIToken)
+			})
+
+			// The approval page's two questions — what am I approving, and yes or
+			// no. Behind requireSession for the reason the tokens are: an approval
+			// mints a token.
+			r.Route("/oauth", func(r chi.Router) {
+				r.Use(s.requireSession)
+				r.Get("/request", s.handleOAuthRequest)
+				r.Post("/approve", s.handleOAuthApprove)
 			})
 
 			r.Route("/ai", func(r chi.Router) {
@@ -805,10 +840,9 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 	//
 	// That is not hypothetical. Claude probes
 	// /.well-known/oauth-authorization-server before connecting to an MCP server,
-	// read 200 and a page of HTML as "there is an authorization server here", and
-	// then failed trying to register with it — reporting a broken sign-in service
-	// on a server that has none and needs none. A 404 means "no OAuth here", the
-	// client stops asking, and the key in the URL is used as intended.
+	// and before that path was a real route it read 200 and a page of HTML as
+	// "there is an authorization server here" and failed trying to register with
+	// it. The OAuth paths are routes now; everything else under here is a 404.
 	if strings.HasPrefix(r.URL.Path, "/.well-known/") {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return

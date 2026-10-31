@@ -3965,6 +3965,61 @@ paths:
         "422": { $ref: "#/components/responses/Validation" }
         "502": { $ref: "#/components/responses/Upstream" }
 
+  /api/v1/oauth/request:
+    get:
+      tags: [integrations]
+      summary: What the approval page is approving.
+      description: |
+        Takes the `/oauth/authorize` query unchanged. Answers with the client's
+        self-declared name and the host the code will be sent to — the part a
+        client cannot misstate. Needs a session.
+      security:
+        - session: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  client_name: { type: string }
+                  redirect_to: { type: string, example: claude.ai }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/oauth/approve:
+    post:
+      tags: [integrations]
+      summary: Approve or refuse a connection.
+      description: |
+        Needs a session — a token cannot approve, or one leaked token could
+        mint others that outlive its revocation. Answers with the address to
+        send the browser to: the client's, with `code` or `error=access_denied`.
+      security:
+        - session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query, approve]
+              properties:
+                query: { type: string, description: "The `/oauth/authorize` query string, unchanged." }
+                approve: { type: boolean }
+      responses:
+        "200":
+          description: Where to go next.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  redirect_to: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /api/v1/mcp:
     post:
       tags: [integrations]
@@ -4426,21 +4481,27 @@ paths:
   /mcp:
     post:
       tags: [integrations]
-      summary: The MCP endpoint, with the token in the query string.
+      summary: The MCP endpoint at the address a person types into a connector.
       description: |
-        The same server as `/api/v1/mcp`, for a client that can only be given a
-        URL. Claude's custom-connector dialog asks for a name, an address and
-        OAuth client credentials — there is no field for a bearer token — so the
-        API path cannot be configured from it.
+        The same server as `/api/v1/mcp`. Two credentials are accepted: a bearer
+        token in `Authorization` — what a client holds after signing in with the
+        account through `/oauth/authorize` — or a token in `?key=`, for a client
+        that can only be given a URL.
 
-        The key is the only credential accepted here. A session cookie is
-        ignored: this route sits outside the CSRF check, and honouring a cookie
-        would make it a cross-site request that acts as whoever is signed in.
-      security: []
+        Without either, the 401 carries `WWW-Authenticate: Bearer
+        resource_metadata="…/.well-known/oauth-protected-resource/mcp"`, which is
+        how a client finds the sign-in.
+
+        A session cookie is ignored: this route sits outside the CSRF check, and
+        honouring a cookie would make it a cross-site request that acts as
+        whoever is signed in.
+      security:
+        - bearer: []
+        - {}
       parameters:
         - name: key
           in: query
-          required: true
+          required: false
           schema: { type: string, example: vrd_… }
           description: A personal API token. Treat the whole address as a password.
       requestBody:
@@ -4469,6 +4530,136 @@ paths:
                   error: { type: object }
         "202": { description: A notification. No body. }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /.well-known/oauth-protected-resource:
+    get:
+      tags: [integrations]
+      summary: Protected-resource metadata for the MCP endpoint (RFC 9728).
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/ProtectedResource" }
+
+  /.well-known/oauth-protected-resource/mcp:
+    get:
+      tags: [integrations]
+      summary: The same document, at the path RFC 9728 derives from `/mcp`.
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/ProtectedResource" }
+
+  /.well-known/oauth-authorization-server:
+    get:
+      tags: [integrations]
+      summary: Authorization-server metadata (RFC 8414).
+      description: |
+        The instance is its own authorization server, for MCP clients only.
+        Authorization code with S256 PKCE, public clients, no refresh tokens.
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  issuer: { type: string }
+                  authorization_endpoint: { type: string }
+                  token_endpoint: { type: string }
+                  registration_endpoint: { type: string }
+                  code_challenge_methods_supported: { type: array, items: { type: string } }
+
+  /oauth/register:
+    post:
+      tags: [integrations]
+      summary: Dynamic client registration (RFC 7591).
+      description: |
+        Open to anybody, rate limited, public clients only. Redirect addresses
+        must be https, http on a loopback address (any port), or an app's own
+        scheme. Metadata the server does not use is ignored. A registration that
+        is never approved is removed after a day.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [redirect_uris]
+              properties:
+                client_name: { type: string }
+                redirect_uris: { type: array, items: { type: string } }
+                token_endpoint_auth_method: { type: string, enum: [none] }
+      responses:
+        "201":
+          description: Registered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  client_id: { type: string }
+                  client_name: { type: string }
+                  redirect_uris: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/OAuthError" }
+        "429": { description: Too many attempts. }
+
+  /oauth/authorize:
+    get:
+      tags: [integrations]
+      summary: Where a client sends the browser to sign in and approve.
+      description: |
+        Checks the request and redirects to the app's approval page, `/forbind`,
+        which signs the person in first if needed. An unknown client or an
+        unregistered redirect address is refused here with 400, and nothing is
+        sent anywhere; other problems are sent back to the client as `error=`.
+      security: []
+      parameters:
+        - { name: response_type, in: query, required: true, schema: { type: string, enum: [code] } }
+        - { name: client_id, in: query, required: true, schema: { type: string } }
+        - { name: redirect_uri, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: code_challenge, in: query, required: true, schema: { type: string } }
+        - { name: code_challenge_method, in: query, required: true, schema: { type: string, enum: [S256] } }
+      responses:
+        "302": { description: "To the approval page, or back to the client with an error." }
+        "400": { description: The client or its redirect address cannot be trusted. }
+
+  /oauth/token:
+    post:
+      tags: [integrations]
+      summary: Exchange an authorization code for a token.
+      description: |
+        `authorization_code` only. The code is good for one minute and one
+        attempt. The token is an ordinary personal API token, listed under
+        Settings → Tokens with the client's name; connecting the same client
+        again replaces it.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, code, client_id, code_verifier]
+              properties:
+                grant_type: { type: string, enum: [authorization_code] }
+                code: { type: string }
+                client_id: { type: string }
+                redirect_uri: { type: string }
+                code_verifier: { type: string }
+      responses:
+        "200":
+          description: The token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string, example: vrd_… }
+                  token_type: { type: string, const: Bearer }
+        "400": { $ref: "#/components/responses/OAuthError" }
+        "429": { description: Too many attempts. }
 
   /.well-known/caldav:
     get:
@@ -4504,6 +4695,24 @@ components:
         browser's own session is never accepted here.
 
   responses:
+    ProtectedResource:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              resource: { type: string, example: https://todo.example.dk/mcp }
+              authorization_servers: { type: array, items: { type: string } }
+    OAuthError:
+      description: The error shape of RFC 6749 §5.2.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string, example: invalid_grant }
+              error_description: { type: string }
     BadRequest:
       description: The body could not be read.
       content:
@@ -5382,6 +5591,9 @@ components:
         created_at: { type: string, format: date-time }
         last_used_at: { type: string, format: date-time }
         expires_at: { type: string, format: date-time }
+        connected:
+          type: boolean
+          description: "True for a token an app received by signing in with the account, rather than one made by hand."
 
     Notification:
       type: object

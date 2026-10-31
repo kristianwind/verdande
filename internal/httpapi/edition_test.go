@@ -185,6 +185,10 @@ func TestNotesEditionServesOnlyItsOwnRoutes(t *testing.T) {
 		// er værktøjslisten bagved, der er kortere.
 		"POST /api/v1/mcp",
 		"POST /mcp",
+		// Og at forbinde med kontoen, som hører til MCP og ikke til opgaverne.
+		"GET /.well-known/oauth-authorization-server",
+		"POST /oauth/token",
+		"POST /api/v1/oauth/approve",
 	} {
 		if !notes[must] {
 			t.Errorf("the notes edition does not serve %s — that is a deletion, not a gate", must)

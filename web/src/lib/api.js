@@ -445,6 +445,12 @@ export const api = {
 		post('/tokens', { name, expires_in_days: expiresInDays ?? 0 }),
 	deleteToken: (id) => del(`/tokens/${id}`),
 
+	// --- signing an MCP client in with the account (routes/forbind)
+	// The query goes over unchanged: the server reads it with the same function
+	// that checked it on the way in, so the two cannot disagree about it.
+	oauthRequest: (query) => get(`/oauth/request${query}`),
+	oauthApprove: (query, approve) => post('/oauth/approve', { query, approve }),
+
 	// --- live sync, for the app (see stores.svelte.js)
 	wsTicket: () => post('/ws-ticket'),
 

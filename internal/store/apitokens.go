@@ -17,6 +17,9 @@ type APIToken struct {
 	CreatedAt  time.Time
 	LastUsedAt *time.Time
 	ExpiresAt  *time.Time
+	// Connected marks a token an OAuth approval minted rather than one the
+	// person made by hand — it carries the client's name, not one they chose.
+	Connected bool
 }
 
 // CreateAPIToken returns the token in plaintext exactly once. Only its hash is
@@ -80,7 +83,8 @@ func (db *DB) UserByAPIToken(ctx context.Context, token string) (*User, error) {
 
 func (db *DB) ListAPITokens(ctx context.Context, userID string) ([]APIToken, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, user_id, name, prefix, created_at, last_used_at, expires_at
+		`SELECT id, user_id, name, prefix, created_at, last_used_at, expires_at,
+		        oauth_client_id IS NOT NULL
 		 FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -92,7 +96,7 @@ func (db *DB) ListAPITokens(ctx context.Context, userID string) ([]APIToken, err
 		var t APIToken
 		var created int64
 		var lastUsed, expires sql.NullInt64
-		if err := rows.Scan(&t.ID, &t.UserID, &t.Name, &t.Prefix, &created, &lastUsed, &expires); err != nil {
+		if err := rows.Scan(&t.ID, &t.UserID, &t.Name, &t.Prefix, &created, &lastUsed, &expires, &t.Connected); err != nil {
 			return nil, err
 		}
 		t.CreatedAt = time.Unix(created, 0).UTC()

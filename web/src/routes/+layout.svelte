@@ -52,8 +52,12 @@
 	 * screen. Without this the invite link showed a login form to a person who had
 	 * no account yet, and the reset link showed one to a person who had forgotten
 	 * the password it was asking for.
+	 *
+	 * `/forbind` is the third: the screen an MCP client sends somebody to. It
+	 * signs them in itself and then asks one question, and the shell around it
+	 * would be a way to wander off before answering it.
 	 */
-	let standalone = $derived(['/invite', '/reset'].includes($page.url.pathname));
+	let standalone = $derived(['/invite', '/reset', '/forbind'].includes($page.url.pathname));
 
 	$effect(() => {
 		app.load();

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { USER } from './user.js';
 import { watchForTrouble } from './trouble.js';
 
@@ -6167,4 +6168,79 @@ test('en titel, der rettes i opgaveruden, tager gentagelse, tid, projekt og alar
 	expect(local).toBe('Mon 09:00');
 	const { reminders } = await apiCall(page, 'GET', `/tasks/${task.id}/reminders`);
 	expect(reminders.map((r) => r.offset_min)).toEqual([-60]);
+});
+
+/**
+ * At forbinde Claude med kontoen: hele dansen, som Claude danser den, med den
+ * eneste del, en Go-prøve ikke kan se — at godkendelsessiden findes, logger én
+ * ind, når det trænges, og at "Tillad" faktisk sender browseren tilbage med en
+ * kode, der kan veksles til et token, som /mcp tager imod.
+ *
+ * Tilbageadressen er en fremmed vært, som prøven selv svarer for. En rigtig
+ * claude.ai ville gøre prøven afhængig af nettet og af en side, vi ikke ejer.
+ */
+test('Claude kan forbinde med kontoen i stedet for med et token', async ({ page, browser }) => {
+	const callback = 'https://claude.example/api/mcp/auth_callback';
+	const registered = await page.request.post('/oauth/register', {
+		data: { client_name: 'Claude', redirect_uris: [callback], token_endpoint_auth_method: 'none' }
+	});
+	expect(registered.status()).toBe(201);
+	const { client_id } = await registered.json();
+
+	// S256 af en fast nøgle. Regnet i Node: en tom side er ikke en sikker
+	// kontekst, så browserens crypto.subtle findes ikke der.
+	const verifier = 'v'.repeat(43);
+	const challenge = createHash('sha256').update(verifier).digest('base64url');
+
+	const query = new URLSearchParams({
+		response_type: 'code', client_id, redirect_uri: callback, state: 'tilstand',
+		code_challenge: challenge, code_challenge_method: 'S256'
+	}).toString();
+
+	// Uden en session: login-skærmen, på godkendelsessidens adresse, så man
+	// lander tilbage på spørgsmålet bagefter.
+	// Tom storageState: browser.newContext() i en prøve arver projektets, og
+	// projektets er en logget-ind konto.
+	const stranger = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const signedOut = await stranger.newPage();
+	await signedOut.goto('/oauth/authorize?' + query);
+	await expect(signedOut.getByLabel('E-mail')).toBeVisible();
+	expect(new URL(signedOut.url()).pathname).toBe('/forbind');
+	await stranger.close();
+
+	let returned = null;
+	await page.route('https://claude.example/**', (route) => {
+		returned = new URL(route.request().url());
+		return route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' });
+	});
+
+	await page.goto('/oauth/authorize?' + query);
+	await expect(page.getByRole('heading', { name: 'Claude vil forbinde til din konto' })).toBeVisible();
+	// Hvor koden sendes hen er det, en klient ikke kan lyve om — det skal stå der.
+	await expect(page.getByText('claude.example', { exact: true })).toBeVisible();
+
+	await page.getByRole('button', { name: 'Tillad' }).click();
+	await expect.poll(() => returned?.searchParams.get('code') ?? null).not.toBeNull();
+	expect(returned.searchParams.get('state')).toBe('tilstand');
+
+	const exchanged = await page.request.post('/oauth/token', {
+		form: {
+			grant_type: 'authorization_code', code: returned.searchParams.get('code'),
+			client_id, redirect_uri: callback, code_verifier: verifier
+		}
+	});
+	expect(exchanged.status()).toBe(200);
+	const { access_token } = await exchanged.json();
+	expect(access_token).toMatch(/^vrd_/);
+
+	const mcp = await page.request.post('/mcp', {
+		headers: { Authorization: 'Bearer ' + access_token },
+		data: { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }
+	});
+	expect(mcp.status()).toBe(200);
+	expect((await mcp.json()).result.protocolVersion).toBeTruthy();
+
+	// Og den står under Tokens, hvor den kan tilbagekaldes.
+	await page.goto('/indstillinger/tokens');
+	await expect(page.getByText('forbundet med din konto')).toBeVisible();
 });
