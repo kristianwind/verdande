@@ -138,26 +138,34 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-// handleMCPWithKey is the same endpoint for a client that can only be given a
-// URL: `POST /mcp?key=vrd_…`.
+// handleMCPWithKey is the same endpoint at the address a person types into a
+// connector dialog: `POST /mcp`. Two credentials are accepted here.
 //
-// Claude's custom-connector dialog asks for a name, an address and — under
-// advanced settings — an OAuth client id and secret. There is no field for a
-// bearer token, so /api/v1/mcp cannot be configured from it however correct the
-// address is. The calendar feed already carries its credential in the URL for
-// the same reason, and the request logger records the path without the query, so
-// the key does not end up in the log.
+// `Authorization: Bearer vrd_…` is what a client sends after signing in with the
+// account (oauth_handlers.go), and what anything holding a token by hand can
+// send as well.
 //
-// The key is the *only* thing accepted here. Reading a session cookie instead
-// would make this a state-changing POST outside the CSRF check — which is to say
-// a cross-site request that acts as whoever is signed in.
+// `?key=vrd_…` is for a client that can only be given a URL. Claude's
+// custom-connector dialog has no field for a header, so before the sign-in
+// existed this was the only way to configure it, and addresses made that way
+// still work. The calendar feed carries its credential in the URL for the same
+// reason, and the request logger records the path without the query, so the key
+// does not end up in the log.
+//
+// A session cookie is *never* accepted here. That would make this a
+// state-changing POST outside the CSRF check — a cross-site request that acts as
+// whoever is signed in. A bearer header is safe where a cookie is not: a browser
+// will not attach one to a cross-site request by itself.
 func (s *Server) handleMCPWithKey(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("key")
+	if h := r.Header.Get("Authorization"); key == "" && strings.HasPrefix(h, "Bearer ") {
+		key = strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
+	}
 	if key == "" || !auth.IsAPIToken(key) {
 		// 401 rather than 404: unlike a task, the existence of this endpoint is
-		// not a secret — it is written in the documentation.
-		writeError(w, http.StatusUnauthorized, CodeUnauthorized,
-			"add ?key=<api token> to the URL")
+		// not a secret — it is written in the documentation. And the header is
+		// what starts the sign-in: it tells the client where to read how.
+		s.mcpUnauthorized(w, "sign in, or add ?key=<api token> to the URL")
 		return
 	}
 
@@ -167,11 +175,20 @@ func (s *Server) handleMCPWithKey(w http.ResponseWriter, r *http.Request) {
 			s.internal(w, r, "mcp key", err)
 			return
 		}
-		writeError(w, http.StatusUnauthorized, CodeUnauthorized, "that key is not valid")
+		// Also the answer to a token revoked under Settings, which is why the
+		// header is here too: the client then asks the person to sign in again.
+		s.mcpUnauthorized(w, "that key is not valid")
 		return
 	}
 
 	s.handleMCP(w, r.WithContext(withUser(r.Context(), user)))
+}
+
+// mcpUnauthorized is the 401 that points a client at the sign-in (RFC 9728 §5.1).
+func (s *Server) mcpUnauthorized(w http.ResponseWriter, message string) {
+	w.Header().Set("WWW-Authenticate",
+		`Bearer resource_metadata="`+s.protectedResourceMetadataURL()+`"`)
+	writeError(w, http.StatusUnauthorized, CodeUnauthorized, message)
 }
 
 // --- tool implementations ------------------------------------------------------------

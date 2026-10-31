@@ -23,6 +23,9 @@ type apiTokenJSON struct {
 	CreatedAt  string `json:"created_at"`
 	LastUsedAt string `json:"last_used_at,omitempty"`
 	ExpiresAt  string `json:"expires_at,omitempty"`
+	// Connected is true for a token an app received by signing in (OAuth),
+	// rather than one made on this page.
+	Connected bool `json:"connected,omitempty"`
 }
 
 // createdTokenJSON is the only response that carries the token itself, and only
@@ -45,6 +48,7 @@ func (s *Server) handleListAPITokens(w http.ResponseWriter, r *http.Request) {
 		j := apiTokenJSON{
 			ID: t.ID, Name: t.Name, Prefix: t.Prefix,
 			CreatedAt: t.CreatedAt.Format(time.RFC3339),
+			Connected: t.Connected,
 		}
 		if t.LastUsedAt != nil {
 			j.LastUsedAt = t.LastUsedAt.Format(time.RFC3339)

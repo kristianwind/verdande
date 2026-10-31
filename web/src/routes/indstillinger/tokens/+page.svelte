@@ -99,6 +99,10 @@
 		<p class="hint">
 			{t('tokens.hint')}
 		</p>
+		<!-- The way most people want: no token at all. The address is the same
+		     for everybody on this instance, so it can be shown without a secret. -->
+		<p class="hint">{t('tokens.signInHint')}</p>
+		<p class="mono value">{location.origin}/mcp</p>
 	</header>
 
 	{#if fresh}
@@ -175,6 +179,7 @@
 						<span class="token-name">{token.name}</span>
 						<span class="meta mono">
 							{token.prefix}…
+							{#if token.connected}· {t('tokens.connected')}{/if}
 							{#if token.last_used_at}
 								· {t('tokens.lastUsed', { when: date(token.last_used_at) })}
 							{:else}
