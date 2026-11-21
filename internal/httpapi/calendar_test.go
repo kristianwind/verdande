@@ -141,16 +141,25 @@ func TestAuthorizeWithoutAClientSaysSo(t *testing.T) {
 // The whole path, minus the consent screen: sync fetches the list, refreshes the
 // events of what was chosen, and the grid endpoint answers with them.
 func TestSyncFetchesTheChosenCalendarsAndTheGridReadsThem(t *testing.T) {
+	// A week from today, not a fixed date: verdande only keeps a window around now,
+	// and a fixture pinned to August aged out of it in November and turned this
+	// test red with "events = 0" — which reads like the sync broke.
+	day := time.Now().AddDate(0, 0, 7)
+	on := day.Format("2006-01-02")
+	next := day.AddDate(0, 0, 1).Format("2006-01-02")
+	grid := "/api/v1/calendar/events?from=" + day.AddDate(0, 0, -10).Format("2006-01-02") +
+		"&to=" + day.AddDate(0, 0, 10).Format("2006-01-02")
+
 	g := newFakeCalendarGoogle(t)
 	g.events["fam"] = []map[string]any{
 		{"id": "e1", "summary": "Bestyrelsesmøde", "htmlLink": "https://calendar.google.com/e1",
-			"start": map[string]string{"dateTime": "2026-08-20T14:00:00+02:00"},
-			"end":   map[string]string{"dateTime": "2026-08-20T15:30:00+02:00"}},
+			"start": map[string]string{"dateTime": on + "T14:00:00+01:00"},
+			"end":   map[string]string{"dateTime": on + "T15:30:00+01:00"}},
 	}
 	g.events["kw@nolimit.dk"] = []map[string]any{
 		{"id": "e2", "summary": "Skal ikke med",
-			"start": map[string]string{"date": "2026-08-21"},
-			"end":   map[string]string{"date": "2026-08-22"}},
+			"start": map[string]string{"date": next},
+			"end":   map[string]string{"date": day.AddDate(0, 0, 2).Format("2006-01-02")}},
 	}
 	ts, user := connectedCalendar(t, g, nil)
 
@@ -209,8 +218,7 @@ func TestSyncFetchesTheChosenCalendarsAndTheGridReadsThem(t *testing.T) {
 		t.Fatalf("events = %v, want 1 — only the chosen calendar", body["events"])
 	}
 
-	resp, body = ts.do(t, "GET",
-		"/api/v1/calendar/events?from=2026-08-01&to=2026-08-31", nil)
+	resp, body = ts.do(t, "GET", grid, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("events: status %d, body %v", resp.StatusCode, body)
 	}
@@ -219,7 +227,7 @@ func TestSyncFetchesTheChosenCalendarsAndTheGridReadsThem(t *testing.T) {
 		t.Fatalf("got %d events, want 1: %v", len(events), body["events"])
 	}
 	event := events[0].(map[string]any)
-	if event["summary"] != "Bestyrelsesmøde" || event["start_day"] != "2026-08-20" {
+	if event["summary"] != "Bestyrelsesmøde" || event["start_day"] != on {
 		t.Errorf("the event came back as %v", event)
 	}
 	// The calendar's colour rides along, or the chip has to ask for it per row.
@@ -235,7 +243,7 @@ func TestSyncFetchesTheChosenCalendarsAndTheGridReadsThem(t *testing.T) {
 	// And it is one person's calendar. Somebody else on the same instance sees
 	// nothing of it.
 	other := ts.newUser(t, "andreas@example.dk", "Andreas")
-	_, body = other.do(t, "GET", "/api/v1/calendar/events?from=2026-08-01&to=2026-08-31", nil)
+	_, body = other.do(t, "GET", grid, nil)
 	if events, _ := body["events"].([]any); len(events) != 0 {
 		t.Errorf("somebody else's calendar was visible: %v", body["events"])
 	}

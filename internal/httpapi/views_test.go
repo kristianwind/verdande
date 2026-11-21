@@ -200,3 +200,70 @@ func TestPeopleIsWhoYouShareWorkWith(t *testing.T) {
 		t.Errorf("a stranger is listed: %v", seen)
 	}
 }
+
+// "Alle opgaver" is every open task the caller can act on, and the test names
+// each thing that must stay out — because a list of everything passes any check
+// that only asks whether the right task is in it.
+func TestAllTasksIsEveryOpenTopLevelTaskInActiveProjects(t *testing.T) {
+	ts := newTestServer(t)
+	ts.bootstrap(t)
+
+	_, a := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Have"})
+	_, b := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Hus"})
+	_, gone := ts.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Gammelt"})
+
+	_, parent := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "slå græs", "project_id": a["id"],
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "find benzin", "project_id": a["id"], "parent_id": parent["id"],
+	})
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "mal døren", "project_id": b["id"],
+	})
+	_, done := ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "skift pære", "project_id": b["id"],
+	})
+	ts.do(t, "POST", "/api/v1/tasks/"+done["id"].(string)+"/complete", nil)
+	ts.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "glemt opgave", "project_id": gone["id"],
+	})
+	if resp, body := ts.do(t, "PATCH", "/api/v1/projects/"+gone["id"].(string),
+		map[string]any{"archived": true}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("archive: %d %v", resp.StatusCode, body)
+	}
+
+	// Somebody else's task, in a project the caller is not in.
+	other := ts.newUser(t, "tredje@example.dk", "Tredje")
+	_, theirs := other.do(t, "POST", "/api/v1/projects", map[string]any{"name": "Deres"})
+	other.do(t, "POST", "/api/v1/tasks", map[string]any{
+		"content": "deres opgave", "project_id": theirs["id"],
+	})
+
+	resp, body := ts.do(t, "GET", "/api/v1/all-tasks", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("all-tasks: %d %v", resp.StatusCode, body)
+	}
+	if body["truncated"] != false {
+		t.Errorf("truncated = %v on five tasks", body["truncated"])
+	}
+
+	got := map[string]bool{}
+	for _, raw := range body["tasks"].([]any) {
+		got[raw.(map[string]any)["content"].(string)] = true
+	}
+	want := map[string]bool{"slå græs": true, "mal døren": true}
+	for c := range want {
+		if !got[c] {
+			t.Errorf("missing %q: %v", c, got)
+		}
+	}
+	for _, c := range []string{"find benzin", "skift pære", "glemt opgave", "deres opgave"} {
+		if got[c] {
+			t.Errorf("%q should not be in Alle opgaver: %v", c, got)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("got %d tasks, want %d: %v", len(got), len(want), got)
+	}
+}

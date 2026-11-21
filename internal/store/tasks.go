@@ -69,7 +69,12 @@ type TaskFilter struct {
 	// TopLevelOnly excludes sub-tasks, which a project view wants because it
 	// renders them nested under their parents rather than as separate rows.
 	TopLevelOnly bool
-	AssigneeID   string
+	// ActiveProjectsOnly leaves out tasks in archived projects. An archived
+	// project is one somebody put away; its open tasks are not work that is
+	// waiting, and a view of "everything I have to do" that fills up with them is
+	// a view that has to be read past.
+	ActiveProjectsOnly bool
+	AssigneeID         string
 	// DelegatedBy is the other side of AssigneeID: assigned, but not to this
 	// person. A second field rather than a magic value in AssigneeID, because the
 	// two are different questions — "what is on my plate" and "what have I handed
@@ -139,6 +144,9 @@ func (db *DB) ListTasks(ctx context.Context, userID string, f TaskFilter) ([]Tas
 	}
 	if f.TopLevelOnly {
 		where = append(where, `t.parent_id IS NULL`)
+	}
+	if f.ActiveProjectsOnly {
+		where = append(where, `p.archived = 0`)
 	}
 	if f.AssigneeID != "" {
 		where = append(where, `t.assignee_id = ?`)

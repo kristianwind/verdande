@@ -184,6 +184,46 @@ func (s *Server) handleDelegated(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"people": out})
 }
 
+// allTasksCap is how many rows "Alle opgaver" will send. Far above what one
+// person has open; it exists so an account with tens of thousands of imported
+// tasks gets a slow page rather than an unbounded response. When it is reached the
+// response says so, because a list that quietly stops is a list that lies about
+// what is left.
+const allTasksCap = 2000
+
+// handleAllTasks is "Alle opgaver": every open task in every active project the
+// caller can see, top level only — a sub-task is shown as its parent's count, the
+// way a project shows it, rather than as a second loose row.
+//
+// Flat, not grouped. The grouping is by project group and project, and the client
+// already holds both lists with their names, colours and order; a server-side
+// grouping would be a second copy of the sidebar's order to keep in step with the
+// first.
+func (s *Server) handleAllTasks(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+
+	tasks, err := s.db.ListTasks(r.Context(), user.ID, store.TaskFilter{
+		TopLevelOnly:       true,
+		ActiveProjectsOnly: true,
+		// One past the cap, so "exactly the cap" and "more than the cap" can be told
+		// apart.
+		Limit: allTasksCap + 1,
+	})
+	if err != nil {
+		s.internal(w, r, "all tasks", err)
+		return
+	}
+
+	truncated := len(tasks) > allTasksCap
+	if truncated {
+		tasks = tasks[:allTasksCap]
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"tasks":     toTaskList(tasks),
+		"truncated": truncated,
+	})
+}
+
 // sortByName orders the groups the way a list of people reads. Insertion sort:
 // this is a handful of entries, and it keeps the package free of a dependency on
 // sort just for this.
