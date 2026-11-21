@@ -252,6 +252,92 @@ test('hvert link i sidebjælken fører et sted hen', async ({ page }) => {
 	expect(trouble).toEqual([]);
 });
 
+test('Alle opgaver viser det hele inddelt efter gruppe, prioritet og dato', async ({ page }) => {
+	const trouble = watchForTrouble(page);
+	await page.goto('/');
+
+	// A group with a project in it, and two tasks: one in that project with a
+	// priority, and one in a project of its own with neither. Unique names, because
+	// the suite shares one account and other tests leave tasks behind.
+	const stamp = Date.now();
+	const names = await page.evaluate(async (stamp) => {
+		const send = async (method, path, body) => {
+			const r = await fetch('/api/v1' + path, {
+				method,
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin' },
+				body: JSON.stringify(body)
+			});
+			if (!r.ok) throw new Error(`${method} ${path}: ${r.status}`);
+			return r.json();
+		};
+		const group = await send('POST', '/project-groups', { name: `Hjemmet ${stamp}` });
+		const project = await send('POST', '/projects', {
+			name: `Haven ${stamp}`,
+			group_id: group.id
+		});
+		await send('POST', '/tasks', {
+			content: `Slå græs ${stamp}`,
+			project_id: project.id,
+			priority: 1
+		});
+		const loose = await send('POST', '/projects', { name: `Løst ${stamp}` });
+		await send('POST', '/tasks', { content: `Ring til VVS ${stamp}`, project_id: loose.id });
+		return { group: group.name, project: project.name };
+	}, stamp);
+
+	// Through the sidebar, so the entry is tested as well as the page.
+	await page.reload();
+	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+	await sidebar.getByRole('link', { name: 'Alle opgaver' }).click();
+	await expect(page.getByRole('heading', { name: 'Alle opgaver', level: 1 })).toBeVisible();
+
+	// By group: the group's heading, the project under it, the task under that.
+	const groupSection = page.locator('[data-bucket]').filter({
+		has: page.getByRole('heading', { name: names.group })
+	});
+	await expect(groupSection.getByRole('link', { name: names.project })).toBeVisible();
+	await expect(groupSection.getByText(`Slå græs ${stamp}`)).toBeVisible();
+	// And the loose project's task is NOT in the group — a list of everything
+	// passes any check that only asks whether the right task is in it.
+	await expect(groupSection.getByText(`Ring til VVS ${stamp}`)).toHaveCount(0);
+	const ungrouped = page.locator('[data-bucket]').filter({
+		has: page.getByRole('heading', { name: 'Uden gruppe' })
+	});
+	await expect(ungrouped.getByText(`Ring til VVS ${stamp}`)).toBeVisible();
+
+	// Folding a group hides its tasks and keeps its heading.
+	await groupSection.getByRole('button', { name: names.group }).click();
+	await expect(groupSection.getByText(`Slå græs ${stamp}`)).toHaveCount(0);
+	await groupSection.getByRole('button', { name: names.group }).click();
+	await expect(groupSection.getByText(`Slå græs ${stamp}`)).toBeVisible();
+
+	// By priority: the prioritised task under Prioritet 1, the other under none.
+	await page.getByRole('button', { name: 'Prioritet', exact: true }).click();
+	// Anchored: the heading's name includes its count, so "Ingen prioritet 1" also
+	// contains "prioritet 1" — and that bucket is the one holding the other task.
+	const p1 = page.locator('[data-bucket]').filter({
+		has: page.getByRole('heading', { name: /^Prioritet 1\b/ })
+	});
+	await expect(p1.getByText(`Slå græs ${stamp}`)).toBeVisible();
+	await expect(p1.getByText(`Ring til VVS ${stamp}`)).toHaveCount(0);
+	// Out of its project, a row says where it lives.
+	await expect(p1.getByText(names.project)).toBeVisible();
+
+	// The choice survives a reload.
+	await page.reload();
+	await expect(page.getByRole('heading', { name: /^Prioritet 1\b/ })).toBeVisible();
+
+	// By date: neither has one.
+	await page.getByRole('button', { name: 'Dato', exact: true }).click();
+	const noDate = page.locator('[data-bucket]').filter({
+		has: page.getByRole('heading', { name: 'Uden dato' })
+	});
+	await expect(noDate.getByText(`Ring til VVS ${stamp}`)).toBeVisible();
+
+	expect(trouble).toEqual([]);
+});
+
 test('en opgave kan slumres og hentes frem igen', async ({ page }) => {
 	const trouble = watchForTrouble(page);
 	await page.goto('/');

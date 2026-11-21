@@ -82,7 +82,7 @@ test('en gemt adresse til en opgaveside fører til noterne i stedet for et blind
 	// Nogen, der har gemt et link fra en fuld instans, skal lande et sted, der
 	// giver mening. Der er ikke sket noget forkert — adressen hører bare til et
 	// andet program end det, der kører her.
-	for (const sti of ['/upcoming', '/kalender', '/uddelegeret', '/faerdige']) {
+	for (const sti of ['/upcoming', '/kalender', '/uddelegeret', '/faerdige', '/alle']) {
 		await page.goto(sti);
 		await expect(page).toHaveURL(/\/noter$/);
 	}
@@ -111,7 +111,7 @@ test('⌘K finder noter og ikke opgaver', async ({ page }) => {
 
 test('opgaveruterne findes slet ikke på serveren', async ({ page }) => {
 	// Det her er forskellen på skjult og fraværende, målt udefra.
-	for (const sti of ['/api/v1/tasks', '/api/v1/labels', '/api/v1/upcoming', '/api/v1/filters']) {
+	for (const sti of ['/api/v1/tasks', '/api/v1/labels', '/api/v1/upcoming', '/api/v1/filters', '/api/v1/all-tasks']) {
 		const svar = await page.request.get(sti);
 		expect(svar.status(), `${sti} svarede ${svar.status()}`).toBe(404);
 	}
