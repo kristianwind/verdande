@@ -283,57 +283,76 @@ test('Alle opgaver viser det hele inddelt efter gruppe, prioritet og dato', asyn
 		});
 		const loose = await send('POST', '/projects', { name: `Løst ${stamp}` });
 		await send('POST', '/tasks', { content: `Ring til VVS ${stamp}`, project_id: loose.id });
-		return { group: group.name, project: project.name };
+		return {
+			group: group.name,
+			project: project.name,
+			ids: { group: group.id }
+		};
 	}, stamp);
 
-	// Through the sidebar, so the entry is tested as well as the page.
-	await page.reload();
-	const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
-	await sidebar.getByRole('link', { name: 'Alle opgaver' }).click();
-	await expect(page.getByRole('heading', { name: 'Alle opgaver', level: 1 })).toBeVisible();
+	// The group is removed again whatever happens below: the suite shares one
+	// account, and a group left in the sidebar breaks the tests that expect one
+	// there. Only the group — deleting the projects as well puts them in the trash,
+	// where the restore test then finds more than its own.
+	try {
 
-	// By group: the group's heading, the project under it, the task under that.
-	const groupSection = page.locator('[data-bucket]').filter({
-		has: page.getByRole('heading', { name: names.group })
-	});
-	await expect(groupSection.getByRole('link', { name: names.project })).toBeVisible();
-	await expect(groupSection.getByText(`Slå græs ${stamp}`)).toBeVisible();
-	// And the loose project's task is NOT in the group — a list of everything
-	// passes any check that only asks whether the right task is in it.
-	await expect(groupSection.getByText(`Ring til VVS ${stamp}`)).toHaveCount(0);
-	const ungrouped = page.locator('[data-bucket]').filter({
-		has: page.getByRole('heading', { name: 'Uden gruppe' })
-	});
-	await expect(ungrouped.getByText(`Ring til VVS ${stamp}`)).toBeVisible();
+		// Through the sidebar, so the entry is tested as well as the page.
+		await page.reload();
+		const sidebar = page.getByRole('navigation', { name: 'Hovedmenu' });
+		await sidebar.getByRole('link', { name: 'Alle opgaver' }).click();
+		await expect(page.getByRole('heading', { name: 'Alle opgaver', level: 1 })).toBeVisible();
 
-	// Folding a group hides its tasks and keeps its heading.
-	await groupSection.getByRole('button', { name: names.group }).click();
-	await expect(groupSection.getByText(`Slå græs ${stamp}`)).toHaveCount(0);
-	await groupSection.getByRole('button', { name: names.group }).click();
-	await expect(groupSection.getByText(`Slå græs ${stamp}`)).toBeVisible();
+		// By group: the group's heading, the project under it, the task under that.
+		const groupSection = page.locator('[data-bucket]').filter({
+			has: page.getByRole('heading', { name: names.group })
+		});
+		await expect(groupSection.getByRole('link', { name: names.project })).toBeVisible();
+		await expect(groupSection.getByText(`Slå græs ${stamp}`)).toBeVisible();
+		// And the loose project's task is NOT in the group — a list of everything
+		// passes any check that only asks whether the right task is in it.
+		await expect(groupSection.getByText(`Ring til VVS ${stamp}`)).toHaveCount(0);
+		const ungrouped = page.locator('[data-bucket]').filter({
+			has: page.getByRole('heading', { name: 'Uden gruppe' })
+		});
+		await expect(ungrouped.getByText(`Ring til VVS ${stamp}`)).toBeVisible();
 
-	// By priority: the prioritised task under Prioritet 1, the other under none.
-	await page.getByRole('button', { name: 'Prioritet', exact: true }).click();
-	// Anchored: the heading's name includes its count, so "Ingen prioritet 1" also
-	// contains "prioritet 1" — and that bucket is the one holding the other task.
-	const p1 = page.locator('[data-bucket]').filter({
-		has: page.getByRole('heading', { name: /^Prioritet 1\b/ })
-	});
-	await expect(p1.getByText(`Slå græs ${stamp}`)).toBeVisible();
-	await expect(p1.getByText(`Ring til VVS ${stamp}`)).toHaveCount(0);
-	// Out of its project, a row says where it lives.
-	await expect(p1.getByText(names.project)).toBeVisible();
+		// Folding a group hides its tasks and keeps its heading.
+		await groupSection.getByRole('button', { name: names.group }).click();
+		await expect(groupSection.getByText(`Slå græs ${stamp}`)).toHaveCount(0);
+		await groupSection.getByRole('button', { name: names.group }).click();
+		await expect(groupSection.getByText(`Slå græs ${stamp}`)).toBeVisible();
 
-	// The choice survives a reload.
-	await page.reload();
-	await expect(page.getByRole('heading', { name: /^Prioritet 1\b/ })).toBeVisible();
+		// By priority: the prioritised task under Prioritet 1, the other under none.
+		await page.getByRole('button', { name: 'Prioritet', exact: true }).click();
+		// Anchored: the heading's name includes its count, so "Ingen prioritet 1" also
+		// contains "prioritet 1" — and that bucket is the one holding the other task.
+		const p1 = page.locator('[data-bucket]').filter({
+			has: page.getByRole('heading', { name: /^Prioritet 1\b/ })
+		});
+		await expect(p1.getByText(`Slå græs ${stamp}`)).toBeVisible();
+		await expect(p1.getByText(`Ring til VVS ${stamp}`)).toHaveCount(0);
+		// Out of its project, a row says where it lives.
+		await expect(p1.getByText(names.project)).toBeVisible();
 
-	// By date: neither has one.
-	await page.getByRole('button', { name: 'Dato', exact: true }).click();
-	const noDate = page.locator('[data-bucket]').filter({
-		has: page.getByRole('heading', { name: 'Uden dato' })
-	});
-	await expect(noDate.getByText(`Ring til VVS ${stamp}`)).toBeVisible();
+		// The choice survives a reload.
+		await page.reload();
+		await expect(page.getByRole('heading', { name: /^Prioritet 1\b/ })).toBeVisible();
+
+		// By date: neither has one.
+		await page.getByRole('button', { name: 'Dato', exact: true }).click();
+		const noDate = page.locator('[data-bucket]').filter({
+			has: page.getByRole('heading', { name: 'Uden dato' })
+		});
+		await expect(noDate.getByText(`Ring til VVS ${stamp}`)).toBeVisible();
+	} finally {
+		await page.evaluate(async (group) => {
+			await fetch(`/api/v1/project-groups/${group}`, {
+				method: 'DELETE',
+				credentials: 'include',
+				headers: { 'Sec-Fetch-Site': 'same-origin' }
+			});
+		}, names.ids.group);
+	}
 
 	expect(trouble).toEqual([]);
 });
