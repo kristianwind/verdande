@@ -193,7 +193,12 @@
 			// Sidst i rækken, fordi `navOrder` føjer en ukendt nøgle til bagest: står
 			// den et andet sted her, ser en ny konto én rækkefølge og alle
 			// eksisterende en anden.
-			app.notesOnly ? null : { key: 'calendar', href: '/kalender', label: 'nav.calendar' }
+			app.notesOnly ? null : { key: 'calendar', href: '/kalender', label: 'nav.calendar' },
+			// Alle opgaver bærer en liste frem for en prik, af samme grund som
+			// kalenderen bærer et gitter: den er ikke endnu et filter over dagene, den
+			// er det hele. Sidst af samme grund som de to over den — `navOrder` føjer
+			// en ukendt nøgle til bagest.
+			app.notesOnly ? null : { key: 'all', href: '/alle', label: 'nav.all' }
 		].filter(Boolean)
 	);
 
@@ -606,6 +611,20 @@
 									stroke-linecap="round"
 								/>
 								<rect x="8.8" y="8.6" width="2.6" height="2.6" rx="0.5" fill="currentColor" />
+							</svg>
+						{:else if item.key === 'all'}
+							<!-- Three rows under each other: the whole list, in groups. -->
+							<svg class="mark" viewBox="0 0 16 16" aria-hidden="true">
+								<path
+									d="M5.6 4h8M5.6 8h8M5.6 12h8"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.4"
+									stroke-linecap="round"
+								/>
+								<circle cx="2.6" cy="4" r="1.1" fill="currentColor" />
+								<circle cx="2.6" cy="8" r="1.1" fill="currentColor" />
+								<circle cx="2.6" cy="12" r="1.1" fill="currentColor" />
 							</svg>
 						{:else if item.key === 'delegated'}
 							<!-- A person: the tasks you are waiting on someone else for. -->
@@ -1336,6 +1355,9 @@
 	}
 	[data-view='calendar'] .mark {
 		color: var(--color-indigo);
+	}
+	[data-view='all'] .mark {
+		color: var(--color-green);
 	}
 
 	.group-head {

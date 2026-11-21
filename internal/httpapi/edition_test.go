@@ -64,6 +64,7 @@ func TestNotesEditionServesOnlyItsOwnRoutes(t *testing.T) {
 		"DELETE /caldav/{userID}/{projectID}/{taskFile}",
 		"GET /.well-known/caldav",
 		"GET /api/v1/ai/plan",
+		"GET /api/v1/all-tasks",
 		"GET /api/v1/delegated",
 		"GET /api/v1/export/projects.zip",
 		"GET /api/v1/export/projects/{projectID}.csv",

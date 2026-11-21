@@ -2693,6 +2693,34 @@ paths:
                           type: array
                           items: { $ref: "#/components/schemas/Task" }
 
+  /api/v1/all-tasks:
+    get:
+      tags: [views]
+      summary: Every open task, for the "All tasks" view.
+      description: |
+        Every open, top-level task in every active (not archived) project you can
+        see. Sub-tasks are left out: they show as their parent's count, as they do
+        in a project.
+
+        Flat rather than grouped. The client groups by project group and project,
+        and it already holds both lists with their names, colours and order.
+
+        At most 2000 tasks are returned. `truncated` is true when there were more,
+        so a client can say that the list is not complete rather than showing a
+        shorter one as if it were.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items: { $ref: "#/components/schemas/Task" }
+                  truncated: { type: boolean }
+
   /api/v1/search:
     get:
       tags: [views]

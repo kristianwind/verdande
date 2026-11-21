@@ -107,6 +107,7 @@
 		'/',
 		'/upcoming',
 		'/uddelegeret',
+		'/alle',
 		'/kalender',
 		'/faerdige',
 		'/opgave',

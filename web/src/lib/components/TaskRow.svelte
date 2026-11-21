@@ -13,7 +13,10 @@
 	import { repeatLabel } from '$lib/when.js';
 	import { linkify } from '$lib/linkify.js';
 
-	let { task, onedit } = $props();
+	// `place` is the project's name, for a list whose rows come from everywhere —
+	// Alle opgaver by priority or by date. Inside a project it is left out, where it
+	// would be the heading repeated on every row.
+	let { task, onedit, place = '' } = $props();
 
 	let repeats = $derived(repeatLabel(task.recurrence_rule, task.recurrence_text));
 
@@ -140,8 +143,11 @@
 			>
 		{/if}
 
-		{#if assignee || due || task.labels?.length || repeats || task.subtask_count || task.attachment_count}
+		{#if place || assignee || due || task.labels?.length || repeats || task.subtask_count || task.attachment_count}
 			<span class="meta">
+				{#if place}
+					<span class="place">{place}</span>
+				{/if}
 				{#if assignee}
 					<!-- First in the row, because "who" changes what the rest of the line
 					     means: a date on somebody else's task is their deadline, not
@@ -392,6 +398,10 @@
 		align-items: center;
 		margin-top: var(--s1);
 		font-size: var(--text-xs);
+	}
+
+	.place {
+		color: var(--ink-faint);
 	}
 
 	.due[data-tone='overdue'] {
